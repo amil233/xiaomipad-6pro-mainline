@@ -4,7 +4,7 @@
   "upstream_url": "https://github.com/sm8450-mainline/linux.git",
   "upstream_base": "a19585977c11fa662435b607cb9ff4ac7133092e",
   "commit": "e8b0c51c07bedb10aef8b3039e1f26b6876cb8d7",
-  "config_sha256": "d32c445b5c235a19ebfb476984ca1e5e1a36e51ae9b05984d0726200d34a0ea1",
+  "config_sha256": "d81ff750ac6ec47a299d78cab9582fedb4b270747040bfd796ff2e71814ebecc",
   "config_fragments": [
     "device/configs/liuqin-firstboot.config",
     "device/configs/liuqin-snap.config",
