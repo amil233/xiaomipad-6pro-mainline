@@ -243,6 +243,16 @@ shell + telnet 2323。全程零写入；`liuqin-mark-slot-successful` 只在探�
 两项 stage-2 检查做不了），Gunyah 遮蔽验证顺延到首装后的全镜像测试；内核
 层一切可测（启动、NCM、earlycon、显示、触控、remote proc、时钟/电源域）。
 
+### 为什么不用 build-liuqin-native-boot.sh
+
+不是偏好问题，是三条硬前提当前全缺：脚本读 `$kernel_out/scripts/dtc/{dtc,
+fdtoverlay}` 与 `include/config/kernel.release`（本地不编译内核就没有这棵
+构建树）；断言源码 HEAD 与 `kernel/source.json` 锁一致且 `.config` 哈希吻合
+（锁仍钉 `a322d592cb92`，tip 是 `2c2092606bed`，直接硬失败）；还要
+`NATIVE_ROOT_HASHES`/`AUDIO_TOPOLOGY`/`WLAN_HSP2_TUPLE` 一整套产品链输入。
+诊断形态与它共用 `build-bootimg.sh`，只是换 env，不碰锁、不拖产品流水线。
+该脚本留给 path A 通过后推进 TD4 与首装使用。
+
 ### 主机软件（apt 即可，全部架构中立）
 
 `git python3 cpio gzip curl device-tree-compiler fastboot telnet binutils gcc
