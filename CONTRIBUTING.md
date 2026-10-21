@@ -1,7 +1,7 @@
 # Contributing
 
 Device integration, build tools and documentation belong in this repository.
-Kernel changes belong in `linux-sm8450-liuqin`, on the `liuqin-6.17` branch.
+Kernel changes belong in `linux-sm8450-liuqin`, on the `liuqin-7.0` branch.
 The project build selects an exact kernel commit through `kernel/source.json`.
 
 Keep changes focused and explain the behavior they address. Preserve original

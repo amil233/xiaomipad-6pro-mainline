@@ -3,7 +3,7 @@
 ## Kernel Changes
 
 The kernel repository's `Liuqin kernel` workflow builds pushes and pull requests
-to `liuqin-6.17`. It checks out the integration repository's `main` and uses its
+to `liuqin-7.0`. It checks out the integration repository's `main` and uses its
 shared `.github/actions/kernel` action. No cross-repository write token is needed.
 Both repositories must exist under the same GitHub owner before enabling this flow.
 

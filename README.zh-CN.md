@@ -141,7 +141,7 @@ Ubuntu 软件包通过 APT 管理。项目内核与设备组件的更新方式�
 | [linux-sm8450-liuqin](https://github.com/yzddmr6/linux-sm8450-liuqin) | 完整 Linux 内核源码与设备适配提交 |
 
 构建使用的内核提交记录在 [kernel/source.json](kernel/source.json)。
-内核分支为 `liuqin-6.17`。欢迎改进驱动、构建工具与文档，提交方式见
+内核分支为 `liuqin-7.0`。欢迎改进驱动、构建工具与文档，提交方式见
 [参与贡献](CONTRIBUTING.md)。
 
 ## 致谢与许可证

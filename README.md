@@ -142,7 +142,7 @@ The accounts listed above are also available for usage discussions.
 | [linux-sm8450-liuqin](https://github.com/yzddmr6/linux-sm8450-liuqin) | Complete Linux kernel source and device adaptation commits |
 
 [kernel/source.json](kernel/source.json) records the kernel revision used by the build.
-The device branch is `liuqin-6.17`. Contributions to drivers, tools and documentation are welcome;
+The device branch is `liuqin-7.0`. Contributions to drivers, tools and documentation are welcome;
 see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acknowledgments and Licensing
