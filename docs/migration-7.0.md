@@ -11,8 +11,9 @@
 | 项 | 版本 |
 |---|---|
 | 内核分支 | `linux-sm8450-liuqin` `liuqin-7.0`，tip `2c2092606bed` |
-| 安装器 | `xiaomipad-6pro-mainline` main，`f983dc8`、`a1d4efa`（均待推送） |
-| 内核 CI | Run #8（`liuqin-kernel-e6c2f01…`，conclusion success）覆盖到 `e6c2f01cd036`；`253032ac87c8`/`2c2092606bed` 待推送触发新构建 |
+| 安装器 | `xiaomipad-6pro-mainline` main，`541b866`（含 `f983dc8`、`a1d4efa`），已推送 |
+| 内核 CI | Run #9（head `2c2092606bed`，conclusion success，约 11 分钟）覆盖全部 10 个移植提交；Run #8 覆盖到 `e6c2f01cd036` |
+| 产物复核 | Run #9 的 `.config` 与 Run #8 实质符号零差异；新 DTB 的 bootimg 合约断言 10/10 通过 |
 | 产品锁 | `kernel/source.json` 仍钉 `a322d592cb92`（迁移前的干净历史 tip） |
 
 **当前一句话**：8 个移植提交离线全绿（编译、`.config`、DTB 引用链、boot 镜像
@@ -98,8 +99,13 @@
   全等。事后看 `6b9b688` 删令牌是对的（当时的树确实无此参数），漏的是驱动
   补丁本身；三个新提交合起来恢复 6.17 验证过的完整行为。
 
-内核三提交（`253032ac87c8`、`2c2092606bed`）与安装器 `a1d4efa` 均在本地，
-等推送（SSH 推送由用户执行）；`025e562`、`6b9b688` 已推送至 amil233 fork。
+内核三提交（`253032ac87c8`、`2c2092606bed`）与安装器 `a1d4efa` 已全部推送，两个 fork 与本地一致；Run #9 绿。
+
+Run #9 产物复核（`ci/liuqin-kernel-2c2092606bed…/`，本地副件）：`.config`
+与 Run #8 逐符号对比零差异（补丁不碰 Kconfig）；DTB 的 bootimg 全套断言
+（bootargs 与 native-bootargs 全等、simple-framebuffer 六属性、`/chosen`
+cells 与 ranges）10/10 通过，fdtoverlay 合并 ABL overlay 后仍全通过，SLPI
+固件名节点在位。
 
 ## 技术债表
 
@@ -114,7 +120,7 @@
 
 ## 真机首测计划（path A：只测内核）
 
-1. 用 Run #8 产物（Image + DTB）在已备好输入的机器上跑
+1. 用 Run #9 产物（Image + DTB）在已备好输入的机器上跑
    `build-liuqin-native-boot.sh` 产出 v2 boot 镜像（`fastboot boot` RAM 启动，
    不写任何分区）。
 2. **首启检查清单**（经验库 step 3）：
@@ -125,7 +131,7 @@
    - `uname -r` 等于 bundle 记录的 kernel_release
    - `/sys/kernel/debug/devices_deferred` 为空或每项可解释
    - sync_state：`/sys/kernel/debug/pm_genpd_summary` 无长期挂起的提供者
-   - 最终 `.config` 关键项与 Run #8 产物一致
+   - 最终 `.config` 关键项与 Run #9 产物一致
 3. **通道验收**：earlycon 面板出字 → USB NCM 枚举（主机 DHCP 拿
    192.168.7.10-19）→ telnet 192.168.7.2:2323 双向命令 + dmesg 完整。
 4. **显示链观察**（R2/R5）：面板 init 的 accum_err 日志、dmesg 中 DSI 错误、
@@ -142,7 +148,8 @@
 
 ## 下一步与阻塞
 
-- **阻塞**：真机测试窗口；两个修复提交待推送。
+- **阻塞**：真机测试窗口。
+- 推送状态：内核与安装器两 fork 均与本地一致，无积压提交。
 - 推送后：`checks.yml` 验证安装器侧改动；内核侧无待办。
 - path A 通过后：推进锁（TD4）→ 完整镜像装配 → `--layout linux-only
   --allow-unverified` 首装（该布局从未真机安装过）。
