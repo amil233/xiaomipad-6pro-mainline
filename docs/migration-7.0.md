@@ -119,9 +119,9 @@ cells 与 ranges）10/10 通过，fdtoverlay 合并 ABL overlay 后仍全通过�
 
 ## 真机首测计划（path A：只测内核）
 
-1. 用 Run #9 产物（Image + DTB）在已备好输入的机器上跑
-   `build-liuqin-native-boot.sh` 产出 v2 boot 镜像（`fastboot boot` RAM 启动，
-   不写任何分区）。
+1. 用 Run #9 产物（Image + DTB）在主机上构建 **stage-1-only 诊断
+   boot 镜像**（`fastboot boot` RAM 启动，不写任何分区）——构建步骤见文末
+   "树莓派 4B 主机执行补编"。
 2. **首启检查清单**（经验库 step 3）：
    - `cat /proc/device-tree/compatible` 与 model——与源码对比，注意 ABL 可能
      覆盖根身份
@@ -180,9 +180,9 @@ probe
 ### 执行序列
 
 1. 进 fastboot（音量下+电源），`fastboot getvar all 2>&1 | tee getvar-before.txt`。
-2. 主机用 Run #9 产物跑 `tools/build-liuqin-native-boot.sh` 产出 v2 boot 镜像。
-3. `fastboot boot <out>/boot.img`：期望 `OKAY`，随后面板出现 earlycon 文本
-   （移植的 `earlycon=simplefb`），主机出现 usb0（NCM）。
+2. 主机按 "树莓派 4B 主机执行补编" 构建 stage-1-only 诊断 boot 镜像。
+3. `fastboot boot <out>/boot-liuqin-firstboot.img`：期望 `OKAY`，随后面板出现
+   earlycon 文本（移植的 `earlycon=simplefb`），主机出现 usb0（NCM）。
 4. 主机取地址：`sudo dhclient usb0`（或 nmcli），应得 192.168.7.10-19。
 5. `telnet 192.168.7.2 2323` → busybox 诊断 shell。开场命令：
    ```
@@ -223,3 +223,82 @@ probe
 操作时间线 + getvar 存档 + telnet 全程录制 + 上述命令输出（cmdline/compatible/
 uname/devices_deferred/pm_genpd_summary/clk_summary/dmesg 全文）+ 面板照片
 （尤其 earlycon 首帧与黑屏状态）。
+
+## 树莓派 4B 主机执行补编
+
+实机测试的主机是一台 arm64 Debian 的树莓派 4B，经 USB 连接平板（128 GB/8 GB）。
+
+### 形态选择：stage-1-only 诊断镜像
+
+`build-liuqin-native-boot.sh` 走的是 native 产品镜像，需要 native root 契约
+（`build-liuqin-native-root.sh` 的产物）与定版锁定，是安装后才用的路径。内核
+测试用流水线自己定义的**只读形态**：`LIUQIN_STORAGE_MODE=persistent
+LIUQIN_ROOT_PROFILE=legacy LIUQIN_EMBED_ROOTFS=0 ROOTFS=none`。它在 stock 平板
+上的运行时行为完全确定：stage-1 先把所有 UFS 块设备证只读（`ufs_safe`），
+再探测 `LIUQIN_ROOT`——stock 机上必然探测失败——`storage_abort` → 诊断
+shell + telnet 2323。全程零写入；`liuqin-mark-slot-successful` 只在探测成功
+的分支里才写 MISC 分区，本情形永不触及。
+
+代价：诊断 shell 没有 systemd（`systemd-detect-virt`/`hostnamectl` chassis
+两项 stage-2 检查做不了），Gunyah 遮蔽验证顺延到首装后的全镜像测试；内核
+层一切可测（启动、NCM、earlycon、显示、触控、remote proc、时钟/电源域）。
+
+### 主机软件（apt 即可，全部架构中立）
+
+`git python3 cpio gzip curl device-tree-compiler fastboot telnet binutils gcc
+isc-dhcp-client`（或用 dhcpcd/NetworkManager 之一）。Pi 上不需要交叉
+工具链：`build-initramfs.sh` 的 `SLOT_SUCCESS_GCC` 传 `cc`——Pi 原生 gcc
+就是 aarch64，编译 `liuqin-mark-slot-successful` 正合目标。
+
+### 输入件（前两项可联网获取，后两项从原开发机复制 `tools/local/`）
+
+- `sh tools/fetch-busybox-arm64.sh`（ports.ubuntu.com 的 aarch64 busybox deb）
+- `sh tools/fetch-aosp-mkbootimg.sh`（googlesource 的 mkbootimg.py）
+- `tools/local/firmware-liuqin/`（触控/BT/WLAN/regdb/GPU/DSP 固件池，
+  按 `MANIFEST.sha256` 钉死——stage-1 强制校验）
+- `tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/`：44 个 stock DTBO
+  条目与 vendor_boot 基 DTB——`ABL_OVERLAY_SINK=1`（默认开）断了这个就
+  直接构建失败。这是 ABL 私有验收的已知事实，不可省。
+
+内核产物：仓库目录 `ci/liuqin-kernel-2c2092606bed…/` 里的 `Image` 与
+`sm8475-xiaomi-liuqin.dtb`（Run #9 产物）。注意 microSD 留 ~2 GB 空间
+（cpio 暂存 + 192 MiB 镜像打底）。
+
+### 构建（两条命令）
+
+```
+# 1) stage-1-only 诊断 initramfs
+SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD) \
+  SLOT_SUCCESS_GCC=cc \
+  OUT_DIR="$PWD/out/initramfs-diag" \
+  ROOTFS=none LIUQIN_STORAGE_MODE=persistent LIUQIN_ROOT_PROFILE=legacy \
+  LIUQIN_EMBED_ROOTFS=0 \
+  sh tools/lib/build-initramfs.sh
+
+# 2) v2 boot 镜像（dtc/fdtoverlay 用 apt 的，kernel 树里没有）
+CI=ci/liuqin-kernel-2c2092606bed9379dee3a3fd60442a5f2712bac3
+DTC=dtc FDTOVERLAY=fdtoverlay \
+  MKBOOTIMG_DIR="$PWD/tools/local/aosp-mkbootimg" \
+  IMAGE="$PWD/$CI/Image" DTB="$PWD/$CI/sm8475-xiaomi-liuqin.dtb" \
+  RAMDISK="$PWD/out/initramfs-diag/liuqin-firstboot.cpio.gz" \
+  ABL_OVERLAY_SINK=1 ABL_DTB02_IDS=0 \
+  CMDLINE="$(cat device/native-bootargs.txt)" HEADER_CMDLINE= \
+  OUT_DIR="$PWD/out/boot-diag" \
+  sh tools/lib/build-bootimg.sh
+```
+
+CI DTB 的 `/chosen/bootargs` 与 `device/native-bootargs.txt` 已逐字节全等
+（离线复核过），所以不需要 native-boot.sh 的 cmdline overlay 步骤；
+`CMDLINE` 仍要原样传，`build-bootimg.sh` 的漂移断言靠它。
+
+### Pi 4B 特定注意
+
+- **USB 口**：优先蓝色 USB 3.0 口直连（USB-A→C 数据线）；若枚举不稳再
+  退到黑色 USB 2.0 口（192 MiB 传输慢些）。不要用 Hub。
+- **供电**：Pi 口只给 SDP 电流，平板耗电靠电池——先用原厂充电器把平板
+  充到 ≥50%，测试期间插着的 Pi 口仅作数据。深度放电 + SDP 供电有
+  boot/drain/reboot 循环风险。
+- **取地址**：`sudo dhclient usb0`（或 `dhcpcd`/NetworkManager），应得
+  192.168.7.10-19。
+- **录制**：`script -c 'telnet 192.168.7.2 2323' session.log` 全程留存，
+  连同 `getvar-before.txt`、面板照片一起回报。
