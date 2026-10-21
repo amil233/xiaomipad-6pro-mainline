@@ -10,9 +10,9 @@
 
 | 项 | 版本 |
 |---|---|
-| 内核分支 | `linux-sm8450-liuqin` `liuqin-7.0`，tip `e6c2f01cd036` |
-| 安装器 | `xiaomipad-6pro-mainline` main，`025e562`、`6b9b688` |
-| 内核 CI | Run #8（`liuqin-kernel-e6c2f01…`，conclusion success，约 29 分钟） |
+| 内核分支 | `linux-sm8450-liuqin` `liuqin-7.0`，tip `2c2092606bed` |
+| 安装器 | `xiaomipad-6pro-mainline` main，`f983dc8`、`a1d4efa`（均待推送） |
+| 内核 CI | Run #8（`liuqin-kernel-e6c2f01…`，conclusion success）覆盖到 `e6c2f01cd036`；`253032ac87c8`/`2c2092606bed` 待推送触发新构建 |
 | 产品锁 | `kernel/source.json` 仍钉 `a322d592cb92`（迁移前的干净历史 tip） |
 
 **当前一句话**：8 个移植提交离线全绿（编译、`.config`、DTB 引用链、boot 镜像
@@ -31,6 +31,7 @@
 | NT36532 面板驱动 | 离线通过 | 提交 `9719bc3c5f38`（6.17 tip 逐字移植） |
 | DSI 双 slice/包 | 离线通过 | 提交 `993054693403`；与 6.17 行为核对（见下） |
 | NT36523 触控驱动 | 离线通过 | 提交 `e6c2f01cd036`，`TOUCHSCREEN_NT36523_SPI=y` |
+| SLPI 启动所有权（用户态） | 离线通过 | 提交 `253032ac87c8` + `2c2092606bed`；送 `sensor-startup.py` 的启动参数断言通过 |
 | `.config` P0 符号 | 离线通过 | Run #8 产物 `.config`：受害者清单全部 `=y`（见下） |
 | DTB 引用链 | 离线通过 | 面板/背光/触控/hyphy/repeater phandle 闭合 |
 | boot 镜像合约 | 离线通过 | 10/10 断言 + fdtoverlay 实测（见下） |
@@ -70,6 +71,20 @@
    10/10 通过；再忠实复刻 `dtc -@` + `fdtoverlay` 合并 `liuqin-abl-boot-overlay`，
    三个 ABL 身份属性（msm-id 531/540/530、board-id `0x10008`、miboard-id `0x10`）
    注入成功，合并后断言仍全通过。
+8. **6.17 提交全集审计**（本 review 的系统性部分）：逐个过了
+   `a19585977c11..liuqin-6.17` 的全部提交，按首启相关性分类。结论：
+   - 触控固件按面板模块选择（`4dcb6801404b`）、触控笔坐标缩放
+     （`fba87d1d7c6f`/`a40b967b3d03`）随触控目录的逐字移植到位；
+   - **SLPI 启动所有权补丁对（`569f79be4a7d` + `a54c2b5501a7`）漏移植**——
+     7.0 的 PAS 驱动 `auto_boot` 只来自平台描述符，无模块参数可覆盖，
+     SLPI 会在内核启动阶段自动拉起，把 6.17 收敛到用户态服务里的
+     SLPI 复位窗口推回内核引导期（无 USB、只能按键恢复）。已补移植
+     （`253032ac87c8` + `2c2092606bed` + 安装器 `a1d4efa`）；
+   - `e6604d01be72`（rtnetlink 不解引用无名父设备）未移植，7.0 代码结构
+     已变，对 NCM-only 的 RAM 首启路径无交集——留作真机上若出现
+     rtnetlink dump NULL deref 时的第一怀疑项；
+   - 其余未移植项（DP/指纹/相机/音频/充电/GPU/USB3/ucsi/qmp-combo/
+     ASoC TDM）全部是计划内延后的 P1/P2，首启不需要。
 
 ### 安装器侧已修复的断链
 
@@ -78,8 +93,13 @@
   断言会让所有 boot 镜像构建失败——提交 `6b9b688` 同步（`panic=0`→`panic=15`，
   顺带删除 7.0 上已是死参数的 `qcom_q6v5_pas.slpi_auto_boot=0`）。
 - 6 处文档仍写 `liuqin-6.17`——提交 `025e562`。
+- SLPI 参数补移植后，令牌重新生效——安装器提交 `a1d4efa` 把
+  `qcom_q6v5_pas.slpi_auto_boot=0` 加回 native 启动参数，与内核 DTS 保持
+  全等。事后看 `6b9b688` 删令牌是对的（当时的树确实无此参数），漏的是驱动
+  补丁本身；三个新提交合起来恢复 6.17 验证过的完整行为。
 
-两个提交在本地 main，等推送（SSH 推送由用户执行）。
+内核三提交（`253032ac87c8`、`2c2092606bed`）与安装器 `a1d4efa` 均在本地，
+等推送（SSH 推送由用户执行）；`025e562`、`6b9b688` 已推送至 amil233 fork。
 
 ## 技术债表
 
@@ -87,7 +107,7 @@
 |---|---|---|---|---|---|
 | TD1 | `clk_ignore_unused pd_ignore_unused` 仍在 native 启动参数 | `device/native-bootargs.txt`（来自 6.17 调试集） | 首测期需要排除"资源回收"类失败 | 无法省电、无法休眠；经验库未解决问题提示这些参数可能影响面板点亮时序 | 首测确认显示链稳定后撤除，并把固件留下的资源需求写进真正的消费者节点；撤除后按经验库做回收前后 `clk_summary`/`pm_genpd_summary` 差集 |
 | TD2 | 多媒体驱动一次性内建（面板/触控/pinctrl 全 `=y`） | `.config`（`liuqin-*.config` 片段） | RAM 阶段无模块目录；6.17 产品即此配置 | 与经验库"新驱动先做模块"的默认相悖 | 驱动代码逐字来自 6.17 真机验证版本；首测如有早期挂死，改为模块化验证后重测 |
-| TD3 | SLPI 无内核级关闭手段 | 板级 DTS 启用 `remoteproc_slpi`；7.0 PAS 的 `auto_boot` 是平台描述符（`sdm845_slpi_resource_init.auto_boot = true`），无模块参数 | 6.17 靠 cmdline 参数规避"启动 SLPI 复位部分机器" | 若 7.0 犯该病只能改 DTS `status=disabled` | 首测观察 SLPI 启动日志；用户态仍有 `/etc/liuqin-slpi-disabled` 标记 |
+| TD3 | ~~SLPI 无内核级关闭手段~~ **已解决** | 6.17 的 `slpi_auto_boot` 模块参数补丁已移植（内核 `253032ac87c8` + `2c2092606bed` + 安装器 `a1d4efa`），SLPI 注册但不自动启动，与 6.17 验证配置一致 | — | ~~-~~ | 首测仍观察 SLPI 启动日志；用户态 `/etc/liuqin-slpi-disabled` 标记仍是复位问题的退出手段 |
 | TD4 | `config_sha256` 未在标准镜像主机定版 | `kernel/source.json`（仍钉 `a322d592`） | `build-liuqin-image.py:97-100` 硬失败；本地生成会因编译器版本漂移 | 完整安装包装配被阻塞（path A RAM 测试不受影响） | 真机验证通过后推进锁到 `e6c2f01cd036`，在镜像主机跑配置定版回写 |
 | TD5 | P1/P2 外设全部延后 | 内核树无对应驱动 | 首版优先启动与交互 | WiFi/BT/电池/GPU/音频/传感器/DP/相机/指纹/键盘均不可用 | 按用户优先级逐个移植，每次一个候选 |
 | TD6 | 文档仓库地址未统一 | `README.md:142` 等指 yzddmr6，`source.json` 指 amil233 fork | fork 迁移进行中 | 工作流 owner 推导可能 checkout 错仓库 | 用户定项目归属后统一 |
