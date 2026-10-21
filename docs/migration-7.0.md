@@ -228,16 +228,14 @@ uname/devices_deferred/pm_genpd_summary/clk_summary/dmesg 全文）+ 面板照�
 
 实机测试的主机是一台 arm64 Debian 的树莓派 4B，经 USB 连接平板（128 GB/8 GB）。
 
-### 形态选择：stage-1-only 诊断镜像
+### 形态选择：复用 v0.6.0 installer.img 的 ramdisk
 
-`build-liuqin-native-boot.sh` 走的是 native 产品镜像，需要 native root 契约
-（`build-liuqin-native-root.sh` 的产物）与定版锁定，是安装后才用的路径。内核
-测试用流水线自己定义的**只读形态**：`LIUQIN_STORAGE_MODE=persistent
-LIUQIN_ROOT_PROFILE=legacy LIUQIN_EMBED_ROOTFS=0 ROOTFS=none`。它在 stock 平板
-上的运行时行为完全确定：stage-1 先把所有 UFS 块设备证只读（`ufs_safe`），
-再探测 `LIUQIN_ROOT`——stock 机上必然探测失败——`storage_abort` → 诊断
-shell + telnet 2323。全程零写入；`liuqin-mark-slot-successful` 只在探测成功
-的分支里才写 MISC 分区，本情形永不触及。
+镜像装配不再从零打 initramfs——那需要 `tools/local/firmware-liuqin/` 固件池
+（本地从未存在，见下节"为什么不用 build-liuqin-native-boot.sh"），而是
+**复用 release v0.6.0 `installer.img` 的 ramdisk**：它已是
+`readonly + native` 形态（boot 后不探任何存储，直接救援 shell +
+telnet 2323），内置全套哈希钉死的固件。与设备已验证的 v0.6.0 启动相比，
+测试只换 `Image` 与 DTB——ramdisk 逐字节不变，隔离出唯一变量。
 
 代价：诊断 shell 没有 systemd（`systemd-detect-virt`/`hostnamectl` chassis
 两项 stage-2 检查做不了），Gunyah 遮蔽验证顺延到首装后的全镜像测试；内核
@@ -255,56 +253,61 @@ fdtoverlay}` 与 `include/config/kernel.release`（本地不编译内核就没�
 
 ### 主机软件（apt 即可，全部架构中立）
 
-`git python3 cpio gzip curl device-tree-compiler fastboot telnet binutils gcc
-isc-dhcp-client`（或用 dhcpcd/NetworkManager 之一）。Pi 上不需要交叉
-工具链：`build-initramfs.sh` 的 `SLOT_SUCCESS_GCC` 传 `cc`——Pi 原生 gcc
-就是 aarch64，编译 `liuqin-mark-slot-successful` 正合目标。
+`git curl python3 gzip device-tree-compiler fastboot telnet
+isc-dhcp-client`（或 dhcpcd/NetworkManager 之一）。不编译任何东西：
+内核靠 CI 产物，initramfs 复用 release。
 
-### 输入件（前两项可联网获取，后两项从原开发机复制 `tools/local/`）
+### 输入件（全部可联网取得，无"另一台机器"依赖）
 
-- `sh tools/fetch-busybox-arm64.sh`（ports.ubuntu.com 的 aarch64 busybox deb）
-- `sh tools/fetch-aosp-mkbootimg.sh`（googlesource 的 mkbootimg.py）
-- `tools/local/firmware-liuqin/`（触控/BT/WLAN/regdb/GPU/DSP 固件池，
-  按 `MANIFEST.sha256` 钉死——stage-1 强制校验）
-- `tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/`：44 个 stock DTBO
-  条目与 vendor_boot 基 DTB——`ABL_OVERLAY_SINK=1`（默认开）断了这个就
-  直接构建失败。这是 ABL 私有验收的已知事实，不可省。
+- Run #9 内核产物：`Image` 与 `sm8475-xiaomi-liuqin.dtb`——从 Action
+  artifact 下载（102 MB，`…/actions/artifacts/12347240243/zip`）
+- v0.6.0 release 的 `installer.img`：**ramdisk 复用**——内置全套
+  stage-1（哈希钉死的固件池、busybox、安装器运行时），形态
+  `readonly + native`，boot 后不探任何存储、直接救援 shell + telnet。
+  与设备已验证的 v0.6.0 启动相比，**唯一变量就是 7.0 内核与 DTB**
+  （本机构建已离线验证这条替换路径：overlay identity、漂移断言、
+  round-trip 全通过，产出 58 MB 镜像）
+- stock ROM 的 `dtbo.img` 与 `vendor_boot.img`（须 OS2.0.6.0.VMYCNXM）：
+  ABL 私有验收要 44 个 DTBO 条目 + 14 个基 DTB，仓库新增
+  `tools/extract-stock-dtbo-entries.py` / `tools/extract-stock-base-dtbs.py`
+  机械拆出，构建器再用 44/14/1781 三重计数断言兜住拆分正确性
+- `sh tools/fetch-aosp-mkbootimg.sh`（mkbootimg/unpack_bootimg）
 
-内核产物：仓库目录 `ci/liuqin-kernel-2c2092606bed…/` 里的 `Image` 与
-`sm8475-xiaomi-liuqin.dtb`（Run #9 产物）。注意 microSD 留 ~2 GB 空间
-（cpio 暂存 + 192 MiB 镜像打底）。
-
-### 构建（两条命令）
+### 构建
 
 ```
-# 1) stage-1-only 诊断 initramfs
-SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD) \
-  SLOT_SUCCESS_GCC=cc \
-  OUT_DIR="$PWD/out/initramfs-diag" \
-  ROOTFS=none LIUQIN_STORAGE_MODE=persistent LIUQIN_ROOT_PROFILE=legacy \
-  LIUQIN_EMBED_ROOTFS=0 \
-  sh tools/lib/build-initramfs.sh
+# 1) 从 stock ROM 拆 ABL 要的 overlay 集与基 DTB 集
+python3 tools/extract-stock-dtbo-entries.py <dtbo.img> \
+  tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/dtbo
+python3 tools/extract-stock-base-dtbs.py <vendor_boot.img> \
+  tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/vendor_boot/dtbs
 
-# 2) v2 boot 镜像（dtc/fdtoverlay 用 apt 的，kernel 树里没有）
-CI=ci/liuqin-kernel-2c2092606bed9379dee3a3fd60442a5f2712bac3
-DTC=dtc FDTOVERLAY=fdtoverlay \
+# 2) 复用 v0.6.0 installer.img 的 ramdisk
+python3 tools/local/aosp-mkbootimg/unpack_bootimg.py \
+  --boot_img installer.img --out out/installer-unpacked
+
+# 3) 装配（dtc/fdtoverlay 传 apt 的绝对路径；镜像 ~58 MB，只受 192 MiB
+#    分区上限约束，不做填充）
+CI=<Run #9 artifact 解包目录>
+ABL_OVERLAY_SINK=1 ABL_DTB02_IDS=0 \
   MKBOOTIMG_DIR="$PWD/tools/local/aosp-mkbootimg" \
-  IMAGE="$PWD/$CI/Image" DTB="$PWD/$CI/sm8475-xiaomi-liuqin.dtb" \
-  RAMDISK="$PWD/out/initramfs-diag/liuqin-firstboot.cpio.gz" \
-  ABL_OVERLAY_SINK=1 ABL_DTB02_IDS=0 \
+  DTC=/usr/bin/dtc FDTOVERLAY=/usr/bin/fdtoverlay \
+  IMAGE="$CI/Image" DTB="$CI/sm8475-xiaomi-liuqin.dtb" \
+  RAMDISK="$PWD/out/installer-unpacked/ramdisk" \
   CMDLINE="$(cat device/native-bootargs.txt)" HEADER_CMDLINE= \
-  OUT_DIR="$PWD/out/boot-diag" \
-  sh tools/lib/build-bootimg.sh
+  OUT_DIR="$PWD/out/boot-test" sh tools/lib/build-bootimg.sh
 ```
 
-CI DTB 的 `/chosen/bootargs` 与 `device/native-bootargs.txt` 已逐字节全等
-（离线复核过），所以不需要 native-boot.sh 的 cmdline overlay 步骤；
-`CMDLINE` 仍要原样传，`build-bootimg.sh` 的漂移断言靠它。
+`ABL_DTB02_IDS=0` 与 release 一致（release DTB 的 identity 来自 ABL
+overlay 的声明身份，已与 Run #9 DTB + overlay 的合并结果对齐）；
+`ABL_OVERLAY_SINK=1` 需要 ROM 拆出的两个目录，`abl-symbols.py` 钉死 1781
+个符号。CI DTB 的 `/chosen/bootargs` 与 `device/native-bootargs.txt` 已逐字
+节全等，故不需要 native-boot.sh 的 cmdline overlay 步骤。
 
 ### Pi 4B 特定注意
 
-- **USB 口**：优先蓝色 USB 3.0 口直连（USB-A→C 数据线）；若枚举不稳再
-  退到黑色 USB 2.0 口（192 MiB 传输慢些）。不要用 Hub。
+- **USB 口**：优先蓝色 USB 3.0 口直连（USB-A→C 数据线）；镜像约 58 MB，
+  枚举不稳再退黑色 USB 2.0 口。不要用 Hub。
 - **供电**：Pi 口只给 SDP 电流，平板耗电靠电池——先用原厂充电器把平板
   充到 ≥50%，测试期间插着的 Pi 口仅作数据。深度放电 + SDP 供电有
   boot/drain/reboot 循环风险。
