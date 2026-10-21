@@ -16,9 +16,8 @@
 | 产物复核 | Run #9 的 `.config` 与 Run #8 实质符号零差异；新 DTB 的 bootimg 合约断言 10/10 通过 |
 | 产品锁 | `kernel/source.json` 仍钉 `a322d592cb92`（迁移前的干净历史 tip） |
 
-**当前一句话**：8 个移植提交离线全绿（编译、`.config`、DTB 引用链、boot 镜像
-合约、ABL overlay 合并），等真机首测；安装器侧两个断链点（启动参数漂移、文档
-分支名）已修复，未推送。
+**当前一句话**：10 个移植提交（含 SLPI 启动所有权）离线全绿并 CI 全绿
+（Run #9），安装器侧断链已修复并全部推送，等真机首测（path A 执行版见文末）。
 
 ## 移植状态
 
@@ -153,3 +152,74 @@ cells 与 ranges）10/10 通过，fdtoverlay 合并 ABL overlay 后仍全通过�
 - 推送后：`checks.yml` 验证安装器侧改动；内核侧无待办。
 - path A 通过后：推进锁（TD4）→ 完整镜像装配 → `--layout linux-only
   --allow-unverified` 首装（该布局从未真机安装过）。
+probe
+
+## 真机操作手册（path A 执行版）
+
+### 红线：本流程只读不写
+
+- **只用 `fastboot boot`**（RAM 启动）。不 `flash`、不 `erase`、不
+  `--set-active`、不跑 `install.py` 及任何安装流程。
+- 槽 A 保持原厂且仍标记成功：任何重启（含 panic 自动重启、长按电源强制重启）
+  都自动回原厂。9008 只能由 XBL 级灾难产生，本流程不写 XBL，无从触发。
+- persist 分区：path A 不写 UFS——存储接受失败即回落诊断 shell，而该 shell
+  只在“所有 UFS 块设备已证只读”（`ufs_safe`）后才开 telnet。persist 唯一的
+  威胁是万一需要 9008 全刷：刷前核对线刷脚本是否含 persist 分区，含则跳过
+  （persist 内是本机唯一的校准/MAC 数据，不可从其他机器复制）。
+
+### 测前准备
+
+- `fastboot getvar all` 存档（解锁状态、`current-slot`、`max-download-size` 应
+  ≥ 0xC0000000 以容纳 192 MiB 镜像、`product=liuqin`、电量）。
+- 电量 ≥50%，用原厂充电器或 PD 口供电：普通 SDP 口有
+  boot/drain/reboot 循环风险（initramfs 注释，androidboot.mode=charger 分流）。
+- **无 pstore**：7.0 板级 DTS 未含 ramoops/pstore 节点，panic 重启后内核日志
+  不可恢复。相机/手机待命，面板是早期唯一的证据渠道。
+- 主机备好 telnet 录制手段（`script` 或终端日志），全程留存。
+
+### 执行序列
+
+1. 进 fastboot（音量下+电源），`fastboot getvar all 2>&1 | tee getvar-before.txt`。
+2. 主机用 Run #9 产物跑 `tools/build-liuqin-native-boot.sh` 产出 v2 boot 镜像。
+3. `fastboot boot <out>/boot.img`：期望 `OKAY`，随后面板出现 earlycon 文本
+   （移植的 `earlycon=simplefb`），主机出现 usb0（NCM）。
+4. 主机取地址：`sudo dhclient usb0`（或 nmcli），应得 192.168.7.10-19。
+5. `telnet 192.168.7.2 2323` → busybox 诊断 shell。开场命令：
+   ```
+   mount -t debugfs none /sys/kernel/debug
+   cat /proc/cmdline; cat /proc/device-tree/compatible; cat /proc/device-tree/model
+   uname -r
+   cat /sys/kernel/debug/devices_deferred
+   cat /sys/kernel/debug/pm_genpd_summary
+   dmesg
+   ```
+   `/proc/cmdline` 里 ABL 会追加约 800 字符 `androidboot.*`——这不是漂移；
+   但结尾应能看到本板的 `qcom_q6v5_pas.slpi_auto_boot=0`。
+6. 移植验收（本次 review 的直接验证点）：
+   - **SLPI**：`ls /sys/class/remoteproc/` 有 slpi 节点且 dmesg 无
+     "Booting processor" —— 参数生效、未在内核期自动启动（本次移植的目标）。
+   - **显示/触控**：`dmesg | grep -iE "panel|dsi|dsc|nt36|ktz|backlight"`，
+     人眼确认画面与背光；触控看 `probe complete: follower=` 行与
+     `dmesg | grep -i nvt`。
+   - `dmesg | grep -iE "gpi-dma|eusb2|i2c@|spi@"` 确认三条数据通路。
+   - `cat /sys/kernel/debug/clk/clk_summary` 只读一次（会唤醒部分子系统，
+     供 TD1 撤除 `clk_ignore_unused` 前后做差集）。
+7. 结束：shell 内 `reboot -f`（或长按电源），验证设备回到原厂 Android
+   （这是本流程可随时挽回的证明）。
+
+### 失败决策树（不要盲迭代）
+
+- `fastboot boot` OK 但无面板无 USB：长按电源回原厂，先验证硬件无恙再报回；
+  高度怀疑镜像未带 ABL overlay sink（离线已证 DTB 有 `__symbols__` 注入）。
+- 面板有 earlycon、telnet 不通：`ufs_safe` 未过，dmesg 的 UFS 行是关键，
+  只能靠面板拍照读。此时诊断 shell 仍只读，无 persist 风险。
+- telnet 通、无画面：从 dmesg 的 panel/DSI 累积错误定位（R2/R5），勿调参。
+- 设备自行重启（panic=15 自动重启）：日志已丢，只能靠重启前面板照片；
+   重试时相机连续拍摄。
+- 反复起不来：停止，回原厂，以上就是全部挽回手段（外加已备的线刷包）。
+
+### 回报格式（便于离线对账）
+
+操作时间线 + getvar 存档 + telnet 全程录制 + 上述命令输出（cmdline/compatible/
+uname/devices_deferred/pm_genpd_summary/clk_summary/dmesg 全文）+ 面板照片
+（尤其 earlycon 首帧与黑屏状态）。
