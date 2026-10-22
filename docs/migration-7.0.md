@@ -180,7 +180,9 @@ probe
 ### 执行序列
 
 1. 进 fastboot（音量下+电源），`fastboot getvar all 2>&1 | tee getvar-before.txt`。
-2. 主机按 "树莓派 4B 主机执行补编" 构建 stage-1-only 诊断 boot 镜像。
+2. 从开发机取已装好的测试镜像
+   `repack/final-boot/boot-liuqin-firstboot.img`（见下节"装配记录"），
+   传到 Pi。Pi 侧无构建。
 3. `fastboot boot <out>/boot-liuqin-firstboot.img`：期望 `OKAY`，随后面板出现
    earlycon 文本（移植的 `earlycon=simplefb`），主机出现 usb0（NCM）。
 4. 主机取地址：`sudo dhclient usb0`（或 nmcli），应得 192.168.7.10-19。
@@ -227,6 +229,24 @@ uname/devices_deferred/pm_genpd_summary/clk_summary/dmesg 全文）+ 面板照�
 ## 树莓派 4B 主机执行补编
 
 实机测试的主机是一台 arm64 Debian 的树莓派 4B，经 USB 连接平板（128 GB/8 GB）。
+
+### 装配记录（2026-10-22，开发机本机完成）
+
+Run #9 artifact 解包核对：`kernel/` 含 `Image`、
+`dts/qcom/sm8475-xiaomi-liuqin.dtb`、`.config`、`vmlinux`、`System.map`、
+`SHA256SUMS`、`build-info.json`；`kernel-modules/` 含 `modules.tar` 与
+623 行 `modules.manifest`。`SHA256SUMS` 全部校验通过。
+`build-info.json` 的 `config_sha256` =
+`d81ff750ac6ec47a299d78cab9582fedb4b270747040bfd796ff2e71814ebecc`——
+TD4 定版要钉的值；`kernel.release = 7.0.14-g2c2092606bed`。
+
+镜像装配（`ABL_OVERLAY_SINK=1 ABL_DTB02_IDS=0`，apt 的 `dtc`/`fdtoverlay`，
+复用 v0.6.0 `installer.img` 的 ramdisk）全部断言通过：44 个 DTBO 条目 +
+14 个基 DTB 由 `tools/extract-stock-*` 从线刷包拆出，`abl-symbols.py` 的
+1781 符号断言通过，符号表与 v0.6.0 release 镜像的 sink 逐项一致。产物
+`repack/final-boot/boot-liuqin-firstboot.img`，58,564,608 字节；内置启动
+参数与 `device/native-bootargs.txt` 一致（`qcom_q6v5_pas.slpi_auto_boot=0`
+在内）。镜像已就绪，Pi 侧只做 `fastboot boot`。
 
 ### 形态选择：复用 v0.6.0 installer.img 的 ramdisk
 
