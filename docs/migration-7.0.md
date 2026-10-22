@@ -15,7 +15,7 @@ liuqin（Xiaomi Pad 6 Pro）从 `liuqin-6.17`（真机验证过的基线）迁�
 | 内核 CI | Run #9（head `2c2092606bed`，success，约 11 分钟）；Run #8 覆盖到 `e6c2f01cd036` |
 | Run #9 artifact | id 12347240243，102.6 MB；`SHA256SUMS` 六项校验通过 |
 | kernel.release | `7.0.14-g2c2092606bed` |
-| 安装器 | `xiaomipad-6pro-mainline` main，tip `19d3953`（`19d3953` 本地待推） |
+| 安装器 | `xiaomipad-6pro-mainline` main，tip `8084e9e`（本地待推 3 个） |
 | 产品锁 | `kernel/source.json` 仍钉 `a322d592cb92`（迁移前 tip）——TD4，首测后推进 |
 | 测试镜像 | 开发机本地 `repack/final-boot/boot-liuqin-firstboot.img`，58,564,608 字节 |
 | 线刷包 | `OS2.0.6.0.VMYCNXM`；`vendor_boot`/`dtbo`/`boot`/`super` 哈希命中 `tools/lib/liuqin-rom-images.json` 钉值 |
@@ -106,6 +106,8 @@ SLPI 复位窗口推回内核引导期（无 USB、只能按键恢复）。补�
 | `74134c7` | 记录 `build-liuqin-native-boot.sh` 为何不能跑 |
 | `be95ebc` | runbook 重构（ramdisk 复用）+ `tools/extract-stock-dtbo-entries.py`、`tools/extract-stock-base-dtbs.py` 两个 ROM 拆包工具 |
 | `d25e010` `19d3953` | Run #9 artifact 布局记录、镜像装配记录、决策树拆分 |
+| `e9be352` | 文档结构重写（本文） |
+| `8084e9e` | `fetch-aosp-mkbootimg.sh` 去掉无法锚定的 tar 包级校验（googlesource +archive tarball 两次下载字节不同；文件级哈希稳定，校验留在文件级） |
 
 `6b9b688` 当时删掉 SLPI 令牌是对的（当时的树确实无此参数），漏的是驱动
 补丁本身；`a1d4efa` 恢复令牌后三者合起来还原 6.17 验证过的完整行为。
@@ -177,8 +179,11 @@ TD3（SLPI 无内核级关闭手段）已由 SLPI 补丁对解决，不再追踪
      "Booting processor"——参数生效、未在内核期自动启动。
    - **显示/触控**：`dmesg | grep -iE "panel|dsi|dsc|nt36|ktz|backlight"`，
      人眼确认画面与背光；触控看 `probe complete: follower=` 行与
-     `dmesg | grep -i nvt`；ABL cmdline 里的面板型号字符串
-     （`m81_36_02_0a`/`m81_42_02_0b`）。
+     `dmesg | grep -i nvt`。触控固件按 panel 模块选择：ABL 在 cmdline 里
+     带 `msm_drm.dsi_display0=qcom,mdss_dsi_m81_42_02_0b…`（或
+     `m81_36_02_0a`），驱动据此加载 CSOT/TM 固件，DT 的 firmware-name
+     （csot）只是兜底——回报时对 cmdline 模块串与实际加载的固件名做一次
+     交叉确认。
    - `dmesg | grep -iE "gpi-dma|eusb2|i2c@|spi@"` 确认三条数据通路。
    - `cat /sys/kernel/debug/clk/clk_summary` 只读一次（供 TD1 撤除前后差集）。
    - `devices_deferred` 为空或每项可解释；`pm_genpd_summary` 无长期挂起
@@ -314,5 +319,5 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 - 首测通过后：推进 TD4（锁到 `2c2092606bed` + 钉 `config_sha256`）→
   完整镜像装配 → `--layout linux-only --allow-unverified` 首装（该布局
   从未真机安装过）。
-- 推送状态：内核 `liuqin-7.0` 全部推送；安装器 main 本地领先远端一个
-  提交（`19d3953`），待用户推送。
+- 推送状态：内核 `liuqin-7.0` 全部推送；安装器 main 本地领先远端三个
+  提交（`19d3953`、`e9be352`、`8084e9e`），待用户推送。
