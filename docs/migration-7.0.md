@@ -15,7 +15,7 @@ liuqin（Xiaomi Pad 6 Pro）从 `liuqin-6.17`（真机验证过的基线）迁�
 | 内核 CI | Run #9（head `2c2092606bed`，success，约 11 分钟）；Run #8 覆盖到 `e6c2f01cd036` |
 | Run #9 artifact | id 12347240243，102.6 MB；`SHA256SUMS` 六项校验通过 |
 | kernel.release | `7.0.14-g2c2092606bed` |
-| 安装器 | `xiaomipad-6pro-mainline` main，tip `8084e9e`（本地待推 3 个） |
+| 安装器 | `xiaomipad-6pro-mainline` main（推送由用户执行，以 `git log @{u}..HEAD` 为准） |
 | 产品锁 | `kernel/source.json` 仍钉 `a322d592cb92`（迁移前 tip）——TD4，首测后推进 |
 | 测试镜像 | 开发机本地 `repack/final-boot/boot-liuqin-firstboot.img`，58,564,608 字节 |
 | 线刷包 | `OS2.0.6.0.VMYCNXM`；`vendor_boot`/`dtbo`/`boot`/`super` 哈希命中 `tools/lib/liuqin-rom-images.json` 钉值 |
@@ -319,5 +319,6 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 - 首测通过后：推进 TD4（锁到 `2c2092606bed` + 钉 `config_sha256`）→
   完整镜像装配 → `--layout linux-only --allow-unverified` 首装（该布局
   从未真机安装过）。
-- 推送状态：内核 `liuqin-7.0` 全部推送；安装器 main 本地领先远端三个
-  提交（`19d3953`、`e9be352`、`8084e9e`），待用户推送。
+- 推送状态：内核 `liuqin-7.0` 全部推送；安装器 main 的本地提交由用户
+  分批推送，堆积量以 `git log @{u}..HEAD` 为准（写本文时为 `8084e9e`、
+  `bac9197`、`a5aaff7`）。
