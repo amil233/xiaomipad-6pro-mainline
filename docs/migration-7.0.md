@@ -213,8 +213,16 @@ probe
 
 - `fastboot boot` OK 但无面板无 USB：长按电源回原厂，先验证硬件无恙再报回；
   高度怀疑镜像未带 ABL overlay sink（离线已证 DTB 有 `__symbols__` 注入）。
-- 面板有 earlycon、telnet 不通：`ufs_safe` 未过，dmesg 的 UFS 行是关键，
-  只能靠面板拍照读。此时诊断 shell 仍只读，无 persist 风险。
+- 面板有 earlycon、telnet 不通：两种可分辨的成因，都靠面板拍照读日志——
+  - 日志含 `remote shell will remain disabled because UFS is not
+    fail-closed`：`ufs_safe` 未过，dmesg 的 UFS 行是关键。此时诊断 shell
+    仍只读，无 persist 风险。
+  - 日志含 `charger boot lacks its exact low-power state machine; refusing
+    normal boot`：ABL 在 cmdline 追加了 `androidboot.mode=charger`（深度
+    放电唤醒情景），而复用的 v0.6.0 ramdisk 不带 charger-mode 文件——init
+    拒绝继续、无 gadget 无 telnet。回原厂充够电再用组合键启动重试，绝不
+    是镜像问题。
+  记录设备实际 `androidboot.mode`，两者都不构成返工理由。
 - telnet 通、无画面：从 dmesg 的 panel/DSI 累积错误定位（R2/R5），勿调参。
 - 设备自行重启（panic=15 自动重启）：日志已丢，只能靠重启前面板照片；
    重试时相机连续拍摄。
