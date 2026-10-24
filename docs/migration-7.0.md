@@ -119,7 +119,7 @@ SLPI 复位窗口推回内核引导期（无 USB、只能按键恢复）。补�
 | TD1 | `clk_ignore_unused pd_ignore_unused` 仍在 native 启动参数 | 首测期排除"资源回收"类失败 | 无法省电/休眠，可能影响面板点亮时序 | 首测确认显示链稳定后撤除，撤除前后按经验库做 `clk_summary`/`pm_genpd_summary` 差集 |
 | TD2 | 面板/触控/pinctrl 等一次性全部内建 | RAM 阶段无模块目录；6.17 产品即此配置 | 与"新驱动先做模块"的经验相悖 | 驱动逐字来自 6.17 真机验证版本；首测有早期挂死再改模块化重测 |
 | TD4 | `config_sha256` 未在标准镜像主机定版 | `build-liuqin-image.py` 硬失败；本地生成会因编译器版本漂移 | 完整安装包装配被阻塞（RAM 首测不受影响） | 首测通过后把锁推进到 `2c2092606bed` 并钉 `d81ff750ac6ec47a299d78cab9582fedb4b270747040bfd796ff2e71814ebecc`（Run #9 `build-info.json`） |
-| TD5 | P1/P2 外设全部延后 | 首版优先启动与交互 | WiFi/BT/电池/GPU/音频/传感器/DP/相机/指纹/键盘均不可用 | 按用户优先级逐个移植，每次一个候选 |
+| TD5 | P1/P2 外设全部延后 | 首版优先启动与交互 | WiFi/BT/电池/GPU/音频/传感器/DP/相机/指纹/键盘均不可用 | 按用户优先级逐个移植，每次一个候选；BT 详见 `docs/triage-2026-10.md`（7.0 树已有 BT 节点，bring-up 时注意 btqca 的 `wcn*` 主名回退语义） |
 | TD6 | 文档仓库地址未统一（`README.md` 指上游，`source.json` 指 fork） | fork 迁移进行中 | 工作流 owner 推导可能 checkout 错仓库 | 用户定项目归属后统一 |
 
 TD3（SLPI 无内核级关闭手段）已由 SLPI 补丁对解决，不再追踪；用户态
@@ -169,6 +169,7 @@ TD3（SLPI 无内核级关闭手段）已由 SLPI 补丁对解决，不再追踪
    uname -r
    cat /sys/kernel/debug/devices_deferred
    cat /sys/kernel/debug/pm_genpd_summary
+   blockdev --getsize64 /dev/sde   # 见下注
    dmesg
    ```
    `/proc/cmdline` 里 ABL 会追加约 800 字符 `androidboot.*`——这不是漂移；
@@ -190,6 +191,11 @@ TD3（SLPI 无内核级关闭手段）已由 SLPI 补丁对解决，不再追踪
      的提供者。
 7. 结束：shell 内 `reboot -f`（或长按电源），验证设备回到原厂 Android
    （这是本流程可随时挽回的证明）。
+
+**`/dev/sde` 尺寸注记**：`liuqin-mark-slot-successful.c` 把持有 GPT 的
+`/dev/sde` 钉死 2923429888 B（只有 256 GB 布局验证过）。本机是 128 GB：
+读到的值等于钉值 ⇒ 跨 SKU 一致，首装的槽标记无虞；不等 ⇒ 首装前必须先
+处理容量变体（见 `docs/triage-2026-10.md` 第一节）。
 
 **顺延到首装的检查**：诊断 shell 无 systemd，`systemd-detect-virt`、
 `hostnamectl` chassis（Gunyah 遮蔽）等 stage-2 检查在全镜像首装后做。
