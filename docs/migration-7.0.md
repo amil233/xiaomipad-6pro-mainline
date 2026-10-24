@@ -323,8 +323,11 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 
 - **阻塞**：真机测试窗口。
 - 首测通过后：推进 TD4（锁到 `2c2092606bed` + 钉 `config_sha256`）→
-  完整镜像装配 → `--layout linux-only --allow-unverified` 首装（该布局
-  从未真机安装过）。
+  完整镜像装配 → `--layout linux-only --android-size 32G --allow-unverified`
+  首装（该布局从未真机安装过）。**注意**：linux-only 默认
+  `--android-size 0` 会删除 userdata，A 槽的应急 Android 随之失效——
+  首启若系统性失败将没有有效回退（见 `docs/triage-2026-10.md`）。显式
+  32G 保留一个应急 Android 作为容错路径。
 - 推送状态：内核 `liuqin-7.0` 全部推送；安装器 main 的本地提交由用户
   分批推送，堆积量以 `git log @{u}..HEAD` 为准（写本文时为 `8084e9e`、
   `bac9197`、`a5aaff7`）。
