@@ -309,6 +309,19 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 `repack/final-boot/boot-liuqin-firstboot.img`，58,564,608 字节（开发机本地
 路径，不入仓库）。镜像已就绪，Pi 侧只做 `fastboot boot`。
 
+### 装配记录（2026-10-25，d24eb13 复装）
+
+含 `d24eb13a3854` 的 CI artifact 解包到 `ci/`，`SHA256SUMS` 全过，
+`config_sha256` 与 Run #9 一致（`d81ff750…`，未动配置）。复用
+`tools/lib/build-bootimg.sh`（apt 的 `dtc`/`fdtoverlay`、v0.6.0
+ramdisk `repack/unpacked/ramdisk`）全部断言通过；产物
+`repack/d24-boot/boot-liuqin-firstboot.img`，58,564,608 字节，sha256
+`3e723a9626ca5a21f2d08a9494b09f2765d5cc090117052aa04c1fca81d8d4a1`。
+mkbootimg v2 回拆三段 byte-cmp 通过；kernel 负载解压 = 新 Image
+`758c38bb…`；ramdisk `a04d2b25…`；最终 boot DTB 与首测镜像的
+`4c15a591…` **逐字节相同**——预期：修复只改 `ubwc_config.c`，DTS
+未动，编译产物 DTB 理应不变。
+
 ### 首测记录（2026-10-25，128G/8G 真机，RAM 启动）
 
 通过：
