@@ -309,6 +309,38 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 `repack/final-boot/boot-liuqin-firstboot.img`，58,564,608 字节（开发机本地
 路径，不入仓库）。镜像已就绪，Pi 侧只做 `fastboot boot`。
 
+### 复测记录（2026-10-25 晚，d24eb13 真机）
+
+mdss `-EINVAL` 已消除：`ae00000.display-subsystem`、两个 DSI host、
+`ae94000.dsi.0`（面板）probe 全部返回 0，dpu bound，`/sys/class/drm` 出现
+card0/DSI-1/renderD128，`devices_deferred` 消失（触控解除 defer），`console
+[drm_log0] enabled`，`uname -r` = `7.0.14-gd24eb13a3854`。但**接管后黑屏**：
+
+- connector `connected`/`enabled`，模式 1800x2880，DPMS On
+- `/sys/kernel/debug/dri/0/state`：plane-0 绑 crtc-0，fb 由 drm_log 分配，
+  DPU multirect 双 900x2880 分发两路 DSI——**扫描链路完整**
+- ktz8866 背光设备注册，亮度可调（100→1500 有可见变化）
+- 无 fb 设备（`/dev/fb0` 不存在；`CONFIG_DRM_FBDEV_EMULATION=y` 等 ] 配置项都开）
+- 往 /dev/kmsg 写字后面板**无任何文字**——扫描出的流没被面板显示
+
+**根因：面板模块不匹配。** 本机面板是天马 `m81_36_02_0a`（cmdline
+`dsi_display0` 指明，触控固件也按天马选择），而 DT 的 pipa 面板描述 init
+序列按 CSOT `m81_42_02_0b` 建模。两模块的模式/DSC/时序/复位序列完全相
+同，**唯一差异是 init 指令序列**（stock entry.15：天马 216 包 vs CSOT
+194 包）。A/B 佐证：**v0.6.0（6.17）镜像在本机同样短暂输出后黑屏**——
+非 7.0 回归；6.17 验证机的面板模块与本次 128G 测试机不同（同型号两种
+屏幕，与触控固件不可互换已知，见 `4dcb6801404b`）。
+
+**修复（内核 `df7a67b4b081`）**：`panel-novatek-nt36532.c` 增加按 cmdline
+选择 init 的第二个 desc（天马序列，由 stock DTBO 216 条 DSI 包逐字节翻
+译），选择方式照搬触控固件的既定模式；模式/DSC/复位不变；未列出的模块
+保持 CSOT 序列。checkpatch 0 错 0 警。等新 CI 构建后复测。
+
+次级观察（复测后再追）：NVT 触控 `nvt_check_fw_reset_state` 报错（固件
+选择本身已命中 `novatek_nt36532_m81_fw_tm.bin`）；PCIe host 初始化
+`-110`（P1 外设）；BT 链路活着，7.0 新固件名 `wcnhpbtfw21.tlv` 主请求
+`-2` 后按预期走旧名回退。
+
 ### 装配记录（2026-10-25，d24eb13 复装）
 
 含 `d24eb13a3854` 的 CI artifact 解包到 `ci/`，`SHA256SUMS` 全过，
