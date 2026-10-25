@@ -147,8 +147,9 @@ TD3（SLPI 无内核级关闭手段）已由 SLPI 补丁对解决，不再追踪
 - `fastboot getvar all` 存档（解锁状态、`current-slot`、
   `max-download-size` 应 ≥ 镜像尺寸 58.5 MB——与已验证可 RAM 启动的
   v0.6.0 installer 同级、`product=liuqin`、电量）。
-- **无 pstore**：7.0 板级 DTS 未含 ramoops/pstore 节点，panic 重启后内核
-  日志不可恢复。相机/手机待命，面板是早期唯一的证据渠道。
+- **pstore**：首测实测 pstore 可用（`/sys/fs/pstore`），panic 重启后内核
+  日志可从 pstore 取回。相机/手机待命；telnet 通之前面板仍是唯一早期
+  证据渠道，telnet 通后以 dmesg 为准。
 - 主机备好 telnet 录制手段（`script` 或终端日志），全程留存。
 - 用户在场（人眼确认画面与触控）。
 
@@ -308,6 +309,39 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 `repack/final-boot/boot-liuqin-firstboot.img`，58,564,608 字节（开发机本地
 路径，不入仓库）。镜像已就绪，Pi 侧只做 `fastboot boot`。
 
+### 首测记录（2026-10-25，128G/8G 真机，RAM 启动）
+
+通过：
+- `uname -r` = `7.0.14-g2c2092606bed`；CMDLINE 带
+  `qcom_q6v5_pas.slpi_auto_boot=0`，dmesg 中 slpi "available" 但从未
+  "powering up"（adsp/cdsp 正常启动）——SLPI 所有权补丁生效。
+- UFS fail-closed 契约完整：等块设备 → 置只读 → "UFS was not mounted"
+  → telnet 192.168.7.2:2323 可用；`/dev/sde` = **2923429888**，与
+  `liuqin-mark-slot-successful.c:31` 钉值全等——bug-1 的容量变体悬念在
+  128G 单位上闭环，首装槽标记不会被几何拒绝。
+- QUP/eUSB2/i2c 总线起来；deferred 只有 sound/codec/lpass-pinctrl（音频，
+  TD5 预期）与 spi0.0。
+
+失败（已定位并修复）：
+- 黑屏有背光。`probe of ae00000.display-subsystem returned 22`（-EINVAL），
+  无 mipi_dsi 总线、`/sys/class/drm` 只有 version、`byte0/pclk0` 时钟为 0。
+  根因：ABL 叠加的 stock DTBO 条目 15 把运行时根 compatible 改写为
+  `qcom,cape-mtp/qcom,cape/qcom,mtp`（我们写的 `xiaomi,liuqin` +
+  `qcom,sm8475` 被覆盖），而 7.0 上游 `57f77cb75b74` 重构后的
+  `drivers/soc/qcom/ubwc_config.c` 机器表没有 cape 条目（6.17 移植时加过），
+  `qcom_ubwc_config_get_data()` 查表失败 → mdss 全灭。内核侧修复
+  `d24eb13a3854`（恢复 cape→sm8350_data，补 sm8475）。
+
+待新 CI 构建（含 `d24eb13a3854`）出 artifact 后重新装配测试镜像、复测；
+mdss 起来后再看：DSI 面板 init（本机 cmdline 面板串是
+`m81_36_02_0a`，DT 面板描述固定为 `xiaomi,pipa-nt36532`，
+42_02_0b 与 36_02_0a 差异是否影响点亮）、触控 spi0.0 是否随 panel@0 解除
+defer、以及 dmesg 全量里是否还有其它机器级查表缺口。
+
+记录修正：本机 7.0 实测 **pstore 可用**（"pstore is available at
+/sys/fs/pstore"），与本文"无 pstore"的旧断言相反（下文红线已据此修
+正）。
+
 ### Pi 4B 主机注意
 
 - **USB 口**：优先蓝色 USB 3.0 口直连（USB-A→C 数据线）；镜像约 58 MB，
@@ -321,7 +355,7 @@ round-trip、bootargs 漂移断言、identity 断言全过。产物
 
 ## 下一步
 
-- **阻塞**：真机测试窗口。
+- **阻塞**：含 `d24eb13a3854`（ubwc cape 条目）的新 CI 构建与复测窗口。
 - 首测通过后：推进 TD4（锁到 `2c2092606bed` + 钉 `config_sha256`）→
   完整镜像装配 → `--layout linux-only --allow-unverified` 首装（该布局
   从未真机安装过）。目标即整机 ARM PC：默认 `--android-size 0` 全盘
