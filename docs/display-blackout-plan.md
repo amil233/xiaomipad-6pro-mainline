@@ -255,29 +255,31 @@ ENABLE + **VID_MODE_EN** + 四条 lane + CLK_EN，即**视频模式已正确使�
 目的：拿到厂商驱动**点亮本机面板时**的运行时状态，与我方同一位置快照做
 diff。全程只 RAM 启动、不写分区；失败只需长按电源回原厂。
 
-前置（主机侧，我来做）：用 `mkbootimg` 拆原厂 `boot.img`
-（`liuqin_images_OS2.0.6.0.VMYCNXM_15.0/images/boot.img`），用 Magisk 的
-`boot_patch.sh` 只打 ramdisk，产出 `repack/stock-golden/boot-stock-magisk.img`。
+### 11.1 镜像（已备好，2026-10-27）
 
-真机步骤：
+- 来源：线刷包原厂 `boot.img`（`liuqin_images_OS2.0.6.0.VMYCNXM_15.0/images/`），
+  用 Magisk v30.7 的 `boot_patch.sh` **只替换 ramdisk**。
+- 产物：`repack/stock-golden/boot-stock-magisk.img`，201 326 592 字节，
+  sha256 `51e59dfc0ab078b58c401847ace359b1543920176301c6f191936550e9049f6d`。
+- 校验：回拆后内核与 stock **逐字节相同**（`c2af010a…`），仅 ramdisk 由
+  1 380 091 B 变为 1 258 778 B；ramdisk 内 `/init` 已换为 magiskinit
+  （199 960 B），并写入 `.backup/{init.xz,.magisk,.rmlist}`、
+  `overlay.d/sbin/{magisk,stub,init-ld}.xz`。
+- 风险边界：只 `fastboot boot`，不 `flash`；不动 slot、不动 vbmeta。
 
-1. `fastboot boot boot-stock-magisk.img`（不 `flash`）。
-2. 起 Android 后 `adb install Magisk.apk`，在设备上打开一次完成初始化；
-   `adb shell su -c id` 应返回 `uid=0`。
-3. 采集（一次性跑完，输出全部存档）：
+### 11.2 步骤
 
-```sh
-adb shell su -c 'ls /sys/kernel/debug/ /d 2>/dev/null'
-adb shell su -c 'find /sys/kernel/debug -maxdepth 2 -iname "*dsi*" -o -maxdepth 2 -iname "*mdss*" 2>/dev/null'
-adb shell su -c 'cat /sys/kernel/debug/clk/clk_summary' > clk_summary-vendor.txt
-adb shell su -c 'cat /proc/interrupts' > interrupts-vendor.txt
-# 厂商显示节点（名字以第 1、2 步输出为准，常见为 dsi0/dsi1 或 msm_display）
-adb shell su -c 'cat /sys/kernel/debug/dsi0/dsi0_dump' > dsi0-vendor.txt
-adb shell su -c 'cat /sys/kernel/debug/dsi1/dsi1_dump' > dsi1-vendor.txt
-```
+1. 主机：`fastboot boot boot-stock-magisk.img`。
+2. 起 Android 后 `adb install Magisk-v30.7.apk`，在设备上打开一次完成
+   初始化；`adb shell su -c id` 应返回 `uid=0`。
+3. 主机：`python3 tools/collect-vendor-display-snapshot.py out/vendor-display`
+   —— 一次性把 debugfs 树、DSI/mdss/SDE 节点清单、`clk_summary`、
+   `/proc/interrupts`、dmesg、cmdline、显示相关 getprop 与常见寄存器 dump
+   存档；读不到的项目记进 `_errors.txt` 而不中断。
+4. 若第 3 步显示厂商没有现成 dump 节点，改用 §7.1（W4）的仪器化 DCS 读回。
 
-4. 面板 DCS 读回（电源模式 0x0A、0x0C、0x45 若厂商节点提供）；若没有现成
-   接口，改走 §7.1 的 W4 仪器化路线。
+### 11.3 判据
 
-判据：与我方运行时快照逐项 diff，第一条不可解释的差异即根因候选；
-`/proc/interrupts` 里 mdss 中断计数顺带解掉 §9.3 的悬案。
+- 与我方运行时快照逐项 diff，**第一条不可解释的差异即根因候选**；
+- `/proc/interrupts` 中 mdss 中断计数顺带解掉 §9.3 的悬案；
+- 厂商 `clk_summary` 中 DSI/DSC/DPU 时钟的投票与频率，与我方差集。
