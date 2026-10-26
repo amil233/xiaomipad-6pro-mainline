@@ -367,6 +367,21 @@ display-on）被忽略 → 面板永不退出 sleep → DSI 视频流照播而�
 **复测时要采集的物理层证据**：`/sys/kernel/debug/clk/clk_summary` 中
 `dsi*byte/pixel` 时钟（PLL 是否锁定）、dmesg 中 underflow/underrun。
 
+### 装配记录（2026-10-26，b684020b 复装）
+
+mode_flags 修复构建（commit `b684020b832ff4aa5117d5d7dfe5de6c94d73f53`，
+release `7.0.14-gb684020b832f`）同管线复装：
+`repack/b684-boot/boot-liuqin-firstboot.img`，58,568,704 字节，sha256
+`23e385774c04832f0ea6a0b54c0f1fb43f2bb79dea026398f4772d463d8acafc`；
+kernel 解压 = 新 Image `407340e0…`，ramdisk/DTB 不变，round-trip 通过。
+
+二次复测前已补齐的物理层取证（上一次 df7a67 启动）：
+dual-DSI 时钟拓扑全部正常——`dsi0 PLL` 锁 1.007 GHz，
+`byte0/byte1`（125.88 MHz）、`esc0/esc1`、`pclk0/pclk1` 全部 enabled，
+两路 host 各持 byte/byte_intf/pixel/core/iface 引用（副链路共享主 PLL，
+`dsi1vco=0` 属设计）；DSC PPS 计算并发出、RC 表用默认值=原厂用法（stock
+DT 无 RC 属性）。故 init 传输模式（HS vs LP）成为唯一未证环节。
+
 ### 装配记录（2026-10-26，df7a67b4 复装）
 
 面板修复构建（commit `df7a67b4b081eb3fcf334c6c5386c577cd47a80a`，
