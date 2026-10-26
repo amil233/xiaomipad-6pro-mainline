@@ -449,8 +449,30 @@ defer、以及 dmesg 全量里是否还有其它机器级查表缺口。
 - **录制**：`script -c 'telnet 192.168.7.2 2323' session.log` 全程留存，
   连同 `getvar-before.txt`、面板照片一起回报。
 
+### 现状梳理（2026-10-27，按 skill 标准化流程）
+
+排查方案、判类、已排除/未排除清单见 `docs/display-blackout-plan.md`——
+那篇是"当前判据与计划"，本文继续做过程记录。
+
+三条纠正（旧结论作废）：
+
+1. `DSI_CTRL=0x1F3` 按 `dsi.xml` 解码为 ENABLE(0)+**VID_MODE_EN(1)**+
+   LANE0-3(4-7)+CLK_EN(8)，即**视频模式已正确使能**；此前"命令模式/
+   模式位存疑"的推断作废。
+2. "6.17 在本机同样黑 ⇒ 非 7.0 回归"不成立：`liuqin-6.17` 的面板驱动
+   不含天马 init 序列（`pipa_tm_desc` 由 `df7a67b4b081` 才新增），那次
+   测试等于给天马面板发 CSOT 初始化，属混杂变量。该结论移入"未验证"。
+3. DPU `INTR_EN=0` 与 `/proc/interrupts` 无 GIC 83 行属记账层异常，与
+   "硬件扫描但面板不显示"无因果链，降级为独立技术债，点亮后单变量核查。
+
+新增确定性比对（不需要设备）：时序/时钟/DSC 参数与厂商 DTBO
+（`fragment@87`，天马 m81_36_02_0a）逐项相等；未闭合两项为
+**DSC slice-per-pkt（厂商 2，主线默认 1）** 与 **PHY timing 表未逐值比对**。
+
 ## 下一步
 
+- **显示**：按 `docs/display-blackout-plan.md` 的 W1→W2→W3 推进；W3
+  （`fastboot boot` 原厂 Magisk 镜像取黄金快照，不刷写）待用户确认。
 - **阻塞**：含 `d24eb13a3854`（ubwc cape 条目）的新 CI 构建与复测窗口。
 - 首测通过后：推进 TD4（锁到 `2c2092606bed` + 钉 `config_sha256`）→
   完整镜像装配 → `--layout linux-only --allow-unverified` 首装（该布局
