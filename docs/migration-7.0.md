@@ -341,6 +341,16 @@ card0/DSI-1/renderD128，`devices_deferred` 消失（触控解除 defer），`co
 `-110`（P1 外设）；BT 链路活着，7.0 新固件名 `wcnhpbtfw21.tlv` 主请求
 `-2` 后按预期走旧名回退。
 
+### 装配记录（2026-10-26，df7a67b4 复装）
+
+面板修复构建（commit `df7a67b4b081eb3fcf334c6c5386c577cd47a80a`，
+release `7.0.14-gdf7a67b4b081`，config_sha256 与历次一致）解包校验通过，
+同一管线复装：`repack/df7a67-boot/boot-liuqin-firstboot.img`，
+58,568,704 字节，sha256
+`00182b082053723eb280c41832fa9927891eb14538407095049eab9136dbc397`。
+mkbootimg v2 回拆：kernel 解压 = 新 Image `dcdbc8dc…`；ramdisk
+`a04d2b25…`；boot DTB 仍为 `4c15a591…`（DTS 未动）。
+
 ### 装配记录（2026-10-25，d24eb13 复装）
 
 含 `d24eb13a3854` 的 CI artifact 解包到 `ci/`，`SHA256SUMS` 全过，
