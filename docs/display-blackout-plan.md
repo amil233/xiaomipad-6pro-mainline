@@ -123,14 +123,97 @@ W1（本次，离线）→ W2（离线，出候选清单）→ W3（真机窗口
 按 diff 出**单变量补丁** → 一次 CI → 复测。
 W3 的 diff 未到手前，不再做"读一个寄存器猜一个原因"的探测。
 
+## 6.9 W1/W2 执行结果（2026-10-27）
+
+两个检查脚本（主机侧，自带"故意注入一个错误必须被发现"的自检）：
+`repack/verify-init-seq.py`、`repack/verify-phy-timing.py`。
+
+### 结论 1（关闭）：天马 init 序列与厂商 DTBO 完全一致
+
+- 216 包 vs 216 包，payload 与包间延时逐项相同（自检生效：翻转一个位即报
+  mismtach）。此前"216 包逐字节翻译"的结论现在有了可复现的证明。
+- 仅两处无害差异：`0x35`（SET_TEAR_ON）主线用长写带 `0x00` 参数、厂商用
+  短写无参（视频模式不用 TE）；display-on 后主线等 40 ms、厂商等 20 ms
+  （等待更长无害）。两者都不构成"无显示"，不列入候选补丁。
+- 记录一次过程错误：初版脚本按行解析，漏掉跨行书写的那条 `0x91 …
+  0x1a` 长写，误报"缺 3 包"。修正为按语句解析后差异消失。说明"检查器
+  自身要有自检输入"这条纪律必要。
+
+### 结论 2（新差异，已判级）：DSC slice-per-pkt 厂商 2、主线 1
+
+CAF 源码（`caf-display/msm/sde_dsc_helper.c:588-614`、
+`msm/dsi/dsi_ctrl_hw_cmn.c:428-475`）证实该属性决定 DSI 打包方式：
+
+```
+bytes_per_pkt = bytes_in_slice * slice_per_pkt
+pkt_per_line  = slice_count / slice_per_pkt
+```
+
+写进 `DSI_VIDEO_COMPRESSION_MODE_CTRL(_2)` 的 PKT_PER_LINE / bytes_per_pkt。
+主线 `dsi_host.c:939` 在面板未提供时用 1，故我们是"每包 1 slice、每行 2 包"，
+厂商是"每包 2 slice、每行 1 包"。
+
+按 `display.md` 的 DSC 条目，这类不一致的典型表现是**条纹/花屏/彩条**，不是
+全黑。因此记为候选补丁（W3 快照确认后再落地），**不作为黑屏根因**。
+
+### 结论 3（新差异，已判级）：PHY lane timing 14 项中 5 项不同
+
+厂商 DTBO 的 `qcom,mdss-dsi-panel-phy-timings` 14 字节被 CAF 原样写进
+`DSIPHY_CMN_TIMING_CTRL_0..13`（`dsi_phy_hw_v4_0.c:748`
+`dsi_phy_hw_timing_val_v4_0()`），与主线 `dsi_phy_7nm.c:1157-1184` 的寄存器
+一一对应。按 1.007 GHz 复算主线值后逐项比对：
+
+| CTRL | 字段 | 主线 | 厂商 |
+|---|---|---|---|
+| 0 | 常量 | 0x00 | 0x00 |
+| 1 | clk_zero | 34 | 34 |
+| 2 | clk_prepare | 8 | 8 |
+| 3 | clk_trail | **10** | **9** |
+| 4 | hs_exit | **37** | **25** |
+| 5 | hs_zero | 35 | 35 |
+| 6 | hs_prepare | 9 | 9 |
+| 7 | hs_trail | 9 | 9 |
+| 8 | hs_rqst | **6** | **9** |
+| 9 | 常量 | 0x02 | 0x02 |
+| 10 | 常量 | 0x04 | 0x04 |
+| 11 | 常量 | 0x00 | 0x00 |
+| 12 | clk_pre | **31** | **28** |
+| 13 | clk_post | **25** | **14** |
+
+三个常量与 6 个派生值完全相等，说明寄存器映射与复算方法正确——这条检查
+可信。差异集中在 `hs_exit`/`clk_post`（主线更保守），保守值不会阻止进入
+HS，故**不作为黑屏根因**，留作"接管后花屏/稳定性"阶段的候选。
+
+### 结论 4（W2 输入就位）
+
+小米 OSS 内核（`liuqin-t-oss`）与 LineageOS sm8450 树**都不含**
+`techpack/display`（厂商只发 GKI 部分）。已从 CodeLinaro 取到 CAF 显示驱动
+源码：`caf-display/`（`display-kernel.lnx.5.10.r11-rel`），后续 video 启动
+顺序/双 DSI 同步/PPS 生成的逐项对照都用它。
+
 ## 7. 候选补丁（只在对应证据出现时才做，且一次一个）
 
-| 触发证据 | 候选改动 | 风险 |
-|---|---|---|
-| 厂商源码确认 slice-per-pkt 影响解码 | 面板 DT/驱动补 `dsc_slice_per_pkt=2` | 低，可回；但**必须先证明语义**再改 |
-| PHY timing 逐值比对出现偏差 | 校正 PHY timing 计算或引入厂商表 | 中，影响所有面板 |
-| W3 快照显示视频引擎启动顺序不同 | 按 diff 调整 encoder/DSI 启动顺序 | 中，牵涉 commit 路径 |
-| 面板 DCS 0x0A 显示仍在 sleep | 回到 init 序列/时序，但要按 diff 定位具体包 | 低 |
+| 触发证据 | 候选改动 | 风险 | 现状 |
+|---|---|---|---|
+| W3 快照确认厂商每包 2 slice 的行为可复现 | 面板 desc 补 `dsc_slice_per_pkt = 2` | 低，可回 | 语义已由 CAF 源码证实（§6.9.2）；按 skill 属"花屏"类，待快照确认 |
+| 接管后出现花屏/条纹 | 用厂商 14 字节 PHY timing 表替换计算值 | 中，影响所有面板 | 5/14 差异已量化（§6.9.3）；黑屏阶段不动 |
+| W3 快照显示视频引擎启动顺序不同 | 按 diff 调整 encoder/DSI 启动顺序 | 中，牵涉 commit 路径 | 等快照 |
+| 面板 DCS 0x0A 显示仍在 sleep | 回到 init 序列/时序，但按 diff 定位具体包 | 低 | 等快照（或 W4 仪器化读回） |
+
+### 7.1 W4（备用工作流）：仪器化 DCS 读回
+
+若 W3 的原厂镜像取快照受阻，用一次诊断构建直接回答"面板是否已退出
+sleep、是否已 display on"：在 `nt36532_prepare()` 发完 init 之后
+（此时链路仍在 LP 命令态）读 `MIPI_DCS_GET_POWER_MODE (0x0A)` 并打印
+到 dmesg。判据：
+
+- 读回 `0x08`/`0x0C`（bit3=normal、bit2=display on）⇒ 面板已开，问题在
+  视频流/解码侧；
+- 读回 `0x00`/`0x04`（仍在 sleep）⇒ 初始化没被接受，问题在命令时序；
+- 读超时/`-ETIMEDOUT` ⇒ 命令通路本身不通，回到 L2/lane 层。
+
+改动只读、不改显示行为，属于"测量"而非"修复"，可与下一次任何候选补丁
+同批构建。
 
 ## 8. 停止条件与记录纪律
 
@@ -163,10 +246,38 @@ ENABLE + **VID_MODE_EN** + 四条 lane + CLK_EN，即**视频模式已正确使�
 传输都不依赖该中断）。降级为独立技术债，点亮后单独单变量核查；不并入
 本次根因链。
 
-## 10. 需要用户决定
+## 10. 用户决定（2026-10-27 已确认）
 
-1. **W3 是否执行**：用 `fastboot boot` 启动打过 Magisk 的原厂 `boot.img`
-   取黄金快照（不刷写分区，重启即回）。这是 skill 早该做而一直缺的一步，
-   也是把排查从"猜"变"diff"的关键。
-2. **W2 是否允许联网取源码**：小米开源内核仓库较大，只稀疏取
-   `techpack/display/` 与相关 DT。
+- W2+W3 并行推进；允许联网稀疏取源码。结果见 §6.9、§11。
+
+## 11. W3 真机会话清单（原厂黄金快照）
+
+目的：拿到厂商驱动**点亮本机面板时**的运行时状态，与我方同一位置快照做
+diff。全程只 RAM 启动、不写分区；失败只需长按电源回原厂。
+
+前置（主机侧，我来做）：用 `mkbootimg` 拆原厂 `boot.img`
+（`liuqin_images_OS2.0.6.0.VMYCNXM_15.0/images/boot.img`），用 Magisk 的
+`boot_patch.sh` 只打 ramdisk，产出 `repack/stock-golden/boot-stock-magisk.img`。
+
+真机步骤：
+
+1. `fastboot boot boot-stock-magisk.img`（不 `flash`）。
+2. 起 Android 后 `adb install Magisk.apk`，在设备上打开一次完成初始化；
+   `adb shell su -c id` 应返回 `uid=0`。
+3. 采集（一次性跑完，输出全部存档）：
+
+```sh
+adb shell su -c 'ls /sys/kernel/debug/ /d 2>/dev/null'
+adb shell su -c 'find /sys/kernel/debug -maxdepth 2 -iname "*dsi*" -o -maxdepth 2 -iname "*mdss*" 2>/dev/null'
+adb shell su -c 'cat /sys/kernel/debug/clk/clk_summary' > clk_summary-vendor.txt
+adb shell su -c 'cat /proc/interrupts' > interrupts-vendor.txt
+# 厂商显示节点（名字以第 1、2 步输出为准，常见为 dsi0/dsi1 或 msm_display）
+adb shell su -c 'cat /sys/kernel/debug/dsi0/dsi0_dump' > dsi0-vendor.txt
+adb shell su -c 'cat /sys/kernel/debug/dsi1/dsi1_dump' > dsi1-vendor.txt
+```
+
+4. 面板 DCS 读回（电源模式 0x0A、0x0C、0x45 若厂商节点提供）；若没有现成
+   接口，改走 §7.1 的 W4 仪器化路线。
+
+判据：与我方运行时快照逐项 diff，第一条不可解释的差异即根因候选；
+`/proc/interrupts` 里 mdss 中断计数顺带解掉 §9.3 的悬案。
