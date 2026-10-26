@@ -341,6 +341,32 @@ card0/DSI-1/renderD128，`devices_deferred` 消失（触控解除 defer），`co
 `-110`（P1 外设）；BT 链路活着，7.0 新固件名 `wcnhpbtfw21.tlv` 主请求
 `-2` 后按预期走旧名回退。
 
+### 二次复测（2026-10-26，df7a67b4b081 真机）
+
+uname = `7.0.14-gdf7a67b4b081`（补丁在线），但**同症复现**：接管后黑屏，
+管线全绿、kmsg 画字不可见。按纪律（同样的失败第二次出现即停下）重新从
+物理层取证，结论：**面板 init 序列不是病因**（或不是唯一病因）。
+
+对照 stock 面板节点发现 **pipa_desc 的 DSI 链路配置自端口创立
+（`2cd5a6f8ef67`）就与原厂 DT 相矛盾，且从未被点亮验证过**：
+
+| stock（36/42 两模块相同） | 主线含义 | pipa_desc 旧值 |
+|---|---|---|
+| `traffic-mode = "burst_mode"` | `MIPI_DSI_MODE_VIDEO_BURST` | 缺 |
+| `lp11-init` + `on-command-state = "dsi_lp_mode"` | `MIPI_DSI_MODE_LPM` | 缺 |
+| 无 `non-continuous-clock`（连续时钟） | 无 `MIPI_DSI_CLOCK_NON_CONTINUOUS` | 反而带 |
+
+缺 LPM 最致命：面板只收 LP 命令，HS 发送整条 init（含 exit-sleep /
+display-on）被忽略 → 面板永不退出 sleep → DSI 视频流照播而面板不显示。
+
+**修复（内核 `b684020b832f`）**：pipa_desc 与 pipa_tm_desc 的 mode_flags
+改为 `VIDEO | VIDEO_BURST | LPM`，去掉 `NON_CONTINUOUS`；模式/DSC/复位
+不变。checkpatch 通过。等新 CI 构建复测；若仍黑屏，下一个单变量实验是
+加回 `NON_CONTINUOUS`（yudi desc 保留该项）。
+
+**复测时要采集的物理层证据**：`/sys/kernel/debug/clk/clk_summary` 中
+`dsi*byte/pixel` 时钟（PLL 是否锁定）、dmesg 中 underflow/underrun。
+
 ### 装配记录（2026-10-26，df7a67b4 复装）
 
 面板修复构建（commit `df7a67b4b081eb3fcf334c6c5386c577cd47a80a`，
