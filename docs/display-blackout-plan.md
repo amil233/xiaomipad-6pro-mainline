@@ -309,6 +309,33 @@ adb exec-out cat "/proc/device-tree/<上一步得到的节点>/qcom,mdss-dsi-pan
 若这版 ROM 的 init 序列与 OS2.0.6.0 不同，直接就是线索（我们可能移植了
 另一版 ROM 的序列）；若相同，则"序列取错版本"这条彻底关闭。
 
+### 11.2c R1 结果（2026-10-27，本机 ROM 线刷包已到手）：**面板数据完全一致**
+
+输入：`liuqin_images_V14.0.9.0.TMYCNXM_13.0`（本机 ROM）的 `dtbo.img`
+拆成 38 个 entry 后，天马节点位于 `entry.15`（`fragment@102`），与
+OS2.0.6.0 的同名节点逐项比对（脚本 `repack/compare-panel-node.py`）：
+
+| 项 | 结果 |
+|---|---|
+| 面板宽/高、h/v porch、pulse、帧率 | 全部相等（0x384/0xb40、100/46/2、26/214/2、0x78） |
+| `panel-clockrate` | 0x3c061800 相等 |
+| DSC slice 0x1c2×0x14、slice-per-pkt 2、8bpp/8bpc | 相等 |
+| `traffic-mode` / `panel-type` / `phy-voltage` / `phy-timings` | 相等 |
+| **`qcom,mdss-dsi-on-command`** | **216 包 / 2047 字节，逐字节相同** |
+| 仅本机 ROM 有的属性 | `displayon-command`（1 包：`05 … 01 29`，20 ms）、`displayoff-command` |
+
+结论：**我们移植的面板数据就是本机 ROM 的数据**，"取错 ROM 版本"这条假设
+关闭。此前 §6.9 的比对结论因此升级为对本机成立（时序/DSC/PHY 参数与
+本机 ROM 相同），而 §6.9.2（slice-per-pkt=2）与 §6.9.3（PHY timing 5 项
+差异）也随之变成"与本机 ROM 的差异"，不再有版本混杂。
+
+`displayon-command` 是 DCS `0x29` 短写 + 20 ms；我们的 `nt36532_enable()`
+也发 `mipi_dsi_dcs_set_display_on()`，功能等价（差异仅在等待时长：
+我们 10–11 ms 后再发 PPS，厂商 20 ms），不构成候选。
+
+**剩下唯一未测的层**：面板是否真的醒了（DCS 0x0A），见 §7.1 的 W4
+（内核 `4090f33f442e`）。
+
 ### 11.3 判据
 
 - 与我方运行时快照逐项 diff，**第一条不可解释的差异即根因候选**；
