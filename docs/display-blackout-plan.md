@@ -440,6 +440,69 @@ bit12 = `DLN0_LP_FIFO_EMPTY`（正常），bit4 未定义。主线
 `ACTIVE_H` 的 end−start 是否为 300；`ACTIVE_V` 的 end−start 是否为 2880。
 四项中任一不符即为该层的直接证据。
 
+### 11.2e 厂商寄存器全量对照（2026-10-27，亮屏实采）
+
+在已 root 的 MIUI14 上把 `_off` 窗口开大后读到的真值（物理地址，等价于
+厂商 `dsi0_ctrl_reg`）：
+
+| 地址 | 寄存器 | 厂商值 | 我们的代码会写 | 判 |
+|---|---|---|---|---|
+| 0x004 | `DSI_CTRL` | `0x000001f3` | 视频模式+4 lane+clk en | 一致 |
+| 0x010 | `VID_CFG0` | `0x02009230` | 同（bit25 widebus 置位） | 一致 |
+| 0x024 | `ACTIVE_H` | `0x015c0030` | 48..348（300 = 900/3） | 一致 |
+| 0x028 | `ACTIVE_V` | `0x0c1800d8` | 216..3096（2880） | 一致 |
+| 0x02c | `TOTAL` | `0x15f30254` | 厂商当时跑 144 fps | 仅模式差异 |
+| 0x0a8 | `LANE_STATUS` | `0x00001f1f` | — | 链路空闲态正常 |
+| **0x0ac** | **`LANE_CTRL`** | **`0x01000000`** | **`0x10000000`** | **不一致（见 11.2f）** |
+| 0x2a0 | `DSC_MODE_CTRL` | `0x03840b01` | bytes/pkt 900、pkt/line 1、eol 0 | 一致 |
+
+`DSC_MODE_CTRL = 0x03840b01` 解码：`WC=0x384=900`（= 450×2，即
+`slice_per_pkt=2` 被正确合包）、`DATATYPE=0x0b`、`PKT_PER_LINE=0`
+（1 包/行）、`EOL_BYTE_NUM=0`、`EN=1`。主线 `dsi_update_dsc_timing()`
+对同样的输入算出的正是这个值 —— **§6.9.2 的 slice-per-pkt 差异已闭合**。
+
+#### PHY 时序：DT 表 = 寄存器真值，5/14 与主线计算不同
+
+`DSIPHY_CMN_TIMING_CTRL_0..13`（0x0b4–0x0e8）读数为
+`00 22 08 09 19 23 09 09 09 02 04 00 1c 0e`，与 DT 属性
+`qcom,mdss-dsi-panel-phy-timings` **逐字节相同**（厂商确为原样写入）。
+
+| idx | 字段 | 主线计算 | 厂商 |
+|---|---|---|---|
+| 3 | clk_trail | 10 | 9 |
+| 4 | hs_exit | 37 | 25 |
+| 8 | hs_rqst | 6 | 9 |
+| 12 | clk_pre | 31 | 28 |
+| 13 | clk_post | 25 | 14 |
+
+但 `msm_dsi_dphy_timing_calc_v4()` 在 6.17 与 7.0 **完全相同**，而 6.17 用
+同一套计算点亮了使用**同一张 PHY 表**的 CSOT 模块 ⇒ 这 5 项不是拦路虎。
+
+#### 面板期望状态：`0x9d`
+
+厂商 ESD 检查读 DCS `0x0a`，期望值 `qcom,mdss-dsi-panel-status-value = <0x9d>`
+（读长 1）。`0x9d` = bit0 booster + **bit2 显示开** + **bit3 正常模式** +
+**bit4 退出睡眠**。我们的诊断打印拿到 `0x9d` 即表示面板已完全唤醒。
+
+### 11.2f 已确认的寄存器级差异与修复（`703ce73dd750`）
+
+厂商 `_dsi_display_continuous_clk_ctrl()` 第一句就是
+`if (!panel->host_config.force_hs_clk_lane) return;`，而该属性
+（`qcom,mdss-dsi-force-clock-lane-hs`）在 `m81_36_02_0a` 节点里**不存在**，
+所以厂商从不改 `LANE_CTRL`：bit24 保持上电默认 1、bit28 = 0（BLLP 期间
+时钟通道进 LP）。
+
+主线相反：未设 `MIPI_DSI_CLOCK_NON_CONTINUOUS` 时会**主动**清 bit24、
+置 bit28，把时钟通道钉在 HS。修复：给 `pipa_tm_desc` 加
+`MIPI_DSI_CLOCK_NON_CONTINUOUS`，主机就整段跳过，寄存器与厂商一致。
+
+只改 `pipa_tm_desc`：`pipa_desc` 与 pipa 设备共用，且 CSOT 模块在本 SoC 上
+用连续时钟已被 6.17 点亮，不动它。
+
+顺带修正 `pipa_desc` 里一段错误注释：它引用的
+`qcom,mdss-dsi-non-continuous-clock` 厂商驱动根本不读，真正读的是
+`qcom,mdss-dsi-force-clock-lane-hs`，且极性相反。
+
 ### 11.3 判据
 
 - 与我方运行时快照逐项 diff，**第一条不可解释的差异即根因候选**；
