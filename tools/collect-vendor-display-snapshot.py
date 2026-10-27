@@ -33,6 +33,15 @@ mkdir -p "$OUT"
 
 mount -t debugfs none /sys/kernel/debug 2>/dev/null
 
+# The first attempt was taken with the screen off: every display clock had an
+# enable count of 0, the DSI engines read OFF and reg_dump came back empty.
+# Wake the panel and keep it awake for the whole dump.
+input keyevent KEYCODE_WAKEUP 2>/dev/null
+wm dismiss-keyguard 2>/dev/null
+svc power stayon true 2>/dev/null
+settings put system screen_off_timeout 1800000 2>/dev/null
+sleep 2
+
 save() { # save <name> <command...>
     name="$1"; shift
     "$@" > "$OUT/$name.txt" 2>"$OUT/$name.err"
@@ -41,6 +50,14 @@ save() { # save <name> <command...>
 }
 
 save cmdline        cat /proc/cmdline
+# proof that the display is powered: enable counts must be non-zero
+save display-on-proof sh -c "grep -E 'disp_cc_mdss_(mdp|byte0|pclk0)_clk ' /sys/kernel/debug/clk/clk_summary"
+save dri-debug-list sh -c "ls -la /sys/kernel/debug/dri/0/debug/ 2>/dev/null"
+save dri-root-list  sh -c "ls -la /sys/kernel/debug/dri/0/ 2>/dev/null"
+save panel-dt-fps   sh -c "od -An -tu4 /proc/device-tree/qcom,mdss_dsi_m81_36_02_0a_dualdsi_dsc_lcd_video/qcom,mdss-dsi-panel-framerate 2>/dev/null"
+save panel-dt-props sh -c "ls /proc/device-tree/qcom,mdss_dsi_m81_36_02_0a_dualdsi_dsc_lcd_video/ 2>/dev/null"
+save backlight-max  sh -c "cat /sys/class/backlight/*/max_brightness /sys/class/backlight/*/brightness 2>/dev/null"
+save connector-state sh -c "cat /sys/class/drm/card0-DSI-1/status /sys/class/drm/card0-DSI-1/enabled 2>/dev/null" 
 save uname          uname -a
 save dmesg          dmesg
 save interrupts     cat /proc/interrupts
@@ -62,9 +79,19 @@ for d in $(find /sys/kernel/debug -maxdepth 3 -name 'reg_dump' -o -maxdepth 3 -n
     done
 done
 
-# CRTC / encoder / IRQ nodes
-for f in $(find /sys/kernel/debug -maxdepth 4 \( -name 'core_irq' -o -name 'fps' \
-        -o -name 'fence_status' -o -name 'state' -o -name 'status' \) 2>/dev/null); do
+# everything the DRM core exposes under dri/0/debug (vendor reg dumpers live here)
+for f in /sys/kernel/debug/dri/0/debug/*; do
+    [ -f "$f" ] || continue
+    [ -r "$f" ] || continue
+    sz=$(wc -c < "$f" 2>/dev/null || echo 0)
+    [ "$sz" -gt 4000000 ] && continue
+    save "dri_debug_$(basename "$f")" cat "$f"
+done
+
+# CRTC / encoder / IRQ nodes (only display ones, not every block device)
+for f in $(find /sys/kernel/debug/dri /sys/kernel/debug/dsi* /sys/kernel/debug/sde* \
+        -maxdepth 5 \( -name 'core_irq' -o -name 'fps' -o -name 'fence_status' \
+        -o -name 'state' -o -name 'status' \) 2>/dev/null); do
     [ -r "$f" ] || continue
     name=$(echo "$f" | sed 's|/sys/kernel/debug/||; s|/|_|g')
     save "$name" cat "$f"
@@ -72,7 +99,7 @@ done
 
 # --- panel DCS readback through the connector's rx_cmd ---
 # write format: "<expected_len> <dcs bytes...>"; read returns the response
-for f in $(find /sys/kernel/debug/drm -name 'rx_cmd' 2>/dev/null); do
+for f in $(find /sys/kernel/debug -name 'rx_cmd' 2>/dev/null); do
     d=$(dirname "$f")
     tag=$(echo "$d" | sed 's|/sys/kernel/debug/drm/||; s|/|_|g')
     for spec in "0x0A:power_mode" "0x0D:display_mode" "0x0B:address_mode" "0x0C:pixel_format"; do
@@ -136,6 +163,16 @@ def main():
         for name in sorted(os.listdir(pulled)):
             os.replace(os.path.join(pulled, name), os.path.join(args.outdir, name))
         os.rmdir(pulled)
+
+    proof = os.path.join(args.outdir, "display-on-proof.txt")
+    if os.path.exists(proof):
+        body = open(proof).read()
+        counts = [int(l.split()[1]) for l in body.splitlines()
+                  if len(l.split()) > 3 and l.split()[1].isdigit()]
+        if counts and max(counts) == 0:
+            print("WARNING: every display clock still has enable count 0 - the "
+                  "panel was OFF during the dump, so reg_dump/core_irq are "
+                  "useless. Wake the tablet, keep the screen on, run again.")
 
     names = sorted(os.listdir(args.outdir))
     print(f"{len(names)} file(s) in {args.outdir}:")
