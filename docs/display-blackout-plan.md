@@ -503,6 +503,50 @@ bit12 = `DLN0_LP_FIFO_EMPTY`（正常），bit4 未定义。主线
 `qcom,mdss-dsi-non-continuous-clock` 厂商驱动根本不读，真正读的是
 `qcom,mdss-dsi-force-clock-lane-hs`，且极性相反。
 
+### 11.5 决定性实测：面板醒着，但 booster 没开（2026-10-27）
+
+本机 7.0 内核读回（`ff5f8273` 之前那一版，含 DSI 寄存器诊断）：
+
+```
+msm_dsi ae94000.dsi: DIAG dsi0: CTRL=000001f3 STATUS0=00000000 FIFO=11111010 VID_CFG0=02009230
+msm_dsi ae94000.dsi: DIAG dsi0: ACTIVE_H=015c0030 ACTIVE_V=0c1800d8 TOTAL=0c3101bf HSYNC=00020000
+msm_dsi ae94000.dsi: DIAG dsi0: CMD_DMA_CTRL=14000000 DSC_CTRL=03840b01 LANE_STATUS=00001f1f CLKOUT=0000191f
+```
+（dsi1 同值）
+
+与厂商黄金快照逐项对照：`CTRL` / `VID_CFG0` / `ACTIVE_H` / `ACTIVE_V` /
+`HSYNC` / `DSC_CTRL` / `LANE_STATUS` / `FIFO_STATUS` **全部相同**；
+`TOTAL` 仅因模式不同（我们 120 fps → `0c3101bf`；厂商快照时 144 fps →
+`15f30254`）。**DSI 控制器这一层的编程是正确的。**
+
+面板 DCS 读回（三个时点一致）：
+
+```
+diag[post-init]: DCS 0x0A ret=1 power_mode=0x9e
+diag[prepared]:  DCS 0x0A ret=1 power_mode=0x9e
+diag[enabled]:   DCS 0x0A ret=1 power_mode=0x9e
+```
+
+| 位 | 含义 | 我们 | 厂商（`panel-status-value`） |
+|---|---|---|---|
+| D0 | booster 电压 | **0 关** | 1 开 |
+| D1 | idle 模式 | **1 开** | 0 关 |
+| D2 | display on | 1 | 1 |
+| D3 | normal mode | 1 | 1 |
+| D4 | sleep out | 1 | 1 |
+
+结论：**面板已被唤醒并处于正常模式，但内部升压未启动**，所以黑屏；
+厂商的 ESD 检查把 `0x9d` 当健康值，本机返回 `0x9e` 正是这个异常。
+
+补充：`post-init` 时点（尚未发 PPS、尚未开视频）就已是 `0x9e`，说明
+这两个位与视频数据流无关，是 init 序列之后面板的自身状态。
+
+#### 下一步：在线试探（`ff5f8273`）
+
+新增 `/sys/kernel/debug/nt36532/dcs`：写入十六进制字节串即向命令链路发送
+一条 DCS 命令，并立即再读 `0x0a` 打印结果，用于在真机上逐条定位是哪条
+命令把 `0x9e` 变回 `0x9d` 并点亮屏幕。
+
 ### 11.3 判据
 
 - 与我方运行时快照逐项 diff，**第一条不可解释的差异即根因候选**；
