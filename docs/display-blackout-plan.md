@@ -365,6 +365,81 @@ OS2.0.6.0 的同名节点逐项比对（脚本 `repack/compare-panel-node.py`）
 `svc power stayon true` + `screen_off_timeout=30min`），随后照旧运行脚本；
 结尾若打印"enable count 0"警告，说明仍是熄屏，无效。
 
+### 11.4 6.17 ↔ 7.0 显示链全量差异（2026-10-27，`git diff liuqin-6.17 liuqin-7.0`）
+
+思路：`liuqin-6.17` 是同一 SoC 上已被点亮的基线，**7.0 与它的差异就是全部候选**。
+以下按"是否影响本机（sm8450/sm8475、DPU 7.x、DSI 6G v2.6、视频模式、双 DSI、DSC 3:1、
+UBWC 4.0）"过滤后的结果。
+
+| 文件 | 改动 | 对本机 |
+|---|---|---|
+| `dsi_host.c` | byte clk 先 `clk_round_rate` 再设；byte_intf 由取整值推导 | 生效，值不变则无影响 |
+| `dsi_host.c` | `dsi_link_clk_disable_6g()` 删除 `dev_pm_opp_set_rate(dev, 0)` | 生效 |
+| `dsi_host.c` | `bits_per_pclk` 改写（原 `bytes_per_pclk`） | **数值等价**：宽总线+视频模式两版都得 3 字节/pclk |
+| `dsi_host.c` | `dsi_adjust_pclk_for_compression()` 双链路分别取整 | **数值等价**：900×8/24=300 整除 |
+| `dsi_phy.c` | 显式 `clk_prepare_enable(ahb)` 改为 PM clock（`pm_clk_add(dev,"iface")`） | 生效 |
+| `dsi_phy_7nm.c` | PLL bias 开关重排、`pll_enable_cnt`、自旋锁 | 生效（PLL 计费） |
+| `dsi_phy_7nm.c` | `QUIRK_V7_0` → `V7_2` 改名 | 不影响（sm8750 用） |
+| `dsi_phy.c` | `msm_dsi_dphy_timing_calc_v4()` | **完全未改** ⇒ §6.9.3 的 5 项 PHY 差异在 6.17 上同样存在 |
+| `dsi_cfg.*` | `V2_2_0`→`V2_0_0` 改名、新增 kaanapali | 不影响（V2_6_0 → `sdm845_dsi_cfg` 两版相同） |
+| `dsi.xml` | ACTIVE/TOTAL 位域 12→16 位 | 不影响（本机值未溢出） |
+| `dpu_encoder.c` | `MAX_CHANNELS_PER_ENC` 4→2；`num_dsc` 判定改写 | **拓扑结果相同**（2 LM/2 DSC/2 INTF） |
+| `dpu_crtc.c` | 新增 GC LUT；拓扑收口改写；`mode_valid` 用 adjusted clock | 拓扑结果相同 |
+| `dpu_hw_intf.c` | DPU 8.x 的 WD timer / vsync_sel | 不影响 |
+| `dpu_hw_interrupts.c` | 新增 13xx 中断表 | 不影响 |
+| `dpu_hw_sspp.c` | **`SSPP_FETCH_CONFIG` HBB 字段：`hbb<<18`(16) → `(hbb-13)<<18`(3)** | **唯一的寄存器写值差异** |
+| `dpu_plane.c` | 虚拟平面/分屏裁剪重构 | 生效 |
+| DT `sm8475-xiaomi-liuqin.dts` | 显示段逐行比对 | **完全相同**（仅 dsi1_phy 位置挪动） |
+
+#### 11.4.1 面板驱动侧的核查（排除"天马移植错"）
+
+* `pipa_mode_120` 的 200/4/92 水平 porch **正是厂商 100/2/46 的双链路倍乘**，
+  总行数 2096 与厂商一致；垂直 26/2/214 与厂商一致 ⇒ **mode 正确**。
+* V14 DTBO 中 `m81_36_02_0a`（天马）与 `m81_42_02_0b`（CSOT）的时序、DSC、
+  时钟率**完全相同** ⇒ 两个模块共用一份 mode/DSC 是对的。
+* init 序列 216 包与 V14 DTBO 逐字节相同（§6.9 结论 1 升级为本机成立）。
+
+#### 11.4.2 关于 UBWC HBB 的三种写法
+
+| 来源 | `SSPP_FETCH_CONFIG` HBB 写入 |
+|---|---|
+| 厂商 CAF `sde_hw_sspp.c:317` | `highest_bank_bit << 18`（原始值） |
+| 6.17（已点亮） | `highest_bank_bit << 18`（原始值） |
+| 7.0 | `(highest_bank_bit - 13) << 18` |
+
+`sm8350_data.highest_bank_bit = 16`（两版相同，未改表）。即本机上
+**6.17 写 16，7.0 写 3**。注意 `msm_mdss.c` 在两版里都一直用 `-13`，
+所以 7.0 是把 SSPP 与 MDSS 的编码统一了；但厂商在 SSPP 上写的是原值。
+此项只在 framebuffer 走 UBWC 时生效（线性 fb 不走这条分支）。
+
+#### 11.4.3 `dsi_err_worker: status=4` 是误报（关闭）
+
+厂商**正常工作**状态的 `DSI_FIFO_STATUS`（物理 0x0C）= **0x00001010**，
+bit12 = `DLN0_LP_FIFO_EMPTY`（正常），bit4 未定义。主线
+`dsi_fifo_status()` 对**任何非零**都置 `DSI_ERR_STATE_FIFO` 并打印，
+因此 `status=4` 在本硬件上是恒定误报，不是症状。
+
+#### 11.4.4 新增诊断（`c4d5a7e30408`）：打印本机 DSI 寄存器
+
+在 `dsi_op_mode_config(enable)` 末尾按 link 各打三行，字段与厂商
+`dsi0_ctrl_reg` 可逐项对照（主线 `REG_*` 物理地址 = 厂商地址 − 4）：
+
+| 寄存器 | 厂商正常工作值 |
+|---|---|
+| `CTRL` | `0x000001f3` |
+| `STATUS0` | `0x00002008` |
+| `FIFO_STATUS` | `0x00001010` |
+| `VID_CFG0` | `0x02009230` |
+| `ACTIVE_H` | `0x015c0030`（end−start = 300 = 900/3 DSC） |
+| `ACTIVE_V` | `0x0c1800d8`（end−start = 2880） |
+| `TOTAL` | `0x15f30254`（厂商 144 fps 模式，仅供参考） |
+| `ACTIVE_HSYNC` | `0x00020000` |
+| `CMD_DMA_CTRL` | `0xd4000000` |
+
+判据：`CTRL` 的 bit0/1/4-7/8 是否为 1；`VID_CFG0` bit25（widebus）是否为 1；
+`ACTIVE_H` 的 end−start 是否为 300；`ACTIVE_V` 的 end−start 是否为 2880。
+四项中任一不符即为该层的直接证据。
+
 ### 11.3 判据
 
 - 与我方运行时快照逐项 diff，**第一条不可解释的差异即根因候选**；
