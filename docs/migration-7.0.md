@@ -469,6 +469,18 @@ defer、以及 dmesg 全量里是否还有其它机器级查表缺口。
 （`fragment@87`，天马 m81_36_02_0a）逐项相等；未闭合两项为
 **DSC slice-per-pkt（厂商 2，主线默认 1）** 与 **PHY timing 表未逐值比对**。
 
+### 2026-10-27 追加：W3 受阻，改用内核内 DCS 读回（W4）
+
+- W3（原厂黄金快照）真机侧失败：Magisk 应用可打开、显示 `Ramdisk 是`，
+  但超级用户灰掉、读不到内核信息，`su` 不可用（magiskd 未起）。继续要
+  重打 ramdisk + 装完应用再重启，成本高于收益，暂缓；厂商运行时状态仍
+  记为"缺失证据"。
+- 改走 W4：内核内读 DCS 0x0A/0x0D（`4090f33f442e`，`diag[post-init]`/
+  `diag[prepared]`/`diag[enabled]` 三行），只读不改行为，用后即删。
+- 判据表见 `docs/display-blackout-plan.md` §7.1：`0x0C`/`0x1C` 面板已开
+  → 问题在视频/解码侧；`0x00`/`0x04` 仍在 sleep → 初始化没生效；
+  负返回值 → 命令通路不通。
+
 ## 下一步
 
 - **显示**：按 `docs/display-blackout-plan.md` 的 W1→W2→W3 推进；W3
