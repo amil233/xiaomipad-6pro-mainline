@@ -29,7 +29,8 @@
 | DPU | **8.0**（`dpu hardware revision: 0x80050000`） |
 | DSI | 6G v2.6（`0x20060000`），bonded dual-DSI，4 lane，video mode |
 | DSC | 3:1，slice 450×20，slice_count 2，slice_per_pkt 2，1800×2880@120 |
-| 原厂 | OS2.0.6.0.VMYCNXM，内核 `5.10.136-android12-9-00021-g821df8f5bd36` |
+| 原厂（设备在装） | **V14.0.9.0.TMYCNXM（Android 13）**，内核 `5.10.136-android12-9-00021-g821df8f5bd36-ab9585204`；证据：`out/vendor-display/dmesg.txt` 的 `swinfo.fingerprint=liuqin:13/V14.0.9.0.TMYCNXM:user` |
+| 手头另有 | OS2.0.6.0.VMYCNXM（Android 15）线刷包，**未装在设备上**；2026-10-28 之前的本文把两者混用 |
 | 主线 | 7.0.14，分支 `liuqin-7.0` |
 | 上游参考 | `liuqin-6.17`（作者 CSOT 设备已点亮） |
 | CAF 参考源码 | `caf-display/`，`display-kernel.lnx.5.10.r11-rel`，tag `DISPLAY.LA.2.0.r5-00100-NEOLA.0` |
@@ -55,8 +56,16 @@
 
 ### 3.2 双方向寄存器逐值相同（可信）
 
-厂商值来自 `out/vendor-display/`（原厂正常显示时抓的快照）与在原厂系统上
-现抓的 `sde_off`/`sde_reg` 段落。
+厂商值来自 `out/vendor-display/`（在设备在装的 **V14.0.9.0（Android 13）** 上
+抓的快照）与在原厂系统上现抓的 `sde_off`/`sde_reg` 段落。
+
+**引用纪律（2026-10-28 复核）**：`out/vendor-display/dri_0_debug_dsi0_ctrl_reg.txt`
+的窗口只有 `0x00–0x5c`，其中真实存在的厂商值只有 `HW=0x20060000`、`CTRL=0x1f3`、
+`STATUS0=0x2008`、`FIFO=0x1010`、`VID_CFG0=0x02009230`、`ACTIVE_H/V`、
+`TOTAL=0x15f30254`、`ACTIVE_HSYNC`、`CMD_DMA_CTRL=0xd4000000`。
+文档里出现过的 `CLKOUT=0x13e0391f`、`CTL=0x28000300/0x33000`、
+`CLK_STATUS=0x008047c3`、`LANE_CTRL/LANE_STATUS`、厂商侧 `DSC_MODE_CTRL`
+在任何原始文件里都不存在，**引用前必须用足够大的窗口重采**，不能当既成事实。
 
 | 寄存器 | 值 |
 |---|---|

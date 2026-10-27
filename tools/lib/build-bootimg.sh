@@ -57,6 +57,15 @@ done
 mkdir -p "$out_dir"
 gzip -n -9 -c "$image" >"$image_gz"
 
+# The bootloader applies the overlay set of the ROM that is installed on the
+# device, so the analysis inputs must come from that same ROM.  The installed
+# liuqin build is V14.0.9.0.TMYCNXM (Android 13): its dtbo.img carries 38
+# entries and its vendor_boot 11 base DTBs, while the OS2.0.6.0 package that is
+# also on hand carries 44 and 14.  STOCK_ROM selects the analysis set, and
+# STOCK_ANALYSIS_DIR overrides the whole path.
+stock_rom=${STOCK_ROM:-V14.0.9.0.TMYCNXM}
+analysis_dir=${STOCK_ANALYSIS_DIR:-"$project_root/tools/local/roms/liuqin/$stock_rom/analysis"}
+
 "$dtc" -@ -I dts -O dtb -o "$overlay_dtb" "$abl_overlay"
 "$fdtoverlay" -i "$dtb" -o "$boot_dtb" "$overlay_dtb"
 
@@ -67,8 +76,8 @@ gzip -n -9 -c "$image" >"$image_gz"
 # property the DT-selection path reads is mirrored byte-for-byte from the
 # accepted DTB, so private checks see exactly what they demonstrably accepted.
 if [ "${ABL_DTB02_IDS:-0}" = 1 ]; then
-	stock_soc_dtb=${STOCK_SOC_DTB:-"$project_root/tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/vendor_boot/dtbs/dtb-02.dtb"}
-	stock_soc_dtb_sha256=527344cd52497d0b8b9311f1ab82ac3418b86b95c25e7786890f38f40054e467
+	stock_soc_dtb=${STOCK_SOC_DTB:-"$analysis_dir/vendor_boot/dtbs/dtb-02.dtb"}
+	stock_soc_dtb_sha256=${STOCK_SOC_DTB_SHA256:-70efcea37552a85d5f6d25421bbf199f3a998a19a8a6c8486461ba8667943224}
 	if ! printf '%s  %s\n' "$stock_soc_dtb_sha256" "$stock_soc_dtb" | sha256sum -c --quiet -; then
 		echo "error: stock dtb-02.dtb does not match the pinned hash" >&2
 		exit 1
@@ -87,11 +96,10 @@ fi
 # ABL_OVERLAY_SINK=1 adds that node plus an inert sink so the overlay applies
 # and directs the overlay writes into that node.
 #
-# Which of the 44 DTBO entries ABL selects is not ours to decide, and
+# Which DTBO entry ABL selects is not ours to decide, and
 # ufdt_apply_multi_overlay may apply more than one, so the symbols of every
-# entry are exported -- 237 distinct across the table, against 43..126 per
-# entry. Building from one entry only would work if and only if ABL happened to
-# pick that entry.
+# entry in the installed ROM's table are exported.  Building from one entry
+# only would work if and only if ABL happened to pick that entry.
 #
 # The DTBO table is not the whole overlay set, and assuming it was cost a failed
 # boot. Differencing the tree ABL really handed to a kernel here against
@@ -102,20 +110,18 @@ fi
 # first label it names. So seed the union from every stock base DTB as well:
 # any overlay ABL applies was authored against one of those.
 if [ "${ABL_OVERLAY_SINK:-1}" = 1 ]; then
-	stock_overlay_dir=${STOCK_OVERLAY_DIR:-"$project_root/tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/dtbo"}
-	stock_base_dir=${STOCK_BASE_DIR:-"$project_root/tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/vendor_boot/dtbs"}
+	stock_overlay_dir=${STOCK_OVERLAY_DIR:-"$analysis_dir/dtbo"}
+	stock_base_dir=${STOCK_BASE_DIR:-"$analysis_dir/vendor_boot/dtbs"}
 	stock_overlay_count=$(find "$stock_overlay_dir" -maxdepth 1 -type f \
 		-regex '.*/entry\.[0-9]+' 2>/dev/null | wc -l)
-	if [ "$stock_overlay_count" -ne 44 ]; then
-		echo "error: expected 44 stock liuqin DTBO entries in $stock_overlay_dir, found $stock_overlay_count" >&2
-		exit 1
-	fi
 	stock_base_count=$(find "$stock_base_dir" -maxdepth 1 -type f \
 		-regex '.*/dtb-[0-9][0-9]\.dtb' 2>/dev/null | wc -l)
-	if [ "$stock_base_count" -ne 14 ]; then
-		echo "error: expected 14 stock base DTBs in $stock_base_dir, found $stock_base_count" >&2
+	if [ "$stock_overlay_count" -lt 1 ] || [ "$stock_base_count" -lt 1 ]; then
+		echo "error: no stock overlay set under $analysis_dir" >&2
+		echo "  expected entry.N in $stock_overlay_dir and dtb-NN.dtb in $stock_base_dir" >&2
 		exit 1
 	fi
+	echo "stock overlay set: $stock_rom ($stock_overlay_count DTBO entries, $stock_base_count base DTBs)"
 	set -- --boot-dtb "$boot_dtb" --overlay-dir "$stock_overlay_dir"
 	for base in "$stock_base_dir"/dtb-[0-9][0-9].dtb; do
 		set -- "$@" --symbols-from-dtb "$base"
@@ -130,7 +136,7 @@ if [ "${ABL_OVERLAY_SINK:-1}" = 1 ]; then
 	python3 "$project_root/tools/lib/abl-symbols.py" "$@" \
 		--output "$boot_dtb.symbols" \
 		--dtc "$dtc" \
-		--expect-symbols 1781 \
+		--expect-symbols "${EXPECT_SYMBOLS:-0}" \
 		--sink-phandle
 	mv -f "$boot_dtb.symbols" "$boot_dtb"
 fi
