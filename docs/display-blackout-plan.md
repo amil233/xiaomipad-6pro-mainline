@@ -336,6 +336,35 @@ OS2.0.6.0 的同名节点逐项比对（脚本 `repack/compare-panel-node.py`）
 **剩下唯一未测的层**：面板是否真的醒了（DCS 0x0A），见 §7.1 的 W4
 （内核 `4090f33f442e`）。
 
+### 11.2d W3 第一次采集（2026-10-27）：熄屏空跑，但拿到 4 条硬事实
+
+状态：部分成功。采集落在**熄屏**状态——`disp_cc_mdss_{mdp,byte0,pclk0}_clk`
+使能计数全为 0、`dsi-ctrl-0/1 state_info` 三个引擎全 OFF、`reg_dump` 与
+`core_irq` 为空。因此寄存器部分不可用，需重跑（采集器已改为先强制亮屏
+并校验，`ab301d0`）。
+
+仍然确认到的事实（都在 `out/vendor-display/`）：
+
+1. **厂商用的就是这个天马节点**：cmdline
+   `msm_drm.dsi_display0=qcom,mdss_dsi_m81_36_02_0a_dualdsi_dsc_lcd_video`，
+   与我们一致；厂商内核 5.10.136-android12，构建于 2023-02-09。
+2. **链路速率与我们相同**：`dsi0_phy_pll_out_byteclk = 125 879 040 Hz`
+   （对应 1.007 Gbps / 8），与我们 clk_summary 里的 byte0/byte1 完全一致；
+   `state_info` 里 `PIXEL_CLK = 167 838 720`。
+3. **厂商 msm_drm 中断在走**：`GICv3 115 Level msm_drm`，计数
+   1050 / 0 / 2263 / 6329（CPU0/2/3）。我们这边 GIC 83 一行都没有——
+   真实差异，但需在亮屏状态确认（这次厂商也熄屏）。
+4. **SDE 也不常开 DPU 中断**：`dri/0/debug/core_irq` 只有
+   `idx:27 irq:9422 enable:0 cb:0`、`idx:67 irq:95 enable:0 cb:0`，
+   即正常系统上这些 DPU 中断同样 enable=0、无回调。与 §9.3 的降级判断
+   一致（INTR_EN=0 不是黑屏原因）。
+5. 另有一处待解：`dump_info` 报 **144fps**，而 V14 的 DT 节点只有 120fps
+   一个 timing。重跑时采集器会读运行中 DT 的 `panel-framerate` 定论。
+
+重跑要点：平板解锁、屏幕点亮（采集器会 `input keyevent WAKEUP` +
+`svc power stayon true` + `screen_off_timeout=30min`），随后照旧运行脚本；
+结尾若打印"enable count 0"警告，说明仍是熄屏，无效。
+
 ### 11.3 判据
 
 - 与我方运行时快照逐项 diff，**第一条不可解释的差异即根因候选**；
