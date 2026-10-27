@@ -268,17 +268,19 @@ ENABLE + **VID_MODE_EN** + 四条 lane + CLK_EN，即**视频模式已正确使�
 目的：拿到厂商驱动**点亮本机面板时**的运行时状态，与我方同一位置快照做
 diff。全程只 RAM 启动、不写分区；失败只需长按电源回原厂。
 
-### 11.1 镜像（已备好，2026-10-27）
+### 11.1 镜像（2026-10-27 修正：必须用**本机同版本 ROM**）
 
-- 来源：线刷包原厂 `boot.img`（`liuqin_images_OS2.0.6.0.VMYCNXM_15.0/images/`），
-  用 Magisk v30.7 的 `boot_patch.sh` **只替换 ramdisk**。
-- 产物：`repack/stock-golden/boot-stock-magisk.img`，201 326 592 字节，
-  sha256 `51e59dfc0ab078b58c401847ace359b1543920176301c6f191936550e9049f6d`。
-- 校验：回拆后内核与 stock **逐字节相同**（`c2af010a…`），仅 ramdisk 由
-  1 380 091 B 变为 1 258 778 B；ramdisk 内 `/init` 已换为 magiskinit
-  （199 960 B），并写入 `.backup/{init.xz,.magisk,.rmlist}`、
-  `overlay.d/sbin/{magisk,stub,init-ld}.xz`。
-- 风险边界：只 `fastboot boot`，不 `flash`；不动 slot、不动 vbmeta。
+**作废**：先前用 `liuqin_images_OS2.0.6.0.VMYCNXM_15.0` 的 `boot.img`
+（Android 15 / HyperOS 2）打的 `repack/stock-golden/boot-stock-magisk.img`。
+本机实际运行 **V14.0.9.0.TMYCNXM_20230907（Android 13 / MIUI 14）**，
+版本不匹配，Magisk 起不来（应用可开、`Ramdisk 是`、超级用户灰、读不到
+内核信息），镜像与流程一并作废。
+
+正确做法：从**本机同版本线刷包** `V14.0.9.0.TMYCNXM_20230907` 的
+`images/boot.img` 取原始 boot，用设备上已安装的 Magisk"选择并修补一个
+文件"生成 `magisk_patched-*.img`，再 `fastboot boot` 该镜像（只 RAM
+启动，不写分区）。判据：进系统后 Magisk 显示"已安装"，
+`adb shell su -c id` 返回 `uid=0`。
 
 ### 11.2 步骤
 
@@ -290,6 +292,22 @@ diff。全程只 RAM 启动、不写分区；失败只需长按电源回原厂�
    `/proc/interrupts`、dmesg、cmdline、显示相关 getprop 与常见寄存器 dump
    存档；读不到的项目记进 `_errors.txt` 而不中断。
 4. 若第 3 步显示厂商没有现成 dump 节点，改用 §7.1（W4）的仪器化 DCS 读回。
+
+### 11.2b 零成本先做的 B 计划（不需要 root）
+
+跑着的系统里 `/proc/device-tree` 对 shell 可读，所以"本机这版 ROM 用哪条
+面板 init 序列"可以直接取出来，与我们现在用的（来自 OS2.0.6.0 DTBO 的
+天马 216 包）逐字节比对：
+
+```bat
+adb shell "ls -d /proc/device-tree/*m81*"
+adb exec-out cat "/proc/device-tree/<上一步得到的节点>/qcom,mdss-dsi-on-command" > oncmd_v14.bin
+adb exec-out cat "/proc/device-tree/<上一步得到的节点>/qcom,mdss-dsi-panel-phy-timings" > phytim_v14.bin
+```
+
+用 `exec-out` 而不是 `shell` 重定向，避免 Windows 把二进制按文本换行改写。
+若这版 ROM 的 init 序列与 OS2.0.6.0 不同，直接就是线索（我们可能移植了
+另一版 ROM 的序列）；若相同，则"序列取错版本"这条彻底关闭。
 
 ### 11.3 判据
 
