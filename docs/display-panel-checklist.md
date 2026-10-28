@@ -191,7 +191,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | I10 | 复位后 PPS 是否要重发 | 重连后参数丢失 | 我们每次 prepare 都发 | ⛔ |
 | I11 | sleep in/out 的 120 ms | 面板没醒 | **已排除**：poke `0x10`→`0x0e`、`0x11`→`0x9e` 立即生效 | ⛔ |
 | I12 | CSOT/TM desc 混用 | 用错 init | **已排除**：`panel desc: tianma … cmdline_match=1` | ⛔ |
-| I13 | **面板是否在扫我们的帧**（DCS `0x45` 推进） | 黑屏与"锁流"的分水岭 | 读数已加进 `dcs` 节点（`bf394ce5`）：8 次采样给 `first/last/advancing`；**待构建实测** | ⬜（代码就绪） |
+| I13 | **面板是否在扫我们的帧**（DCS `0x45`） | 黑屏与"锁流"的分水岭 | 首测：8 次采样只得到 9 和 11 两个值，判为**弱证据**（多数 DDIC 的扫描计数自由运行，采样又与 vsync 同步）。**改用"往 fb 里写随机数据看屏幕是否出噪点"来判管线是否真的把内容送到面板** | ⚠️（判据待加强） |
 | I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **已实测**：`intf_1` 的 `INTF_FRAME_COUNT` 2 s 内 2682→2803 = **121 帧 ≈ 60.5 fps**；`LINE_COUNT` 在帧内回绕。DPU→INTF→DSI 整条链在 60 Hz 下真实出帧 | ⛔ |
 | I15 | **厂商在 enable 时额外下发一批 MIUI 特性命令**（我们完全没发） | 其中任何一条都可能是"面板不显示"的开关 | 原厂动态调试实采（60 fps）：`set 51 backlight 65295` → `DSI_CMD_SET_ON` → `flat_mode=1` → `post_enable` → `pen_setting refresh_rate[60]` → `cabc=0` → `dimming=1` → `disable insert black`；另外每次背光变化前后都写 `insert black`（DT 的 `0x22 0x00` / `0x13 0x00`）。我们的驱动只发 init + PPS + display-on | ⬜（新，优先级取决于 `advancing`） |
 
@@ -594,3 +594,37 @@ mi_dsi_panel_update_last_bl_level: disable insert black
 2. **厂商在 enable 时还额外发了一串 MIUI 特性命令**（`0x51` 亮度、flat_mode、cabc off、
    dimming on、insert-black、按 fps 的 pen 命令），我们的驱动一条都没发（I15）。
    这些是原厂"点亮"路径的一部分，但优先级要等 `advancing` 结果再定。
+
+### 2026-10-28 第十一轮：PPS 字节到手，`advancing` 存疑
+
+`bf394ce5` 镜像实测（默认 60 Hz）：
+
+```
+dsc-pre: pic 1800x2880 slice 450x20 count 2 chunk 450 bpp 128 bpc 8 per_link=0
+PPS-pre: 11 00 00 89 30 80 0b 40 07 08 00 14 01 c2 01 c2
+         02 00 01 e1 00 20 01 bc 00 06 00 0c 05 0e 06 1a
+         ...
+dcs: power=0x9e display=0x00 addr=0x00 pixfmt=0x07
+     scanline samples=8 first=9 last=11 advancing=yes
+```
+
+PPS 逐字段解码（全部落在 DSC 1.1 的规范值上，没有异常）：
+
+| 字节 | 值 | 含义 |
+|---|---|---|
+| 0 | `11` | DSC 1.1 |
+| 3 | `89` | line_buf_depth 9、8 bpc |
+| 4–5 | `30 80` | block_pred=1、convert_rgb=1、bpp=128（8.0） |
+| 6–9 | `0b40 0708` | 2880 × 1800 |
+| 10–15 | `0014 01c2 01c2` | slice 20×450、chunk 450 |
+| 16–17 | `0200` | initial_xmit_delay 512 |
+| 18–19 | `01e1` | initial_dec_delay 481 |
+| 21–25 | `20 01bc 0006` | initial_scale 32、scale_inc 444、scale_dec 6 |
+| 27–35 | `0c 050e 061a 1800 10f0` | first_line_bpg 12、nfl 1294、slice_bpg 1562、initial_offset 6144、final 4336 |
+| 36–43 | `03 0c 2000 06 0b 0b 33` | flatness 3/12、rc_model 8192、edge 6、qincr 11/11、tgt offset 3/3 |
+| 44–57 | `0e 1c 2a 38 46 54 62 69 70 77 79 7b 7d 7e` | 标准 buf_thresh 表 |
+
+⇒ **PPS 内容本身没有可疑项**（H01/H04 从"内容错误"降级）；`advancing=yes` 因为只差 2
+且采样与 vsync 同步，只能算弱证据（I13 降级）。
+下一步用"往 `/dev/fb0` 写随机数据、看屏幕是否出噪点"直接判定"内容有没有到面板"；
+同时准备 `no_dsc` 镜像（`boot-bf394ce-60-nodsc.img`）作为对照。
