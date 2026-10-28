@@ -164,7 +164,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
-| H01 | 我们发出的 128 字节 PPS 与厂商是否一致 | 面板按错参数解码 → 黑 | PPS 已加十六进制打印（`bf394ce5` 的 `PPS-pre:`）。**注意：厂商 PPS 从未采到**；`caf-display` 只能给出"参考实现会发什么"（B 级），不能当厂商真值 | ⬜（代码就绪，待构建） |
+| H01 | 我们发出的 128 字节 PPS 与厂商是否一致 | 面板按错参数解码 → 黑 | PPS 已加十六进制打印（`bf394ce5` 的 `PPS-pre:`）。**注意：厂商 PPS 从未采到，而且基本拿不到**——原厂开 `file *dsi_panel* +p` 等动态调试后，`dsi_panel_tx_cmd_set` 的 packet-count 与 PPS 都没有打印（2026-10-28 实采）；`caf-display` 只能给出"参考实现会发什么"（B 级），不能当厂商真值 | ⬜（代码就绪，待构建） |
 | H02 | `pic_width` 写成 1800（每链路只送 2×450） | 解码端算出 4 slice/行 | **A 级证据倾向 1800 就是对的**：原厂 `dsi_display_set_mode` 打印 `hactive=1800, vactive=2880, fps=60, clk_rate=1007032320`（2026-10-28 动态调试实采），CAF 的 `pic_width = h_active` 因此也是 1800。"厂商发 900" 只是社区实现 + DTBO per-link 宽度的推测。`pps_per_link_pic_width=1` 降级为**兜底 A/B**，不再当纠错 | ⚠️（倾向 1800，待 PPS 实测兜底） |
 | H03 | `slice_chunk_size` 为 0 或不是 450 | 包长错 | 内核打印 `chunk`；寄存器 WC=900 已证 | ⛔ |
 | H04 | RC 字段（initial_dec_delay/scale/bpg/offsets）与原厂不同 | 解码率控错，画面乱或黑 | 只能用 `caf-display` 做**参考**复算（B 级），得不到厂商真值；最终判据只能是"面板是否出画面" | ⚠️ |
