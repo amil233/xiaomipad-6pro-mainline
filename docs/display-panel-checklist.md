@@ -192,7 +192,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | I11 | sleep in/out 的 120 ms | 面板没醒 | **已排除**：poke `0x10`→`0x0e`、`0x11`→`0x9e` 立即生效 | ⛔ |
 | I12 | CSOT/TM desc 混用 | 用错 init | **已排除**：`panel desc: tianma … cmdline_match=1` | ⛔ |
 | I13 | **面板是否在扫我们的帧**（DCS `0x45`） | 黑屏与"锁流"的分水岭 | 首测：8 次采样只得到 9 和 11 两个值，判为**弱证据**（多数 DDIC 的扫描计数自由运行，采样又与 vsync 同步）。**改用"往 fb 里写随机数据看屏幕是否出噪点"来判管线是否真的把内容送到面板** | ⚠️（判据待加强） |
-| I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **已实测**：`intf_1` 的 `INTF_FRAME_COUNT` 2 s 内 2682→2803 = **121 帧 ≈ 60.5 fps**；`LINE_COUNT` 在帧内回绕。DPU→INTF→DSI 整条链在 60 Hz 下真实出帧 | ⛔ |
+| I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **待重测**：先前测的是 `intf_1`（2682→2803），但编码器用的是 **`intf_2`**（`DIAG vid_enable: intf2`）。必须改测 `intf_2` 的 `+000`（TIMING_ENGINE_EN）、`+0ac`（帧计数）、`+25c`（INTF_MUX 指向哪个 PP） | ⚠️（量错了块，重测） |
 | I15 | **厂商在 enable 时额外下发一批 MIUI 特性命令**（我们完全没发） | 其中任何一条都可能是"面板不显示"的开关 | 原厂动态调试实采（60 fps）：`set 51 backlight 65295` → `DSI_CMD_SET_ON` → `flat_mode=1` → `post_enable` → `pen_setting refresh_rate[60]` → `cabc=0` → `dimming=1` → `disable insert black`；另外每次背光变化前后都写 `insert black`（DT 的 `0x22 0x00` / `0x13 0x00`）。我们的驱动只发 init + PPS + display-on | ⬜（新，优先级取决于 `advancing`） |
 
 ### J. 时序与时钟（8）
@@ -628,3 +628,15 @@ PPS 逐字段解码（全部落在 DSC 1.1 的规范值上，没有异常）：
 且采样与 vsync 同步，只能算弱证据（I13 降级）。
 下一步用"往 `/dev/fb0` 写随机数据、看屏幕是否出噪点"直接判定"内容有没有到面板"；
 同时准备 `no_dsc` 镜像（`boot-bf394ce-60-nodsc.img`）作为对照。
+
+### 2026-10-28 第十二轮：`/dev/fb0` 不存在的原因，以及"量错了 INTF"
+
+- `/dev/fb0` 与 `/proc/fb` 都不存在是**正常的**：本配置 `CONFIG_DRM_CLIENT_LOG=y`、
+  `CONFIG_DRM_CLIENT_SELECTION=y`，控制台客户端是 `drm_log`（`drivers/gpu/drm/clients/`），
+  它独占 DRM 客户端，fbdev 模拟就不会再建 fb。drm_log 自己会
+  `drm_client_buffer_flush` + `drm_client_modeset_commit`，所以"往 fb 写随机数据"这条路
+  **用户态走不通**；内容只能由控制台客户端自己提交。
+- 之前 `state` 里 `fb=92 allocated by = drm_log` 也印证了这一点。
+- **更正**：我先前用 `intf_1` 的帧计数宣布"DPU 在出帧"，但 boot 日志写的是
+  `DIAG vid_enable: intf2 state=1 -> ENABLING`，用的 INTF 是 **intf_2**。
+  所以"DPU 出帧"这条要重测，且必须看 `intf_2` 的 `+000`/`+0ac`/`+25c`。
