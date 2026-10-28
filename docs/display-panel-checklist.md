@@ -165,7 +165,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
 | H01 | 我们发出的 128 字节 PPS 与厂商是否一致 | 面板按错参数解码 → 黑 | PPS 已加十六进制打印（`bf394ce5` 的 `PPS-pre:`）。**注意：厂商 PPS 从未采到**；`caf-display` 只能给出"参考实现会发什么"（B 级），不能当厂商真值 | ⬜（代码就绪，待构建） |
-| H02 | `pic_width` 写成 1800（每链路只送 2×450） | 解码端算出 4 slice/行 | 已加 `panel_novatek_nt36532.pps_per_link_pic_width=1`（只改 PPS，不动 DPU split 配置）。**依据等级降为 B**："厂商发 900"只来自 `caf-display` 的解析代码 + DTBO 的 per-link `panel-width=900`，厂商 PPS 本身没采到 ⇒ 这是待验证的假设，不是结论 | ⬜（代码就绪，待构建） |
+| H02 | `pic_width` 写成 1800（每链路只送 2×450） | 解码端算出 4 slice/行 | **A 级证据倾向 1800 就是对的**：原厂 `dsi_display_set_mode` 打印 `hactive=1800, vactive=2880, fps=60, clk_rate=1007032320`（2026-10-28 动态调试实采），CAF 的 `pic_width = h_active` 因此也是 1800。"厂商发 900" 只是社区实现 + DTBO per-link 宽度的推测。`pps_per_link_pic_width=1` 降级为**兜底 A/B**，不再当纠错 | ⚠️（倾向 1800，待 PPS 实测兜底） |
 | H03 | `slice_chunk_size` 为 0 或不是 450 | 包长错 | 内核打印 `chunk`；寄存器 WC=900 已证 | ⛔ |
 | H04 | RC 字段（initial_dec_delay/scale/bpg/offsets）与原厂不同 | 解码率控错，画面乱或黑 | 只能用 `caf-display` 做**参考**复算（B 级），得不到厂商真值；最终判据只能是"面板是否出画面" | ⚠️ |
 | H05 | PPS 发送时机（init 之后、视频流之前） | 面板未准备好 | 与原厂 ON→PPS 顺序对照 | ⛔（顺序同） |
@@ -193,6 +193,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | I12 | CSOT/TM desc 混用 | 用错 init | **已排除**：`panel desc: tianma … cmdline_match=1` | ⛔ |
 | I13 | **面板是否在扫我们的帧**（DCS `0x45` 推进） | 黑屏与"锁流"的分水岭 | 读数已加进 `dcs` 节点（`bf394ce5`）：8 次采样给 `first/last/advancing`；**待构建实测** | ⬜（代码就绪） |
 | I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **已实测**：`intf_1` 的 `INTF_FRAME_COUNT` 2 s 内 2682→2803 = **121 帧 ≈ 60.5 fps**；`LINE_COUNT` 在帧内回绕。DPU→INTF→DSI 整条链在 60 Hz 下真实出帧 | ⛔ |
+| I15 | **厂商在 enable 时额外下发一批 MIUI 特性命令**（我们完全没发） | 其中任何一条都可能是"面板不显示"的开关 | 原厂动态调试实采（60 fps）：`set 51 backlight 65295` → `DSI_CMD_SET_ON` → `flat_mode=1` → `post_enable` → `pen_setting refresh_rate[60]` → `cabc=0` → `dimming=1` → `disable insert black`；另外每次背光变化前后都写 `insert black`（DT 的 `0x22 0x00` / `0x13 0x00`）。我们的驱动只发 init + PPS + display-on | ⬜（新，优先级取决于 `advancing`） |
 
 ### J. 时序与时钟（8）
 
@@ -565,3 +566,31 @@ DPU 侧 DSC 编码器（`dsc_0_enc` 0x80100，第一次拿到）decode：
 已知可用的运行时开关（bootargs 已证明生效）：
 `force_fps=60|120|144`、`pps_per_link_pic_width=0|1`、`no_dsc=1`、
 `skip_panel_init=1`、`msm.dsi_cmd_broadcast=0|1`。
+
+### 2026-10-28 第十轮：原厂动态调试实采（A 级，重要）
+
+打开 `dsi_panel/dsi_display/dsi_ctrl/sde_dsc/sde_encoder` 的 dynamic debug，熄屏→亮屏一次：
+
+```
+dsi_display_set_mode: mdp_transfer_time=0, hactive=1800, vactive=2880, fps=60, clk_rate=1007032320
+dsi_ctrl_isr_configure: dsi-ctrl-0/1: IRQ registered
+set 51 backlight 65295
+dsi_panel_enable: primary panel: DSI_CMD_SET_ON
+dsi_display_set_power: Display (primary), Power mode (On)
+mi_dsi_panel_set_disp_param: feature: flat_mode, value: 1 → flat mode on
+dsi_display_post_enable
+mi_dsi_panel_match_fps_pen_setting: refresh_rate[60]
+mi_dsi_panel_set_disp_param: feature: cabc, value: 0 → cabc off !!
+mi_dsi_panel_set_disp_param: feature: dimming, value: 1
+mi_dsi_panel_update_last_bl_level: disable insert black
+（随后 dfps: fps 60 → 50，再次 set_mode，clk_rate 仍是 1007032320）
+```
+
+由此得到两条结论：
+
+1. **原厂在 60 fps 下的模式就是 `1800×2880 @ clk_rate=1007032320`**，与我们完全一致；
+   且 CAF 的 `pic_width = h_active` 用的是 1800 ⇒ H02"应该发 900"基本可以放掉，
+   `pps_per_link_pic_width` 只留作兜底 A/B。
+2. **厂商在 enable 时还额外发了一串 MIUI 特性命令**（`0x51` 亮度、flat_mode、cabc off、
+   dimming on、insert-black、按 fps 的 pen 命令），我们的驱动一条都没发（I15）。
+   这些是原厂"点亮"路径的一部分，但优先级要等 `advancing` 结果再定。
