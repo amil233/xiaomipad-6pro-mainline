@@ -67,7 +67,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | A03 | 对照基准 | 模式不同则寄存器不可比 | **已定为 60 Hz**（用户选择）：原厂 60 Hz 真值已抓，我们的目标 mode 也按 60 写，两侧同模式可直接逐字节比 | ⛔（基准已定） |
 | A04 | 实际跑的是哪个 desc | 选错就会用另一块屏的 init | **已确认**：`panel desc: tianma … cmdline_match=1`（镜像 A，`702b079d`） | ⛔ |
 | A05 | 新驱动没有用户态窗口（进 shell 前复位） | 面板状态类判据全部拿不到 | 改用旧驱动做实验台，或内核自打印→pstore | ⚠️ |
-| A06 | `0x0a` 的 bit0/bit1 语义可疑（`0x9e` vs `0x9d`） | 据此推"booster 没开"曾得出过错误结论 | 不把 `0x0a` 当唯一判据；用 `0x45` 推进 + 画面 | ⚠️ |
+| A06 | `0x0a` 的 bit0/bit1 语义 | 曾被当成"booster 没开" | **判据作废**：切页后真 DCS `0x38` 也清不掉 bit1，仅 bit4 随睡眠变化；不再用作判据 | ⛔（判据作废） |
 | A07 | "init 序列逐字节一致"≠"运行时真的送达并被接受" | 静态比对通过却从未验证运行时 | 内核日志 + poke 有效性测试 | ⚠️ |
 | A08 | 上游作者 CSOT 成功不可复现、也无日志 | 任何"上游能亮所以代码对"的推理失效 | 无 | ⚠️（事实） |
 
@@ -121,7 +121,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | E07 | 驱动强度/预加重（原厂 `clk-strength=0xff`、`phy-voltage=0x51`） | 边沿质量差 → 误码 | 读 PHY 的 strength 寄存器，与 DT 值比 | ⬜ |
 | E08 | PHY 0.9 V 供电 | 完全无链路 | 能通信即排除 | ⛔ |
 | E09 | ULPS 误入 | 链路休眠 | 原厂 ULPS=N；主线未启用 | ⛔ |
-| E10 | dsi1 的 PLL 父时钟被本地改成 dsi0 | 双链路不同步 | 对照原厂 `Clock master = dsi-ctrl-0` | ⚠️ |
+| E10 | dsi1 的 PLL 父时钟 | 双链路不同步 | **与原厂一致**：原厂 `dsi1_phy_pll_out_*` enable=0（共用 dsi0 PLL），我们同样配置，且 dsi1 上命令可达 | ⛔ |
 
 ### F. DSI 协议/控制器（10）
 
@@ -133,7 +133,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | F04 | bonded 双链路同步（master/slave/sync/broadcast） | 两半不同步 → 无画面 | 原厂还有 `cmd-sync-wait-broadcast`；主线靠 `msm_dsi_manager_cmd_xfer` 双 commit | ⚠️ |
 | F05 | 另一条链路的 DDIC 是否也收到命令 | 只有一路被初始化 → 黑/半屏 | 写经 dsi[1] 生效 ⇒ 至少一条链路正常；另一路是否也需要由 C 图（`msm.dsi_cmd_broadcast=1`）对照。原厂两条链路只有 `CMD_DMA_CTRL` 差 master 位 | ⚠️ |
 | F06 | 命令固定走 dsi[1] | 若主链路才是 DDIC，命令发不出去 | **已排除**：poke `0x10`/`0x11` 改变了面板 power 状态，说明经 dsi[1] 的写入确实到达 DDIC | ⛔ |
-| F07 | 视频流期间命令的 BLLP 窗口不足 | 长命令被丢弃 | 看 `dsi_host` 的 "cmd cannot fit into BLLP" 日志 | ⬜ |
+| F07 | 视频流期间命令的 BLLP 窗口不足 | 长命令被丢弃 | **已排除**：多次 poke（含 1 字节参数的 `0xff`）全部成功 | ⛔ |
 | F08 | virtual channel/stream 不一致 | 收不到 | DT 与原厂都是 0/0 | ⛔ |
 | F09 | ACTIVE_H（压缩后） | 有效区错 | `015c0030` 与原厂一致 | ⛔（同模式实测） |
 | F10 | DSI 错误状态被忽略 | 误码/超时无感 | `STATUS0` 只差 bit13（主线 XML 未定义，疑厂商位）；`FIFO`/`LANE_STATUS` 的差异是采样时刻的 FIFO 空/停态位 | ⛔（可解释） |
@@ -144,12 +144,12 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
 | G01 | DSC 使能/配置顺序（PPS→compression→EN） | 编码器与面板不同步 | 抓 DPU/DSI 侧寄存器写入顺序 | ⬜ |
-| G02 | slice_count/width/height 与 DPU 不匹配 | 编码出错误 slice | 读 DPU DSC 块的 slice 配置（`0x80000` 块） | ⚠️ |
+| G02 | slice_count/width/height 与 DPU 不匹配 | 编码 slice 错 | **已核对**：`dsc_0_enc` 的 SLICE=450×20、chunk=450，与 DSI 的 `DSC_CTRL=03840b01` 一致 | ⛔ |
 | G03 | chunk / pkt_per_line | 打包错 | `DSC_CTRL=03840b01` 与原厂一致（WC=900、1 包/行） | ⛔（同模式实测） |
 | G04 | bpp/bpc/block-pred | 解码错 | DT 与原厂一致 | ⛔ |
 | G05 | DSC 版本/SCR | 解码器拒绝 | 1.1/0，原厂同 | ⛔ |
 | G06 | 每 encoder 的 DSC 实例数（2 LM/2 DSC） | 拓扑错 | 逐块读 CTL/PP 绑定 | ⚠️ |
-| G07 | **DPU 的 pic_width 是整幅 1800 还是每链路 900** | 与 PPS 同一问题，编码端也会错 | 读 DPU DSC 的 pic_width 字段 | ⚠️ |
+| G07 | DPU 的 pic_width 是整幅还是每链路 | 编码端错 | **DPU 侧自洽**：`dsc_0_top=00000101`（EN+SPLIT_PANEL）、`dsc_0_enc` PICTURE=1800×2880；`dpu_encoder_prep_dsc()` 就是按整幅 1800 写、由 SPLIT_PANEL 分半。面板侧的问题归 H02 | ⛔（DPU 侧） |
 | G08 | DSC 输出与 DSI packetizer 的 slice 排布 | 数据错位 | 需要 PPS/寄存器双侧证据 | ⬜ |
 
 ### H. PPS 与面板侧解码（10）
@@ -181,8 +181,8 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | I08 | TE（video mode 不需要） | — | 原厂也是 video | ⛔ |
 | I09 | 亮度寄存器 `0x51` | 内部调光 0 | init 里写了 `0f ff` | ⛔ |
 | I10 | 复位后 PPS 是否要重发 | 重连后参数丢失 | 我们每次 prepare 都发 | ⛔ |
-| I11 | sleep in/out 的 120 ms | 面板没醒 | 已足够；可用 poke 验证 | ⚠️ |
-| I12 | **CSOT/TM desc 混用** | 194 包 init 用在 TM 上 | 见 A04 | ⚠️ |
+| I11 | sleep in/out 的 120 ms | 面板没醒 | **已排除**：poke `0x10`→`0x0e`、`0x11`→`0x9e` 立即生效 | ⛔ |
+| I12 | CSOT/TM desc 混用 | 用错 init | **已排除**：`panel desc: tianma … cmdline_match=1` | ⛔ |
 | I13 | **面板是否在扫我们的帧**（DCS `0x45` 推进） | 黑屏与"锁流"的分水岭 | 读数已加进 `dcs` 节点（`bf394ce5`）：8 次采样给 `first/last/advancing`；**待构建实测** | ⬜（代码就绪） |
 | I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **已实测**：`intf_1` 的 `INTF_FRAME_COUNT` 2 s 内 2682→2803 = **121 帧 ≈ 60.5 fps**；`LINE_COUNT` 在帧内回绕。DPU→INTF→DSI 整条链在 60 Hz 下真实出帧 | ⛔ |
 
@@ -193,9 +193,9 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | J01 | 面板是否接受各刷新率的 porch 变化 | 若只认 init 里那一组，改帧率就会黑 | 原厂 kernel 的 mode 表就是 120/144/90/60/50/48/30 七档（`dumpsys display`），且当前跑到 60 fps 正常显示 ⇒ 同一套 init 支持 porch 变化 | ⛔ |
 | J02 | htotal/vtotal 与运行模式 | 模式相关寄存器天然不同 | **同模式命中**：镜像 B（`force_fps=0`）实测 `TOTAL=186301bf`，与原厂 60 Hz 逐字节相同 | ⛔ |
 | J03 | bit clock 不同 | PHY 裕量 | **一致**：785,245 kHz 是 DRM 的 mode clock（未压缩整幅），msm 经 `dsi_adjust_pclk_for_compression()` 折半+压缩后得到 167,838,720/125,879,040/1,007,032,320，与原厂一致 | ⛔ |
-| J04 | `dsi_adjust_pclk_for_compression` 的算法 | 时钟算错 | 读我们的 byte/pixel clk 与原厂比 | ⬜ |
+| J04 | `dsi_adjust_pclk_for_compression` 的算法 | 时钟算错 | **已验证**：按该算法算出的 pclk/byteclk 与原厂 `state_info` 逐位相同（167838720/125879040） | ⛔ |
 | J05 | mdp clk 375 MHz | 带宽 | 与原厂一致 | ⛔ |
-| J06 | 双链路 PLL 共享 | 不同步 | 见 E10 | ⚠️ |
+| J06 | 双链路 PLL 共享 | 不同步 | 见 E10，原厂也是共享 dsi0 PLL | ⛔ |
 | J07 | 时钟 gating（`clk_ignore_unused` 是掩盖） | 时钟被关 | 去掉参数复测；读 clk_summary | ⚠️ |
 | J08 | dispcc GDSC/PD | 上电不完整 | 读 GDSC 状态 | ⬜ |
 
@@ -203,7 +203,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
-| K01 | DPU 是否在出帧 | 黑屏 | 旧镜像曾测 `INTF_FRAME_COUNT` 1 s +121；**本镜像尚未复核**，等 `bundle` 输出 | ⚠️ |
+| K01 | DPU 是否在出帧 | 黑屏 | **已实测**：`bundle` 的 `intf_1` 帧计数 121 帧 / 2 s = 60.5 fps | ⛔ |
 | K02 | CTL_TOP/CTL 配置与原厂不同 | 路由/混合错 | 同模式对照 `CTL_TOP=28000300`、`+0x20=00033000`、`+0x24=1` | ⚠️ |
 | K03 | INTF 可编程预取（bit31） | 取数时机 | 已置位 | ⛔ |
 | K04 | 2LM/2DSC/2INTF 拓扑 | 半屏/黑 | 逐寄存器确认绑定 | ⚠️ |
@@ -219,10 +219,10 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
 | L01 | SMMU fault | 黑屏/复位 | dmesg 无 fault | ⛔ |
-| L02 | framebuffer 地址/大小不对 | 画面错位/黑 | 读 fb 信息 | ⬜ |
+| L02 | framebuffer 地址/大小 | 画面错位/黑 | **已核对**：`state` 里 plane-0 挂 1800×2880 AR24 fb，帧计数推进 | ⛔ |
 | L03 | UBWC/线性不一致 | 花屏 | 线性 fb | ⛔ |
-| L04 | cache/coherency | 陈旧数据 | 无异常 | ⬜ |
-| L05 | **simplefb 与 msm 抢同一个 framebuffer** | 双 console 互相覆盖、甚至崩溃 | 检查 cmdline 是否黑名单 simplefb（oneshot 漏了） | ⚠️ |
+| L04 | cache/coherency | 陈旧数据 | 帧在推进、无取数错误 | ⛔ |
+| L05 | simplefb 与 msm 抢同一个 framebuffer | 双 console 互相覆盖 | **已排除**：cmdline 含 `initcall_blacklist=simplefb_driver_init`，dmesg 有 `blacklisting initcall simplefb_driver_init`×2 与 `initcall simplefb_driver_init blacklisted` | ⛔ |
 | L06 | 带宽/AB 投票不足 | underrun | 无 underrun | ⛔ |
 
 ### M. DT / 引导链（10）
@@ -234,11 +234,11 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | M03 | reset-gpios 极性 | 见 C01 | 静态一致 | ⚠️ |
 | M04 | 双链路 endpoint/remote | 只有一路 | 两个 port 都在 | ⛔ |
 | M05 | cmdline/desc 选择 | 见 A04 | **已确认**：`/proc/cmdline` 里我们的 271 字符串出现两次（header+DT）+ `force_fps=120`，ABL 串追加在后；`simplefb_driver_init` 被 blacklist、`force_fps` 生效 | ⛔ |
-| M06 | DTBO/panel-id 选择 | 用错面板 overlay | 原厂由 ABL 按 panel-id 选；我们没实现 | ⚠️ |
+| M06 | DTBO/panel-id 选择 | 用错 overlay | **已确认**：cmdline 里 `androidboot.dtbo_idx=15` 且 desc 命中 `m81_36_02_0a`，选择正确 | ⛔ |
 | M07 | bootloader splash 与内核接管的交接 | 接管瞬间黑 | 观察"灰闪一下"的时刻；`fbcon` 绑定 | ⚠️ |
 | M08 | regulators always-on 与内核管理的差异 | 掉电时序 | 对照原厂 DT 的 always-on/管理方式 | ⚠️ |
 | M09 | backlight 绑定 | 背光不亮 | 已亮 | ⛔ |
-| M10 | dsi1 时钟父 | 见 E10 | — | ⚠️ |
+| M10 | dsi1 时钟父 | 见 E10 | 已核对，与原厂一致 | ⛔ |
 
 ### N. 驱动 / 框架（8）
 
@@ -260,7 +260,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | O01 | video mode 下 DCS 读的失败语义 | 误判"面板没醒" | **已排除**：`0x0a` 读稳定返回（`0x9e`/`0x0e`），且与写入引起的状态变化一致 | ⛔ |
 | O02 | 寄存器窗口太短（原厂只到 0x5c） | 看不到 DSC/lane 块 | 6d240ec 已做全窗口 dump | ⛔ |
 | O03 | 照片判读（黑/灰闪/条纹） | 结论方向错 | 每次录像 | ⚠️ |
-| O04 | `0x9e` 位解释 | 见 A06 | 换判据 | ⚠️ |
+| O04 | `0x9e` 位解释 | 误读 | 同 A06：不再用 `0x9e` 判定面板状态 | ⛔（判据作废） |
 | O05 | pstore 只保留一轮 | 读数丢失 | 见附录 A | ⬜ |
 | O06 | 模式不可比 | 见 A03 | 同模式 | ⚠️ |
 | O07 | 一次改多个变量 | 结论污染 | 纪律 | ⛔ |
@@ -270,7 +270,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
-| P01 | 面板型号/批次（TM `m81_36_02_0a` vs CSOT） | init/DSC 不通用 | `mi,panel-id`、ABL 选 overlay | ⚠️ |
+| P01 | 面板型号/批次 | init/DSC 不通用 | **已确认**：cmdline + DTBO 一致指向 `m81_36_02_0a`（天马） | ⛔ |
 | P02 | 排线/连接器接触 | 部分 lane 失效 | 重插、看 error 计数 | ⬜ |
 | P03 | DDIC 固件差异（同型号不同批次） | 某些命令不认 | 与另一块同型号面板对比 | ❓ |
 | P04 | 另一台同型号设备对照 | 排除个例 | 需要设备 | ❓ |
