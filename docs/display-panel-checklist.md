@@ -105,7 +105,7 @@ PPS 字节规范；H02 PPS A/B 无差别；E07 PHY 比对；I15/行为三图无�
 | B01 | vddio 1.8 V 未上/偏低 | DDIC 数字域不工作，命令会失败 | 读 `regulator_summary`；面板能回 DCS 即已工作 | ⛔（DCS 有响应） |
 | B02 | dvddbuck/dvddldo 1.3 V 未上 | 同上 | 同上 | ⛔ |
 | B03 | 三路供电的**顺序与间隔**不符合 DDIC 要求 | 上电顺序错会导致内部状态机锁死（黑屏但能应答） | 对照原厂 DT 的 `panel-supply-entries` 顺序与延时；在 prepare 里逐路上电并打印时间 | ⬜ |
-| B04 | VSP/VSN（±5.5 V）的归属与使能顺序不同 | 源极驱动模拟电源；顺序错会出「背光亮、屏不亮」 | 原厂：`display_panel_vsp/vsn` 是面板供电（`soc:qcom,dsi-display-primary-vsp/vsn`），随 panel prepare 使能；主线：挂在 ktz8866 背光上由背光驱动使能 → 与 panel init 的先后可能不同 | ⚠️（新证据） |
+| B04 | **VSP/VSN（±5.5 V 面板偏压）的归属与使能** | 没有偏压 → 源极驱动无电，面板既不显示也不报"有信号"；而命令通路（1.8 V 逻辑）和背光（LED）都正常 | **当前头号嫌疑**：主线下 VSP/VSN 由 ktz8866（`vddpos-supply`/`vddneg-supply` + `kinetic,enable-lcd-bias`，写 `0x09=0x9F`）负责，与厂商"`dsi-display-primary-vsp/vsn` 由显示驱动使能"的归属不同。需查 regulator 状态与 ktz8866 probe 日志 | ⚠️（本轮唯一动作） |
 | B05 | bulk enable 的先后顺序 | 同 B03 | 读两份驱动的 `pipa_supply_names[]` 顺序，与 DT 顺序比 | ⚠️ |
 | B06 | 供电电流不足/load switch 压降 | 面板上电瞬间掉压 | 万用表/示波器（需要拆机条件） | ❓ |
 | B07 | 从未逐条记录实际电压 | 无法证明供电正常 | 原厂实测：pm8350c_l2=1800 mV、dvdd_buck=1300、dvdd_ldo=1300、vsp=5500、vsn=5500，全部 use=1 | ⛔ |
@@ -786,3 +786,18 @@ scanline samples=8 first=4 last=5 advancing=yes
 
 用同一内核再跑一张 `no_dsc=1`（未压缩载荷）即可区分：
 若 `signal` 变成"有效"，说明 DCS/DSC 载荷是元凶；若仍是 `0x80`，则指向电气层。
+
+### 2026-10-28 第十九轮：`no_dsc` 仍是 `signal=0x80` —— 转向面板偏压
+
+`no_dsc` 图读数与默认完全一样（`power=0x9e`、`signal=0x80`、`status=0x00`）。
+注意：这张图**并不能**干净地区分"载荷"与"电气"——面板 init 里已按 DSC 配置，
+未压缩数据本来就不该被接受，所以阴性结果不具判别力（这条是我的设计失误）。
+
+由此剩下的、且**从没验证过**的硬件层是 **VSP/VSN 面板偏压（±5.5 V）**：
+
+- 厂商：`soc:qcom,dsi-display-primary-vsp/vsn` 由显示驱动使能；
+- 主线：由 ktz8866 负责（`vddpos-supply`/`vddneg-supply` + `kinetic,enable-lcd-bias`，
+  驱动里写 `LCD_BIAS_CFG1(0x09) = 0x9F`）。
+
+若这两路偏压没起来，源极驱动无电 → **面板在任何码流配置下都不会显示、也不会报"有信号"**，
+而 DCS 命令（1.8 V 逻辑）与背光（LED 升压）都照常工作——这与我们观测到的**全部**现象吻合。
