@@ -104,6 +104,9 @@ PPS 字节规范；H02 PPS A/B 无差别；E07 PHY 比对；I15/行为三图无�
    `panel-status-value = <0x9d>` 被 MIUI 的 ESD 检查（`mi_dsi_panel_esd_irq_ctrl_locked`
    在亮/灭屏时都会被启用）用作判据，若面板常态不是 `0x9d`，原厂应持续报 ESD
    异常并做恢复；原厂工作正常 ⇒ **`0x9d` 就是健康态**，我们的 `0x9e` 确实异常。
+   实测佐证（2026-10-28 原厂侧）：`mi_esd_err_irq_handle` / `_sde_connector_report_panel_dead`
+   只在**亮屏恢复的瞬间**报过一次 `esd check failed`（随后 `ESD recovery already pending`，
+   属于恢复过程中的瞬态），稳态显示期间没有任何 ESD 报错 ⇒ 健康态确为 `0x9d`。
    该替代只验证了 `0x0a`，**`0x0e` 的位语义仍未验证**；
 2. 有**逻辑分析仪/示波器**能抓 DSI HS 线，确认我们发出的视频包在物理层是否有效；
 3. 出现**新的、独立的证据**（例如另一台同型号设备上同样镜像的表现、或厂商侧新的可读数据源）。
