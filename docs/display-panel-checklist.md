@@ -193,7 +193,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | I12 | CSOT/TM desc 混用 | 用错 init | **已排除**：`panel desc: tianma … cmdline_match=1` | ⛔ |
 | I13 | **面板是否在扫我们的帧**（DCS `0x45`） | 黑屏与"锁流"的分水岭 | 首测：8 次采样只得到 9 和 11 两个值，判为**弱证据**（多数 DDIC 的扫描计数自由运行，采样又与 vsync 同步）。**改用"往 fb 里写随机数据看屏幕是否出噪点"来判管线是否真的把内容送到面板** | ⚠️（判据待加强） |
 | I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **已重测并确认**：`intf_2`（0x36000）`+000=00000001`（TIMING_ENGINE_EN=1）、`+0ac` 14813→14933（**+120 帧 / 2 s = 60 fps**）、`+0b0` 行计数在帧内回绕。DPU→INTF2 确实在出帧 | ⛔ |
-| I15 | **厂商在 enable 时额外下发一批 MIUI 特性命令**（我们完全没发） | 其中任何一条都可能是"面板不显示"的开关 | 原厂动态调试实采（60 fps）：`set 51 backlight 65295` → `DSI_CMD_SET_ON` → `flat_mode=1` → `post_enable` → `pen_setting refresh_rate[60]` → `cabc=0` → `dimming=1` → `disable insert black`；另外每次背光变化前后都写 `insert black`（DT 的 `0x22 0x00` / `0x13 0x00`）。我们的驱动只发 init + PPS + display-on | ⬜（新，优先级取决于 `advancing`） |
+| I15 | **厂商在 enable 时额外下发一批 MIUI 命令**（我们完全没发） | 其中 **`13 00`（disable insert black）** 若被 bootloader 留着，面板会一直显示黑，而码流完全正常 | DTBO 里全是明文（A 级），可直接 poke：<br>`ff 10 13 00` = disable insert black��`ff 10 55 00` = cabc off；`ff 27 d1 28 ff 10 53 2c` = dimming on；`ff 10 51 0f ff` = 亮度满；`ff 10 22 00` = insert black | ⬜（**最高优先级，零构建**） |
 
 ### J. 时序与时钟（8）
 
@@ -215,7 +215,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | K01 | DPU 是否在出帧 | 黑屏 | **已实测**：`bundle` 的 `intf_1` 帧计数 121 帧 / 2 s = 60.5 fps | ⛔ |
 | K02 | CTL_TOP/CTL 配置与原厂不同 | 路由/混合错 | 同模式对照 `CTL_TOP=28000300`、`+0x20=00033000`、`+0x24=1` | ⚠️ |
 | K03 | INTF 可编程预取（bit31） | 取数时机 | 已置位 | ⛔ |
-| K04 | 2LM/2DSC/2INTF 拓扑与 PP 绑定 | 数据通路接错 → INTF 读到空 PP | **新疑问**：`intf_2 +25c`（INTF_MUX）= `000f0001`，低 4 位=1（指向 **PP1**），而 `dsc_0_ctl +000`（DSC_CTL muxN）=0（指向 **PP0**）；同时 `intf_1`、`intf_2` 两个计数器都以 60 fps 在跑。需要确认"哪条 INTF 由哪个 DSC/PP 喂"，以及 `dsc_1_*` 的配置 | ⚠️（待 dsc_1 与两次采样） |
+| K04 | 2LM/2DSC/2INTF 拓扑与 PP 绑定 | 数据通路接错 → INTF 读到空 PP | **已澄清，绑定自洽**：`intf_1 +25c` 低 4 位=0（→PP0）、`dsc_0_ctl +000`=0（PP0）；`intf_2 +25c` 低 4 位=1（→PP1）、`dsc_1_ctl +000`=1（PP1）。两个 DSC 的 picture/slice/RC 寄存器与 PPS 逐值相同（`0x10120258/0b400708/001401c2/01e10200/20/000601bc/…/2000`） | ⛔ |
 | K05 | SSPP 取数/格式/UBWC | 无数据 | UBWC 错误 0、无 underrun | ⛔ |
 | K06 | UBWC HBB 编码（7.0 改了） | 花屏 | 线性 fb 不走该分支 | ⛔ |
 | K07 | CSC/色彩空间 | 黑或偏色 | 读 CSC 配置 | ⬜ |
@@ -660,3 +660,17 @@ PPS 逐字段解码（全部落在 DSC 1.1 的规范值上，没有异常）：
 于是出现一个必须澄清的问题：**哪条 INTF 由哪个 DSC/PP 喂**。
 若 INTF2 读 PP1、而我们的 DSC0 写在 PP0，INTF2 读到的就是没被填充的 ping-pong，
 画面当然全黑——这与"DSI/PPS/时序全对、帧计数正常"完全自洽。
+
+### 2026-10-28 第十四轮：绑定澄清 + "insert black" 成为头号嫌疑
+
+- 路由自洽：`intf_1`↔PP0↔`dsc_0`，`intf_2`↔PP1↔`dsc_1`；两个 DSC 的编码器寄存器
+  与 PPS 逐值相同（picture 1800×2880、slice 450×20、chunk 450、RC 全表）。
+  ⇒ **DPU 侧从平面到 DSC 编码器全部自洽**，K04 结案。
+- 由此只剩最后一个未被检验的维度：**面板侧的显示开关**。
+  DTBO 里有一组 MIUI 命令（A 级明文），厂商在 enable 之后都会发：
+  `ff 10 13 00`（disable insert black）、`ff 10 55 00`（cabc off）、
+  `ff 27 d1 28 ff 10 53 2c`（dimming on）、`ff 10 51 0f ff`（亮度满）、
+  `ff 10 22 00`（insert black，背光变化时用）。
+  我们一条都没发。
+- 头号假设：**bootloader/上电把面板留在 "insert black" 状态**，
+  于是码流、PPS、时序全对，面板照样显示纯黑。`13 00` 能否点亮，一次 poke 即知。
