@@ -105,7 +105,7 @@ PPS 字节规范；H02 PPS A/B 无差别；E07 PHY 比对；I15/行为三图无�
 | B01 | vddio 1.8 V 未上/偏低 | DDIC 数字域不工作，命令会失败 | 读 `regulator_summary`；面板能回 DCS 即已工作 | ⛔（DCS 有响应） |
 | B02 | dvddbuck/dvddldo 1.3 V 未上 | 同上 | 同上 | ⛔ |
 | B03 | 三路供电的**顺序与间隔**不符合 DDIC 要求 | 上电顺序错会导致内部状态机锁死（黑屏但能应答） | 对照原厂 DT 的 `panel-supply-entries` 顺序与延时；在 prepare 里逐路上电并打印时间 | ⬜ |
-| B04 | **VSP/VSN（±5.5 V 面板偏压）的归属与使能** | 没有偏压 → 源极驱动无电，面板既不显示也不报"有信号"；而命令通路（1.8 V 逻辑）和背光（LED）都正常 | **当前头号嫌疑**：主线下 VSP/VSN 由 ktz8866（`vddpos-supply`/`vddneg-supply` + `kinetic,enable-lcd-bias`，写 `0x09=0x9F`）负责，与厂商"`dsi-display-primary-vsp/vsn` 由显示驱动使能"的归属不同。需查 regulator 状态与 ktz8866 probe 日志 | ⚠️（本轮唯一动作） |
+| B04 | VSP/VSN（±5.5 V 面板偏压）的归属与使能 | 没有偏压 → 面板既不显示也不报"有信号" | **已排除**：`backlight_gpio_vsp`/`vsn` 均 `enabled`、5500mV；`display_panel_dvdd_buck`/`ldo` 也 enabled。ktz8866 已使能 `enable-lcd-bias`（写 `0x09=0x9F`） | ⛔（电源层无问题） |
 | B05 | bulk enable 的先后顺序 | 同 B03 | 读两份驱动的 `pipa_supply_names[]` 顺序，与 DT 顺序比 | ⚠️ |
 | B06 | 供电电流不足/load switch 压降 | 面板上电瞬间掉压 | 万用表/示波器（需要拆机条件） | ❓ |
 | B07 | 从未逐条记录实际电压 | 无法证明供电正常 | 原厂实测：pm8350c_l2=1800 mV、dvdd_buck=1300、dvdd_ldo=1300、vsp=5500、vsn=5500，全部 use=1 | ⛔ |
@@ -801,3 +801,23 @@ scanline samples=8 first=4 last=5 advancing=yes
 
 若这两路偏压没起来，源极驱动无电 → **面板在任何码流配置下都不会显示、也不会报"有信号"**，
 而 DCS 命令（1.8 V 逻辑）与背光（LED 升压）都照常工作——这与我们观测到的**全部**现象吻合。
+
+### 2026-10-28 第二十轮：偏压正常，状态机命令无效 → 停止参数实验
+
+- 面板偏压 **正常**：`backlight_gpio_vsp/vsn` enabled @5500mV，DVDD enabled（B04 关闭）。
+- `0x13`（normal）、`0x11`（sleep out）、`0x29`（display on）连续下发后：
+  `power` 仍 `0x9e`、`signal` 仍 `0x80`、`display=0x00`，**毫无变化**。
+- 原厂 DT 声明的正常值 `0x9d` 达不到。
+
+⇒ 按第十八轮定下的**硬性停止条件**：**不再做任何参数/寄存器实验**。
+
+至此能证明"正确"的层：DSI 控制器与 lane timing、DSI PHY（20/23）、DPU 路由与出帧
+（60 fps）、DSC 编码器与 PPS、init 字节、面板供电与背光、命令通路（读写均有效）、
+HS 链路确实在传数据（`LANE_STATUS` 在 `1f00`/`1f1f` 间切换）。
+
+**唯一还没排除的两条**：
+1. **面板自己的状态机/解码**（DDIC 内部，寄存器读不到深层原因）；
+2. **电气层**（HS 眼图/终端匹配，寄存器无法反映）。
+
+两条都需要外部手段：逻辑分析仪抓 DSI 线，或在原厂系统上取一份**健康态的 `0x0a`/`0x0e`
+读数**用来验证我们对位含义的解释（目前 `0x9d` 只是 DT 里的声明值）。
