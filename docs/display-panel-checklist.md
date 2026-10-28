@@ -43,18 +43,20 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 步 | 目标条目 | 手段 | 状态 | 证据位置 |
 |---|---|---|---|---|
-| 0 | F11（CMD_DMA 广播位） | 原厂两条链路 `0x3c` 对照 → 改默认值 | ✅ 已修（`cec2a7b5`），镜像实测 `CMD_DMA_CTRL=14000000` | §8 第一/五轮 |
-| 1 | J01 / J02（60 Hz 真值） | 原厂边滑动边抓 `dump_info`/`clk_summary` | ✅ 完成（`TOTAL=186301bf` 预测命中） | §8 第三/四轮 |
-| 1.5 | 基线与 HEAD 源码差异 | `git diff 308065ef..HEAD` | ✅ 完成（5 文件，DPU 预取已回退） | `docs/diff-308065ef-vs-head.md` |
-| 2 | A04 / M05 / I01 / I02 / F06 | 进 shell 后看 probe 日志 + poke | ✅ 全部关闭：天马 desc、init 成功、写通路有效 | §8 第五/六轮 |
-| 3 | I06 / R4（`0x9e` 判据） | 切页后发真 DCS `0x38` | ✅ 判据作废，不再追 | §8 第六轮 |
-| 4 | **I13（0x45 扫描行）** | 需要一次构建：把 `0x45` 加进 `dcs` 读 | ⬜ **唯一还缺的判据** | — |
-| 5 | H01 / H04 / H05（PPS 实际内容） | 原厂 `dynamic_debug` + 熄屏/亮屏 | ⬜ 待做 | — |
-| 6 | H02（PPS `pic_width`） | 内核 `pps:` 第 8/9 字节 | ⬜ 待做（等 0x45 结果再定优先级） | — |
+| 0 | F11（CMD_DMA 广播位） | 原厂两条链路对照 → 改默认值 | ✅ 已修并实测 | §8 第一/五轮 |
+| 1 | J01 / J02（60 Hz 真值） | 原厂边滑动边抓 | ✅ 完成，`TOTAL=186301bf` 命中 | §8 第三/四轮 |
+| 1.5 | 基线与 HEAD 源码差异 | `git diff 308065ef..HEAD` | ✅ 完成，DPU 预取已回退 | `docs/diff-308065ef-vs-head.md` |
+| 2 | A04 / M05 / I01 / I02 / F06 / O01 | 进 shell 后看日志 + poke | ✅ 全部关闭 | §8 第五/六轮 |
+| 3 | I06 / R4（`0x9e` 判据） | 切页后发真 DCS `0x38` | ✅ 判据作废 | §8 第六轮 |
+| 4 | DSI 控制器层（F01/F02/F03/F09/G03/E01/F10/J02） | 60 Hz 下与原厂逐值比 | ✅ 逐值一致 | §8 第七轮 |
+| 5 | I14（DPU 出帧） | `bundle` 的 `intf_1` 帧计数 | ✅ 121 帧/2 s = 60.5 fps | §8 第八轮 |
+| 6 | **I13 / H01 / H02** | `dcs` 加 `0x45`、PPS 打印、`pps_per_link_pic_width` 参数 | 🔧 **代码已提交（`bf394ce5`），等 CI 产物** | `bf394ce5` |
+| 7 | H04（PPS 逐字段与 CAF 对照） | 拿到 PPS 字节后离线复算 | ⬜ 等第 6 步产物 | — |
 
-**当前唯一动作**：boot **B**（`boot-702b079d-B.img`，默认 60 Hz）→ 抓
-`dsi0/regs`（`TOTAL` 必须是 `186301bf`）→ 与原厂 60 Hz dump 逐字节比 →
-从 `bundle` 取 INTF 帧计数。**在拿到这三样之前不改任何代码。**
+**当前唯一动作**：推送 `liuqin-7.0`（含 `bf394ce5`）触发 CI → 产物进 `ci/` 后
+装两张图（默认 / `pps_per_link_pic_width=1`）→ 每张只记三样：
+`dcs` 的 `advancing`、`PPS-pre:` 128 字节、屏幕现象。
+**在拿到 `advancing` 之前不改任何代码。**
 
 ## 1. 结构性前提（这几条不解决，后面所有"排除"都会被打回）
 
@@ -110,7 +112,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
-| E01 | lane 数/占用不对 | 数据缺失 | `LANE_STATUS`、`ACTIVE_H` | ⛔（与原厂一致） |
+| E01 | lane 数/占用不对 | 数据缺失 | `ACTIVE_H/V`、`LANE_CTRL=01000000` 与原厂一致 | ⛔（同模式实测） |
 | E02 | lane 极性/顺序（p/n 反、lane swap） | 链路起不来或误码 | 逐 lane 交换实验；读 error 计数 | ⬜ |
 | E03 | PLL/bit clock 频率 | 若不同会改变 LP/HS 裕量 | **实测一致**：原厂 `clk_summary` 里 `disp_cc_mdss_pclk0_clk=167838720`、`byte0_clk=125879040` → bitclk=1,007,032,320；与我方 120 fps 模式按 `dsi_get_pclk_rate()` 算出的三项逐位相同。另 `dsi1_phy_pll_out_*` 的 enable count=0，双链路确实共用 dsi0 的 PLL | ⛔（运行时实测） |
 | E04 | PHY 14 项 timing 与原厂差 5 项 | 同上 | `msm.vendor_phy_timing=1` 已试，无变化 | ⛔（试过，不改变现象） |
@@ -125,16 +127,16 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
-| F01 | video/cmd mode 选错 | 全黑 | `CTRL`/`VID_CFG0` 与原厂一致 | ⛔ |
-| F02 | burst vs 非 burst | 打包方式不同 | `VID_CFG0=02009230` 一致 | ⛔ |
-| F03 | BLLP power/EOF 模式 | 低功耗间隙行为不同 | 同上（已含在 VID_CFG0） | ⛔ |
+| F01 | video/cmd mode 选错 | 全黑 | **同模式逐值一致**：60 Hz 下 `CTRL=000001f3`、`VID_CFG0=02009230`，与原厂完全相同 | ⛔（同模式实测） |
+| F02 | burst vs 非 burst | 打包方式不同 | `VID_CFG0=02009230` 与原厂一致 | ⛔（同模式实测） |
+| F03 | BLLP power/EOF 模式 | 低功耗间隙行为不同 | 已含在 `VID_CFG0`，与原厂一致 | ⛔（同模式实测） |
 | F04 | bonded 双链路同步（master/slave/sync/broadcast） | 两半不同步 → 无画面 | 原厂还有 `cmd-sync-wait-broadcast`；主线靠 `msm_dsi_manager_cmd_xfer` 双 commit | ⚠️ |
 | F05 | 另一条链路的 DDIC 是否也收到命令 | 只有一路被初始化 → 黑/半屏 | 写经 dsi[1] 生效 ⇒ 至少一条链路正常；另一路是否也需要由 C 图（`msm.dsi_cmd_broadcast=1`）对照。原厂两条链路只有 `CMD_DMA_CTRL` 差 master 位 | ⚠️ |
 | F06 | 命令固定走 dsi[1] | 若主链路才是 DDIC，命令发不出去 | **已排除**：poke `0x10`/`0x11` 改变了面板 power 状态，说明经 dsi[1] 的写入确实到达 DDIC | ⛔ |
 | F07 | 视频流期间命令的 BLLP 窗口不足 | 长命令被丢弃 | 看 `dsi_host` 的 "cmd cannot fit into BLLP" 日志 | ⬜ |
 | F08 | virtual channel/stream 不一致 | 收不到 | DT 与原厂都是 0/0 | ⛔ |
-| F09 | ACTIVE_H（压缩后 300）不对 | 有效区错 | `0x24` 登记值与原厂一致 | ⛔ |
-| F10 | DSI 错误状态被忽略 | 误码/超时无感 | 读 `STATUS0`/`LANE_STATUS`；`FIFO=1010` 的误报已判 | ⛔（已知误报） |
+| F09 | ACTIVE_H（压缩后） | 有效区错 | `015c0030` 与原厂一致 | ⛔（同模式实测） |
+| F10 | DSI 错误状态被忽略 | 误码/超时无感 | `STATUS0` 只差 bit13（主线 XML 未定义，疑厂商位）；`FIFO`/`LANE_STATUS` 的差异是采样时刻的 FIFO 空/停态位 | ⛔（可解释） |
 | F11 | **`CMD_DMA_CTRL` 在两条链路上都写了 vendor 的 master 值** | 两条都置 broadcast+master，与主线"双 DMA 双 trigger"互斥 → 命令重复/交错 | **已修**（`cec2a7b5`，默认回上游 `0x14000000`）；镜像实测 `CMD_DMA_CTRL=14000000`。对画面是否有效仍未判定（不是这个缺陷的判断范围） | ⛔（缺陷关闭，值已验证） |
 
 ### G. DPU 侧 DSC 编码（8）
@@ -143,7 +145,7 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 |---|---|---|---|---|
 | G01 | DSC 使能/配置顺序（PPS→compression→EN） | 编码器与面板不同步 | 抓 DPU/DSI 侧寄存器写入顺序 | ⬜ |
 | G02 | slice_count/width/height 与 DPU 不匹配 | 编码出错误 slice | 读 DPU DSC 块的 slice 配置（`0x80000` 块） | ⚠️ |
-| G03 | chunk / pkt_per_line | 打包错 | `DSC_MODE_CTRL=0x03840b01` 与原厂一致 | ⛔ |
+| G03 | chunk / pkt_per_line | 打包错 | `DSC_CTRL=03840b01` 与原厂一致（WC=900、1 包/行） | ⛔（同模式实测） |
 | G04 | bpp/bpc/block-pred | 解码错 | DT 与原厂一致 | ⛔ |
 | G05 | DSC 版本/SCR | 解码器拒绝 | 1.1/0，原厂同 | ⛔ |
 | G06 | 每 encoder 的 DSC 实例数（2 LM/2 DSC） | 拓扑错 | 逐块读 CTL/PP 绑定 | ⚠️ |
@@ -154,8 +156,8 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
-| H01 | **PPS 128 字节从未与厂商实际发送值对照** | 面板按错的参数解码 → 黑 | 原厂开 dynamic debug 抓 PPS；或抓我们内核打印的 `pps:` | ⬜ |
-| H02 | `pic_width` 写成 1800（每链路只送 2×450） | 解码端算出 4 slice/行，永远对不上 | 看 PPS 第 8、9 字节 = `07 08` 还是 `03 84` | ⚠️（代码推断成立） |
+| H01 | 我们发出的 128 字节 PPS 与厂商是否一致 | 面板按错参数解码 → 黑 | PPS 已加十六进制打印（`bf394ce5` 的 `PPS-pre:`），并与 CAF `sde_dsc_helper.c` 的算法离线对照 | ⬜（代码就绪，待构建） |
+| H02 | `pic_width` 写成 1800（每链路只送 2×450） | 解码端算出 4 slice/行 | 已加 `panel_novatek_nt36532.pps_per_link_pic_width=1`（只改 PPS 的 pic_width=900，不动 DPU 的 split 配置）；同一镜像可 A/B | ⬜（代码就绪，待构建） |
 | H03 | `slice_chunk_size` 为 0 或不是 450 | 包长错 | 内核打印 `chunk`；寄存器 WC=900 已证 | ⛔ |
 | H04 | RC 字段（initial_dec_delay/scale/bpg/offsets）与原厂不同 | 解码率控错，画面乱或黑 | 与 CAF `sde_dsc_helper.c` 逐字段比；最终要与厂商 PPS 比 | ⚠️ |
 | H05 | PPS 发送时机（init 之后、视频流之前） | 面板未准备好 | 与原厂 ON→PPS 顺序对照 | ⛔（顺序同） |
@@ -181,14 +183,15 @@ O01（video mode 下 DCS 读可靠）、F11（CMD_DMA 广播缺陷已修且值�
 | I10 | 复位后 PPS 是否要重发 | 重连后参数丢失 | 我们每次 prepare 都发 | ⛔ |
 | I11 | sleep in/out 的 120 ms | 面板没醒 | 已足够；可用 poke 验证 | ⚠️ |
 | I12 | **CSOT/TM desc 混用** | 194 包 init 用在 TM 上 | 见 A04 | ⚠️ |
-| I13 | **面板是否在扫我们的帧**（DCS `0x45` 推进） | 黑屏与"锁流"的分水岭 | 旧驱动 `dcs` 节点只读固定 4 个寄存器，读不了 `0x45` ⇒ **需要一次构建**把它加进 read 输出（或独立 `scanline` 节点），16 次采样给 first/last/advancing | ⬜（唯一还需要新构建的判据） |
+| I13 | **面板是否在扫我们的帧**（DCS `0x45` 推进） | 黑屏与"锁流"的分水岭 | 读数已加进 `dcs` 节点（`bf394ce5`）：8 次采样给 `first/last/advancing`；**待构建实测** | ⬜（代码就绪） |
+| I14 | DPU 是否真的在出帧（本镜像） | 面板收不到有效流 | **已实测**：`intf_1` 的 `INTF_FRAME_COUNT` 2 s 内 2682→2803 = **121 帧 ≈ 60.5 fps**；`LINE_COUNT` 在帧内回绕。DPU→INTF→DSI 整条链在 60 Hz 下真实出帧 | ⛔ |
 
 ### J. 时序与时钟（8）
 
 | 编号 | 可能的问题 | 因果 | 怎么打勾 | 现状 |
 |---|---|---|---|---|
 | J01 | 面板是否接受各刷新率的 porch 变化 | 若只认 init 里那一组，改帧率就会黑 | 原厂 kernel 的 mode 表就是 120/144/90/60/50/48/30 七档（`dumpsys display`），且当前跑到 60 fps 正常显示 ⇒ 同一套 init 支持 porch 变化 | ⛔ |
-| J02 | htotal/vtotal 与运行模式的关系 | 模式相关寄存器天然不同 | **已抓到原厂 60 Hz 真值**：`900(46\|100\|2)x2880(214\|3148\|2)@60fps 1007032320 Hz`，即 hfp=100/vfp=**3148**（120 Hz 是 vfp=26）。换算：DSI htotal=300+148=448、vtotal=6244 → `TOTAL` 应为 `0x186301bf`。可见 60 Hz 就是"120 Hz 的 vfp 翻倍"，bitclk 不变 | ⛔ |
+| J02 | htotal/vtotal 与运行模式 | 模式相关寄存器天然不同 | **同模式命中**：镜像 B（`force_fps=0`）实测 `TOTAL=186301bf`，与原厂 60 Hz 逐字节相同 | ⛔ |
 | J03 | bit clock 不同 | PHY 裕量 | **一致**：785,245 kHz 是 DRM 的 mode clock（未压缩整幅），msm 经 `dsi_adjust_pclk_for_compression()` 折半+压缩后得到 167,838,720/125,879,040/1,007,032,320，与原厂一致 | ⛔ |
 | J04 | `dsi_adjust_pclk_for_compression` 的算法 | 时钟算错 | 读我们的 byte/pixel clk 与原厂比 | ⬜ |
 | J05 | mdp clk 375 MHz | 带宽 | 与原厂一致 | ⛔ |
@@ -478,3 +481,79 @@ broadcast 默认关闭）。**能进 shell** —— 闸门通过。
 推论：`power` 的 bit1（"idle"）在 `0x9e`/`0x0e` 两种状态下恒为 1，DCS 清不掉 ⇒
 它更可能是 **DDIC 对"未锁到有效码流"的状态上报**，而不是可由 0x38 清除的 idle 模式。
 下一轮重点转为"同模式逐字节对照 + 面板是否在扫我们的帧"。
+
+### 2026-10-28 第七轮：60 Hz 同模式对照成立（DSI 控制器层结案）
+
+镜像 B（`force_fps=0`）实测：`panel desc: tianma … force_fps=0`、**`TOTAL=186301bf`**。
+
+与原厂 60 Hz dump 逐值比：
+
+| 寄存器 | 我们 | 原厂 | 结论 |
+|---|---|---|---|
+| `CTRL` / `VID_CFG0` / `ACTIVE_H` / `ACTIVE_V` / `ACTIVE_HSYNC` | 一致 | 一致 | ⛔ |
+| `TOTAL` | `186301bf` | `186301bf` | ⛔ **同模式命中** |
+| `DSC_CTRL` | `03840b01` | `03840b01` | ⛔ |
+| `CMD_DMA_CTRL` | `14000000` | `d4000000`(master) | 我们的修法（双 DMA 双 trigger 下不能开广播） |
+| `LANE_CTRL` | `01000000` | `01000000` | ⛔ |
+| `STATUS0` | `00000008` | `00002008` | 差 bit13，主线 XML 未定义该位 |
+| `FIFO_STATUS` | `11111210` | `00001010` | 多出的 bit16/20/24/28 是四条 lane 的 HS FIFO empty，属采样时刻状态 |
+| `LANE_STATUS` | `00001f0f` | `00001f1f` | 差 CLKLN 停态位，同样与采样时刻/连续时钟策略有关 |
+
+⇒ **DSI 控制器这一层在 60 Hz 下已经逐值对齐**，不再是嫌疑。
+剩余待取：DPU 是否在出帧（`INTF_FRAME_COUNT`，`bundle` 的 `intf_0` 窗口 +0x0ac/+0x0b0），
+以及面板侧是否锁流（`0x45`，需一次构建）。
+
+**窗口名更正**：`dpu_diag_wins[]`（`dpu_kms.c:305-325`）里的名字是
+`sspp_vig0 / ctl_0 / ctl_1 / intf_1 / intf_2 / lm_0 / dspp_0 / pp_0..3 /
+dsc_0_top / dsc_0_enc / dsc_1_enc / dsc_0_ctl / dsc_1_ctl / dsc_2_top / dsc_2_enc`。
+没有 `intf_0`。而且 **DPU 的 DSC 窗口这次是可读的**（`dsc_0_*`），
+之前"DPU DSC 编码器抓不到"的结论只对 vendor 的 `sde_off` 成立，对我们自己的
+`bundle` 不成立——这是补 PPS/编码器对照的新入口。
+
+### 2026-10-28 第八轮：DPU 确实在出帧（I14 关闭）
+
+`bundle` 的 `intf_1`（0x35000）窗口：
+
+| 采样 | `+0a0`（第 4 字 = FRAME_COUNT） | `+0b0`（第 1 字 = LINE_COUNT） |
+|---|---|---|
+| pass1 | `00000a7a` = 2682 | `000017ba` = 6074 |
+| pass2（+2 s） | `00000af3` = 2803 | `0000089b` = 2203 |
+
+增量 **121 帧 / 2 s = 60.5 fps**，与 60 Hz 模式一致 ⇒ DPU 在真实出帧，
+INTF 在过帧，DSI 在送。**整条"内存→DPU→INTF→DSI"链路已在 60 Hz 下被测量证明在工作。**
+
+DPU 侧 DSC 编码器（`dsc_0_enc` 0x80100，第一次拿到）decode：
+
+| 寄存器 | 值 | 含义 |
+|---|---|---|
+| `+0x34` DSC_PICTURE_SIZE | `0b400708` | height 0x0b40=2880, width 0x0708=1800 |
+| `+0x38` DSC_SLICE_SIZE | `001401c2` | slice 450×20 |
+| `+0x3c` | `000001c2` | chunk = 450 |
+| `dsc_0_top +000` | `00000101` | common mode：EN + SPLIT_PANEL（bit8） |
+| `dsc_0_ctl +004` | `00001801` | 控制块 |
+
+`dpu_encoder_prep_dsc()`（`dpu_encoder.c:2021-2062`）以**整幅** 1800 作为
+`dsc->pic_width`，用 `DSC_MODE_SPLIT_PANEL` 让两个 DSC 各分 900；
+所以 DPU 侧 `pic_width=1800` 是主线设计如此，寄存器与代码自洽。
+⇒ **H02（PPS 的 pic_width 是 1800 还是 900）不能靠 DPU 寄存器判定**，
+只能靠 PPS 字节与"面板是否接受"来判。
+
+**剩余两个未知，且只剩两个**：
+
+1. **面板有没有在扫我们的帧**（DCS `0x45`）——旧驱动读不了，需要一次构建（I13）；
+2. **我们发出的 128 字节 PPS 与厂商实际发送的是否一致**（H01/H04）——需要把
+   PPS 打出来，并用 CAF 的 `sde_dsc_helper.c` 离线复算对照。
+
+### 2026-10-28 第九轮：为"锁流"和"PPS 字节"做准备（代码已提交）
+
+`bf394ce59719` 加了三样诊断（都默认惰性）：
+
+1. `dcs` 节点读 8 次 DCS `0x45`，输出 `first/last/advancing`——
+   这是"面板有没有锁我们的流"的唯一直接判据（I13）；
+2. `prepare()` 打印 `dsc-pre:` 字段与 128 字节 `PPS-pre:`（H01）；
+3. `panel_novatek_nt36532.pps_per_link_pic_width=1` 时，PPS 用 pic_width/2 打包
+   （1800→900），**不动 DPU 的 SPLIT_PANEL 编码配置**（H02 的 A/B）。
+
+已知可用的运行时开关（bootargs 已证明生效）：
+`force_fps=60|120|144`、`pps_per_link_pic_width=0|1`、`no_dsc=1`、
+`skip_panel_init=1`、`msm.dsi_cmd_broadcast=0|1`。
