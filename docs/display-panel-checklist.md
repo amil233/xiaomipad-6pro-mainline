@@ -269,6 +269,7 @@ FPC 上的测试点，或飞线到耦合电容靠 SoC 一侧。
 | E04 | PHY 14 项 timing 与原厂差 5 项 | 同上 | `msm.vendor_phy_timing=1` 已试，无变化 | ⛔（试过，不改变现象） |
 | E05 | clock lane 连续/LP 策略 | 原厂不 force HS | 已试 `CLOCK_NON_CONTINUOUS`，无变化 | ⛔ |
 | E06 | EOT 包（`rx-eot-ignore`/`tx-eot-append`） | 原厂置了这两个；不影响解码但影响错误检测 | 对照 `CTRL`/`VID_CFG0` 的 EOT 位 | ⛔ 已排除（status=0 无协议错误） |
+| E19 | **DSC 视频模式面板用了非连续时钟导致失锁**（skill 经验库点名的原因之一） | 时钟在 BLLP 停振，面板 PLL 失锁 → 全黑但寄存器全对 | 本移植唯一还没试的一条：desc 带 `MIPI_DSI_CLOCK_NON_CONTINUOUS`。已加 `panel_novatek_nt36532.cont_clock=1`（`57cf6a65`，attach 时清掉该标志），默认行为不变 | 🔧 代码已提交，待构建 A/B |
 | E07 | 驱动强度/预加重/PHY 配置 | HS 数据电平/时序不对 → 面板锁不上而命令仍可通 | **已比对并定性**：dsi0 PHY 23 个寄存器 20 个与原厂一致；差异只在 0x10/0x14/0x20。但**我们自己的 dsi0 与 dsi1 也不同**（0x61/0x30 vs 0xF1/0x34），说明这三处属"实例/PLL 相关"状态，不能拿原厂 dsi0 的值当正确答案。**寄存器层面到此穷尽** | ⛔（已穷尽，非可行方向） |
 | E08 | PHY 0.9 V 供电 | 完全无链路 | 能通信即排除 | ⛔ |
 | E09 | ULPS 误入 | 链路休眠 | 原厂 ULPS=N；主线未启用 | ⛔ |
@@ -1012,3 +1013,25 @@ ff 10 → 51 0f ff → 53 24 → 55 00 → ff 27 → d1 28 → ff 10 → 53 2c �
 
 **唯一剩下的解释**：我们发出去的 DSC 码流在物理层/内容上不被该 DDIC 接受，
 或该 DDIC 需要某种本机无法复现的初始化条件。⇒ 只剩 §0.7 的仪器路线（或第二台设备）。
+
+### 2026-10-29：按 skill 经验库做的最后一次 A/B
+
+skill `experience/display.md` 的「软件状态全部正常，屏幕却是黑的」一节列出了六条成因，
+本移植逐条核对后**五条已排除**（背光使能、TE/vblank、DSC 参数、有效宽度取整、供电步进），
+**只剩一条没试**：
+
+> DSC 视频模式面板用了**非连续时钟**导致失锁。
+
+我们的天马 desc 确实带 `MIPI_DSI_CLOCK_NON_CONTINUOUS`。已加
+`panel_novatek_nt36532.cont_clock=1`（commit `57cf6a65`）：attach 时清掉该标志，
+并打印 `diag: cont_clock=%d (mode_flags=0x…)`。
+
+同一份 skill 还确认了两件事，记录备查：
+
+1. **"接管时屏幕会黑一下"属于正常现象**（上游没有无缝接管，驱动移除 simpledrm 后复位硬件）
+   ⇒ 我们 Z 实验（无 DRM 也灰黑）的结论与之一致，不必再查；
+2. **"借用固件画面"路线**要求 bootloader 的扫描一直存活；本机 Z 实测交接后扫描停止
+   ⇒ 该路线在本机 `fastboot boot` 下不可用。
+
+预期的诚实判断：命中概率不高（厂商 DT 带 `bllp-power-mode`，暗示原厂也是非连续时钟），
+但这是**有据可依的最后一个实验**。
