@@ -116,8 +116,15 @@ v6.18 同样发生**——早先"v6.18 未合并 dwc3"的判断是错的：CI ru
 >    plane_state;` 照抄，但本树该变量是 `struct drm_plane_state
 >    *[STAGES_PER_PLANE]` 数组，写回已在被调函数 `dpu_plane_virtual_assign_resources`
 >    内按下标完成 → 修 `636b65781fcd`（只留 `return ret;` 错误传播）。
+> 3. run `41059030062`（28m，编译，首次 ubuntu-24.04-arm 原生构建）：`iris_platform_gen2.c`
+>    里 ours 的 `sm8450_data` 仍用旧字段名——v6.18 把
+>    `inst_fw_caps`→`inst_fw_caps_dec/_enc`、`input_config_params_*`→
+>    `dec_input_config_params_*`、`output_config_params`→`dec_output_config_params`
+>    （decode/encode 拆分）→ 修 `47048e710209`（映射到新字段；SM8450 只有解码，
+>    只设 `_dec` 变体；51 个字段已用脚本对合并后 struct 逐一核对）。
 > **教训**：冲突解决不能照抄任一侧代码，必须先核对合并后本树的声明类型
-> 与数据结构（数组 vs 标量、参数个数、ID 是否重复）。
+> 与数据结构（数组 vs 标量、参数个数、ID 是否重复、**结构体成员是否改名**）。
+> 此类错误的完整检测只能靠编译；每轮 CI 约暴露一个，修一个推一次。
 
 ## 4. v6.17 final 合并记录（第一级，已完成）
 
