@@ -18,7 +18,7 @@
 liuqin-6.17            c64b7fc85a8b  上游作者 yzddmr6 的分支（只读参照，勿改）
   └─ liuqin-6.17-tianma  c7e51cdf3290  上一级 + 本机天马面板文件（点亮，6.17-rc1 内核）
      └─ liuqin-6.17-stable  8ca4a94d4b52  上一级升级到 6.17 正式版（✅ 点亮）
-        └─ liuqin-6.18  25cca3bba20a  上一级升级到 6.18（开发分支，待 CI + 刷机）
+        └─ liuqin-6.18  47048e710209  上一级升级到 6.18（CI ✓，镜像已装配，待刷机）
 ```
 
 | 分支 | 直接父分支 | 合并的目标 tag | 状态 |
@@ -26,7 +26,7 @@ liuqin-6.17            c64b7fc85a8b  上游作者 yzddmr6 的分支（只读参�
 | `liuqin-6.17` | —（上游 yzddmr6） | — | 只读参照，勿改 |
 | `liuqin-6.17-tianma` | `liuqin-6.17` | —（+ 天马面板文件） | ✅ 点亮（6.17-rc1，`c7e51cdf3290`） |
 | `liuqin-6.17-stable` | `liuqin-6.17-tianma` | `v6.17`（`e5f0a698b34e`） | ✅ 点亮（`fc2fb59ef397`，2026-10-30 上机） |
-| `liuqin-6.18` | `liuqin-6.17-stable` | `v6.18`（`f7b88edb52c8`） | merge `25cca3bba20a` 已落盘，待推送 CI |
+| `liuqin-6.18` | `liuqin-6.17-stable` | `v6.18`（`f7b88edb52c8`） | ✓ CI 通过（run `41065191567`，tip `47048e710209`），镜像 `repack/618-boot/` 待刷机 |
 | `liuqin-6.19` | —（废路线，**不在链上**） | `v6.19-rc6` | CI 两次失败，弃 |
 
 workflow 触发分支列表在
@@ -61,7 +61,7 @@ v6.18 同样发生**——早先"v6.18 未合并 dwc3"的判断是错的：CI ru
 （预处理后 399 个 `&label` 引用全部可解析）。教训：**上游 API/结构变动
 不能凭印象判断，要用 `git grep <tag>` 实证**。
 
-## 3. v6.18 试验合并的冲突分析（合并已做过，尚未落盘）
+## 3. v6.18 试验合并的冲突分析（已落盘：`25cca3bba20a` + 4 个 CI 修复）
 
 `git merge v6.18`（FETCH_HEAD = `f7b88edb52c8dd01b7e576390d658ae6eef0e134`）
 在 `liuqin-6.17-tianma` 上做试验合并：**14 个冲突文件 / 21 个 hunk**，
@@ -161,5 +161,11 @@ v6.18 同样发生**——早先"v6.18 未合并 dwc3"的判断是错的：CI ru
 显示通路零回归。镜像 `repack/617s-boot/` 已记入 checklist §11 镜像表。
 
 **第二级已落盘**：在 `liuqin-6.17-stable` 之上合并 v6.18，merge commit
-`25cca3bba20a`（13 个冲突，详见 §3 的执行记录）。待推送 CI + 刷机验证：
-`git -C linux-sm8450-liuqin push GitHub liuqin-6.18`。
+`25cca3bba20a` + 4 个修复（`6ba4e603cf21` dwc3、`636b65781fcd` dpu_plane、
+`f637e004a84c` camss、`47048e710209` iris，详见 §3 的执行记录）。
+**CI 通过**：run `41065191567` ✓ 30m40s（首次 `ubuntu-24.04-arm` 原生
+构建），artifact `ci/liuqin-kernel-47048e71…/` 已核对（`kernel.release =
+6.18.0-g47048e710209`）。
+**镜像**：`repack/618-boot/boot-liuqin-firstboot.img`，58,855,424 字节，
+sha256 `2a2f8101…e3052`，同一装配管线。**待刷机验证**：
+`fastboot boot repack/618-boot/boot-liuqin-firstboot.img`。
