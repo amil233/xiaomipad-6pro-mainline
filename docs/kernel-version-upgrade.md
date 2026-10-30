@@ -12,13 +12,22 @@
 
 ## 1. 各级分支命名
 
-| 分支 | 来源 | 合并的目标 tag | 状态 |
+谱系链条（每个新分支都直接长在**已点亮**的上一级之上）：
+
+```
+liuqin-6.17            c64b7fc85a8b  上游作者 yzddmr6 的分支（只读参照，勿改）
+  └─ liuqin-6.17-tianma  c7e51cdf3290  上一级 + 本机天马面板文件（点亮，6.17-rc1 内核）
+     └─ liuqin-6.17-stable  8ca4a94d4b52  上一级升级到 6.17 正式版（✅ 点亮）
+        └─ liuqin-6.18  25cca3bba20a  上一级升级到 6.18（开发分支，待 CI + 刷机）
+```
+
+| 分支 | 直接父分支 | 合并的目标 tag | 状态 |
 |---|---|---|---|
-| `liuqin-6.17` | yzddmr6 上游 | —（基线，勿动） | 只读参照 |
-| `liuqin-6.17-tianma` | 上一分支 + 5 提交 | —（**当前点亮版本** @ `c7e51cdf3290`） | 点亮基准 |
-| `liuqin-6.17-stable` | `liuqin-6.17-tianma` | `v6.17`（`e5f0a698b34e`） | 第一级，进行中 |
-| `liuqin-6.18` | 点亮的那一级 | `v6.18`（`f7b88edb52c8`） | 试验合并已完成冲突分析，待执行 |
-| `liuqin-6.19` | — | `v6.19-rc6` | 已尝试，CI 失败（见 §2） |
+| `liuqin-6.17` | —（上游 yzddmr6） | — | 只读参照，勿改 |
+| `liuqin-6.17-tianma` | `liuqin-6.17` | —（+ 天马面板文件） | ✅ 点亮（6.17-rc1，`c7e51cdf3290`） |
+| `liuqin-6.17-stable` | `liuqin-6.17-tianma` | `v6.17`（`e5f0a698b34e`） | ✅ 点亮（`fc2fb59ef397`，2026-10-30 上机） |
+| `liuqin-6.18` | `liuqin-6.17-stable` | `v6.18`（`f7b88edb52c8`） | merge `25cca3bba20a` 已落盘，待推送 CI |
+| `liuqin-6.19` | —（废路线，**不在链上**） | `v6.19-rc6` | CI 两次失败，弃 |
 
 workflow 触发分支列表在
 `linux-sm8450-liuqin/.github/workflows/liuqin.yml`（`on.push.branches`），
