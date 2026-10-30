@@ -26,7 +26,8 @@ liuqin-6.17            c64b7fc85a8b  上游作者 yzddmr6 的分支（只读参�
 | `liuqin-6.17` | —（上游 yzddmr6） | — | 只读参照，勿改 |
 | `liuqin-6.17-tianma` | `liuqin-6.17` | —（+ 天马面板文件） | ✅ 点亮（6.17-rc1，`c7e51cdf3290`） |
 | `liuqin-6.17-stable` | `liuqin-6.17-tianma` | `v6.17`（`e5f0a698b34e`） | ✅ 点亮（`fc2fb59ef397`，2026-10-30 上机） |
-| `liuqin-6.18` | `liuqin-6.17-stable` | `v6.18`（`f7b88edb52c8`） | ✓ CI 通过（run `41065191567`，tip `47048e710209`），镜像 `repack/618-boot/` 待刷机 |
+| `liuqin-6.18` | `liuqin-6.17-stable` | `v6.18`（`f7b88edb52c8`） | ✓ CI 通过（run `41065191567`，tip `47048e710209`），镜像 `repack/618-boot/` **刷机黑屏**（回归定位见 §5，实验分支 `liuqin-6.18-fix1`） |
+| `liuqin-6.18-fix1` | `liuqin-6.18` | —（回退 2 个上游提交） | 回归实验分支，待推送 CI |
 | `liuqin-6.19` | —（废路线，**不在链上**） | `v6.19-rc6` | CI 两次失败，弃 |
 
 workflow 触发分支列表在
@@ -169,3 +170,75 @@ v6.18 同样发生**——早先"v6.18 未合并 dwc3"的判断是错的：CI ru
 **镜像**：`repack/618-boot/boot-liuqin-firstboot.img`，58,855,424 字节，
 sha256 `2a2f8101…e3052`，同一装配管线。**待刷机验证**：
 `fastboot boot repack/618-boot/boot-liuqin-firstboot.img`。
+
+## 5. v6.18 刷机黑屏：回归定位与修复实验（2026-10-31）
+
+6.18 镜像（装配管线/输入与点亮的 617s 完全相同）**黑屏，未点亮**。
+对 `fc2fb59ef397..47048e710209`（6.17-stable → 6.18）的显示通路做了
+文件级全量 diff，结论如下。
+
+**DSI 控制器（dsi_host.c / dsi_manager.c / dsi_ctrl*）、DPU encoder、
+DSC、INTF 驱动零改动**；板级 DTS 与 `sm8450.dtsi` 的 mdss/dsi 节点也
+零改动（唯一 DT 变化是 `mdss_dp0` 新增 `stream_1_pixel` 时钟，该节点被
+本机禁用，无影响）。
+
+显示通路相关 delta：
+
+| 文件 | 变动 | 风险评估 |
+|---|---|---|
+| `disp/dpu1/dpu_crtc.c` | **新增** `dpu_crtc_mode_valid` 核心时钟上限过滤（`62b7d6835288` + 修 `f5d079564c44`） | **头号嫌疑**（计算见下） |
+| `dsi/phy/dsi_phy_7nm.c` | 6 个上游提交重构 PLL bias 序列：`5ddcb0cb9d10`（初始 VCO 速率）、`3bb6433ecb65`（位域宏）、`b63f008f395c`（vco_prepare 里写 `RBUF_CTRL=1`，含 slave）、`cb55f39bf7b1`（PLL bias 引用计数）、`93c97bc8d85d`（修 bonded DSI，已带入）、`6e5173e7bf80`（`round_rate`→`determine_rate`） | 二号嫌疑（本机正是 bonded 双 DSI；但 bonded 回归在同一窗口内已修） |
+| `disp/dpu1/dpu_core_perf.c/.h` | 上面那条的重构载体 | 随头号嫌疑一起回退 |
+| `disp/dpu1/dpu_rm.c` | SSPP 偏好顺序微调（`!reqs->scale`→`!reqs->yuv`） | 无影响（本机 RGB 无缩放，走 DMA 分支，与 6.17 相同） |
+| `disp/dpu1/dpu_hw_catalog.c` | VIG sblk 格式表 YUV→RGB、LM sblk 去掉 `maxwidth` 字段 | 无影响 |
+| `msm_kms.c` / `dpu_kms.c` | IOMMU：**删掉**"无 IOMMU 退回物理连续扫描"兜底 | **排除**：本机 mdss 节点带 `iommus = <&apps_smmu 0x2800 0x402>`，新旧代码都走 mdss 侧映射 |
+| `msm_mdss.c` | irq domain 用 `dev_fwnode()` | 等价改写 |
+| `pinctrl-msm.c` | pinmux 通用化 + `PIN_CONFIG_OUTPUT`→`LEVEL` 改名 | 无影响（面板复位走 gpiod） |
+| `drm_mipi_dsi.c` / `drm_panel.c` / `drm_atomic_helper.c` | 均为**新增** API 与 bridge 引用计数补正 | 无影响 |
+
+### 头号嫌疑的计算
+
+`pipa_mode_120.clock = (1800+200+4+92)*(2880+26+2+214)*120/1000 = 785 245 kHz`。
+新检查（`dpu_crtc_mode_valid`，挂在 `drm_atomic_helper_check_modeset`）：
+
+```
+adjusted = 785245 * 105/100 / 2   /* clk_inefficiency_factor=105, has_3d_merge=true */
+         = 412 253 kHz  →  412 253 000 Hz
+通过条件:  max_core_clk_rate ≥ 412 253 000
+```
+
+而 `max_core_clk_rate = clk_get_rate(DISP_CC_MDSS_MDP_CLK)`（DPU 探测时的
+**运行期读数**；读不到才取默认 `DPU_PERF_DEFAULT_MAX_CORE_CLK_RATE =
+412 500 000`）。**余量只有 247 kHz = 0.06%**：只要 MDP 核心时钟在探测时
+低于 412.253 MHz（例如挂在 dispcc_pll0 的常见 358.4 MHz、或 ABL 留下的
+任何较低档位），面板唯一的 120 Hz 模式就会以 `MODE_CLOCK_HIGH` 被拒，
+atomic check 直接失败 → 整条显示管线不 enable → 黑屏（串口无其它报错）。
+6.17 里同一运行期值只被 DVFS 夹取（`min(demand, max)`），不构成硬性过滤，
+所以 6.17 亮。
+
+该检查本意是给 QCS615 这类低核心时钟上限的芯片筛模式；对 DSC 大分辨率
+模式与 6.17 行为不兼容。
+
+### 修复实验：分支 `liuqin-6.18-fix1`
+
+在 `47048e710209`（`liuqin-6.18` tip）之上回退上面两个提交
+（`246be824d623`、`09d6fe6e5757`），并已把 `liuqin-6.18-fix1` 加入
+workflow 触发列表（`a2f0e2d32661`）。
+**核对**：回退后 `dpu_crtc.c`、`dpu_core_perf.c/.h` 与 `fc2fb59ef397`
+（6.17-stable）**逐字节一致**（`git diff` 为空），即完全恢复点亮语义。
+
+**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.18-fix1`。
+
+- 点亮 ⇒ 确认根因；把 fix1 合进 `liuqin-6.18`（快进），记入本文档。
+- 仍黑 ⇒ 二号嫌疑转正：回退 `dsi_phy_7nm.c` 那 6 个提交（逆序
+  `git revert 6e5173e7bf80 93c97bc8d85d cb55f39bf7b1 b63f008f395c
+  3bb6433ecb65 5ddcb0cb9d10` 后重编译）。
+
+一次可先做的**零成本确认**（在黑屏的 6.18 镜像串口 shell 上）：
+
+```
+mount -t debugfs none /sys/kernel/debug
+cat /sys/kernel/debug/dri/0/debug/core_perf/max_core_clk_rate
+```
+
+读数 `< 412253000` 即证实头号嫌疑，可直接推 fix1；`≥` 则转二号嫌疑。
