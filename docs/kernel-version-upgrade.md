@@ -105,4 +105,13 @@ workflow 触发分支列表在
   同一提交把 `liuqin-6.17-stable` 加进了 workflow 触发分支列表。
 - 点亮关键未受影响：板级 DTS 的 `&mdss_dp0 { status = "disabled"; }`
   原样保留（v6.17 final 未触碰该文件）。
-- 待用户推送 + CI + 刷机验证。
+- **CI**：run `41016697809` ✓ build in 55m8s；artifact
+  `ci/liuqin-kernel-fc2fb59ef397…/` 已核对（`build-info.json.commit` 一致、
+  `sha256sum -c` 全过，`kernel.release = 6.17.0-gfc2fb59ef397`）。
+- **镜像**：`repack/617s-boot/boot-liuqin-firstboot.img`，58,695,680 字节，
+  sha256 `d524db1cb8d90eeac301c16080a409cfad2f905f8a94b2f0562b8b86f2fdcd84`；
+  装配管线与输入（cmdline、ABL overlay、ramdisk）与点亮版完全相同，
+  只换 Image/DTB。**待刷机验证**。
+- 附：另有一个本地提交 `8ca4a94d4b52`（.gitignore 取消忽略 `.github`，
+  见 AGENTS.md §5.2）未推送——对构建无影响，且 workflow 有
+  `cancel-in-progress: true`，故等本次 CI 落定后再随下一轮推上去。
