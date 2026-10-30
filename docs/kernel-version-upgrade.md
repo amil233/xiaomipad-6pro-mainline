@@ -82,8 +82,17 @@ workflow 触发分支列表在
 | `drivers/power/supply/qcom_battmgr.c` | 2 个 hunk，待解 |
 | `drivers/soc/qcom/ubwc_config.c` | 1 个 hunk，待解 |
 
-> 注：以上是**分析结论**，合并当时没有落盘成 commit。重新执行
-> `git merge v6.18` 会确定性重现同样的冲突，按本表解决即可。
+> 以上是 6.17-rc 基线上的**分析结论**。实际在 `liuqin-6.17-stable`
+> （已含 v6.17 final）之上重做合并时：冲突文件 **13 个**（`ubwc_config.c`、
+> `Documentation/tee/qseecom.rst` 已被第一级合并消化），逐文件解决同上表，
+> 两处与表不同：`qcom_battmgr.c` 的枚举不能直接并集（ours 的
+> `QCOM_BATTMGR_SM8350` 与 theirs 重复）⇒ 恢复 theirs 全集后把
+> `QCOM_BATTMGR_SM8475` 插在 `SM8350` 之后；NOTIF 只留 ours 独有的
+> `NOTIF_XM_PROPERTY 0x50`（`NOTIF_BAT_INFO` 重复，删）。
+> `iris_platform_gen2.c` 的并集注意：theirs 的 `sm8550_enc_op_int_buf_tbl`
+> 数组要自带 `};`（共享的 `};` 留给 ours 的 `sm8450_data`）。
+> 已执行：merge commit `25cca3bba20a`（基座含 `8ca4a94d4b52`，推这一个
+> 分支即同时带上 .gitignore 修复）。
 
 ## 4. v6.17 final 合并记录（第一级，已完成）
 
@@ -118,4 +127,7 @@ workflow 触发分支列表在
 
 **结果（2026-10-30）：6.17 final 刷机点亮** ✅ ——逐级升级第一级成功，
 显示通路零回归。镜像 `repack/617s-boot/` 已记入 checklist §11 镜像表。
-进入第二级：在 `liuqin-6.17-stable` 之上合并 v6.18（见 §3）。
+
+**第二级已落盘**：在 `liuqin-6.17-stable` 之上合并 v6.18，merge commit
+`25cca3bba20a`（13 个冲突，详见 §3 的执行记录）。待推送 CI + 刷机验证：
+`git -C linux-sm8450-liuqin push GitHub liuqin-6.18`。
