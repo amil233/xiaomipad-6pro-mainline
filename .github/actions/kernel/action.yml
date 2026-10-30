@@ -35,14 +35,19 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev \
-          gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu python3 ccache kmod rsync
+        pkgs=(build-essential bc bison flex libssl-dev libelf-dev python3 ccache kmod rsync)
+        # On an aarch64 host (ubuntu-24.04-arm) the kernel compiles natively and
+        # no cross toolchain is needed; x86 runners still install one.
+        if [ "$(uname -m)" != "aarch64" ]; then
+          pkgs+=(gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu)
+        fi
+        sudo apt-get install -y "${pkgs[@]}"
     - uses: actions/cache@v4
       with:
         path: ~/.cache/ccache
-        key: liuqin-ccache-${{ runner.os }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-${{ steps.source.outputs.sha }}
+        key: liuqin-ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-${{ steps.source.outputs.sha }}
         restore-keys: |
-          liuqin-ccache-${{ runner.os }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-
+          liuqin-ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-
     - name: Build
       shell: bash
       env:

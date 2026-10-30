@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import os
+import platform
 import re
 from pathlib import Path
 import shutil
@@ -45,10 +46,15 @@ def main():
         parser.error('kernel source does not match kernel/source.json')
     if output('git', '-C', str(source), 'status', '--porcelain', '--untracked-files=normal'):
         parser.error('kernel source must be clean')
-    cross = os.environ.get('CROSS_COMPILE', 'aarch64-linux-gnu-')
+    # Compile natively when the host itself is aarch64 (e.g. the
+    # ubuntu-24.04-arm runner); cross-compile everywhere else.
+    default_cross = '' if platform.machine() == 'aarch64' else 'aarch64-linux-gnu-'
+    cross = os.environ.get('CROSS_COMPILE', default_cross)
     compiler = shutil.which(cross + 'gcc')
     if not compiler:
-        parser.error('install the AArch64 cross compiler or set CROSS_COMPILE')
+        parser.error('no gcc for arm64 found: on aarch64 hosts install gcc, '
+                     'elsewhere install the AArch64 cross compiler '
+                     '(or set CROSS_COMPILE)')
     # Kconfig records the invoked compiler name in CC_VERSION_TEXT. Use the
     # versioned executable consistently during configuration and compilation.
     compiler = str(Path(compiler).resolve())

@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   kernel:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4

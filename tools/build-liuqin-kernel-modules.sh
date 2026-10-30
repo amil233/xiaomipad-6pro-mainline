@@ -9,7 +9,14 @@ project=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 kernel=${KERNEL_DIR:-$project/../linux-sm8450-liuqin}
 out=${KERNEL_OUT:-$project/out/kernel}
 dest=${OUT_DIR:-$project/out/kernel-modules}
-cross=${CROSS_COMPILE:-aarch64-linux-gnu-}
+if [ -n "${CROSS_COMPILE:-}" ]; then
+	cross=$CROSS_COMPILE
+elif [ "$(uname -m)" = 'aarch64' ]; then
+	# Native build on an aarch64 host (ubuntu-24.04-arm runner): no prefix.
+	cross=''
+else
+	cross='aarch64-linux-gnu-'
+fi
 jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN)}
 objcopy=${OBJCOPY:-${cross}objcopy}
 rebuild_modules=${REBUILD_MODULES:-0}
