@@ -1449,6 +1449,11 @@ OnePlus Pad 2 的驱动在 review），所以"这块 DDIC 在 mainline 上驱不
 **黄金参照**：`repack/golden-617/{dsi0.txt,dsi1.txt}`——`boot-617-nodp` 点亮时
 DSI0/1 的非零寄存器逐值，判读陷阱与关键值见该目录 `README.md`。
 
+> **2026-10-30 磁盘清理**：下表中标"已删"的镜像目录已删除（结论保留在本表与
+> `known-wrong-changes.md`；被删目录的 README 收在 `repack/archive-7.0-notes/`）。
+> 仍保留在本机可 boot 的镜像只有：`617fix-boot/`（点亮，首选）、
+> `617-boot/boot-617-nodp.img`（首张点亮）、`base-308065ef/`、`nodsc-boot/`。
+
 ### 源码状态（2026-10-29 夜）
 
 | 分支 | HEAD | 状态 | 说明 |
