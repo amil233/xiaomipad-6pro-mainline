@@ -96,10 +96,11 @@
 |---|---|---|
 | E1 | `no_dsc=1`（第一轮） | `enable()` 里仍无条件发 PPS：DSI 关了压缩、面板还被要求按 DSC 解码。缺陷后来才修（`308065ef`），那一轮作废 |
 | E2 | `vendor_phy_timing=1` / link flags / clock lane LP | 现象完全不变，已排除并 revert（`df4055832`、`2848bd5b`），不要重跑 |
-| E3 | `skip_panel_init=1` | 同上，仍黑；只能说明"单独跳过 init 不足以点亮"，不能证明 init 无关 |
+| E3 | `skip_panel_init=1`（含 2026-10-29 用户确认的"天马 desc + 120 Hz"组合） | 同上，仍黑、无变化；只能说明"单独跳过 init 不足以点亮"，不能证明 init 无关。**这个组合已经测过，不要再提** |
 | E4 | 「6.17 + 天马 desc 同样黑」 | 那次运行用的是哪个 desc **没有日志证据**；ABL 串里带模块名，命令行的来源也不确定 |
 | E5 | 用 50 fps 的原厂快照和 120 fps 的主线寄存器逐项比 | 模式不同，`TOTAL`/`CLKOUT` 天然不同，比出来的"差异"是噪声 |
 | E6 | 用 144 Hz 运行态数字当初值 | 144 的 porch 从未在任何原始快照里出现；DTBO 只有 120 |
+| E7 | 按引导程序 XML 改天马 init 两条（`D1 28`、插入 `0F 20`） | 2026-10-29 实测：面板状态与画面**逐字节不变**（`power=0x9e`/`signal=0x80`/`display=0x00`），说明这两条不是原因。已 `revert`（`213601cf2ea1`）。**init 内容这条线到此关闭**——UEFI XML 与厂商 DTBO 两份序列都实际发过，都无效 |
 
 ---
 
@@ -117,6 +118,23 @@
 | R10 | **在厂商页里读 DCS 寄存器**：`0xff 0x27` 之后读 `0x0a` 得到 `0xe4`，误以为"面板状态变了" | 每读一次 DCS 前先确认当前页码（`0xff 0x10` 才是标准 DCS 页）；换页后的寄存器含义完全变了 |
 | R9 | **量了 `intf_1` 的帧计数就宣布"DPU 在出帧"**——而编码器实际用的是 `intf_2`（boot 日志 `DIAG vid_enable: intf2 state=1 -> ENABLING`） | 读计数器前先确认"这个块是不是当前路径上的那个"：`state` 里的 sspp/crtc、`DIAG vid_enable` 的 intf 编号、`INTF_MUX` 指向的 PP，三者要对得上 |
 | R8 | **把 `caf-display/` 当厂商驱动**（它是社区实现，与设备实际 `msm_drm.ko` 未必同源） | `caf-display` 只能提出假设（B 级证据），结论必须由本机原厂运行态/DTBO/实测确认；PPS 字节、RC 字段、`h_active` 这类"厂商会怎么做"的推断都要标明是参考 |
+| R11 | **比对 `repack/e15.dts` 的 `on-command` 时抓了第一个数组**（那是 Sharp qhd 面板，80 包），据此得出"引导程序的序列和我们完全不同"的错误结论（2026-10-29 已撤回） | entry 15 的 dts 是整棵节点树，含 **58 个** `qcom,mdss-dsi-on-command`；天马在 `:11203`（216 包），CSOT 在 `:11346`（194 包）。比对前先看 `qcom,mdss-dsi-panel-name` 和包数，别按"文件里第一个"取 |
+| R12 | **按小端解析 `liuqin_images_V14…/images/dtbo.img`**：magic 按小端读成 `0x1eabb7d7`，`count` 变成 `637534208` | 这个镜像的头和条目表是**大端**（文件首 4 字节 `d7 b7 ab 1e`，字段用 `>8I`）。"Android dtbo 都是小端"的经验在这里不成立，先 dump 前 32 字节确认 |
+| R13 | **把 `signal=0x80`、`display=0x00` 当作"面板没收到有效视频流"**（第二十轮起几乎所有结论都建在这条上） | 6.17 **正常显示**时读到的同样是 `signal=0x80 display=0x00`（§8 第二十七轮）。这两个字节证明不了任何事；判断"面板有没有画面"只能看屏幕本身，或 `power` 的 bit1 在能亮/不能亮之间的差异 |
+| R14 | **把 `0x0a4` 当 `LANE_STATUS`** | 能亮时 `0x0a4` 也读 0。`dsi.xml` 的偏移整体比硬件小 4（CTRL 在 XML 是 `0x0`、硬件是 `0x4`），有意义的是 `0xa8`（能亮时 `0x1F00`） |
+| R15 | **把 `0x0a` 的绝对值当"面板健康值"** | 原厂 DT 写 `0x9d`、6.17 正常显示读到 `0x9c`、7.0 黑屏读到 `0x9e`——三个值互不相同，绝对值没有意义；只有 bit1 在"能亮/不能亮"之间有稳定差异，而 6.17 静置 60 s 也不变，说明它不是"画面静止"触发的 |
+
+### W8 板级 DTS 里加了**第二个** `&mdss_dp0` 节点，被文件后面那个 `status = "okay"` 覆盖
+
+`0c71219b` 在 `&mdss` 后面新增了 `&mdss_dp0 { status = "disabled"; }`，但
+`sm8475-xiaomi-liuqin.dts` 本来就在后面（"DisplayPort out over USB-C" 那段注释下）
+有一个 `&mdss_dp0 { status = "okay"; }`。DT 里**后出现的节点覆盖先出现的**，
+所以编译出来的 DTB 仍然是 `okay`，这个提交实际是空操作——CI 产物
+`0c71219b301b` 的 DTB 里 `displayport-controller@ae90000` 仍是 `okay`。
+
+**教训**：改 DTS 前先 `grep -n '&label'` 看这个 label 在文件里出现过几次；
+改完必须**从编译产物反查**（`fdtget <dtb> <path> status`），不能只看源码。
+修复提交：`c7e51cdf3290`（把 status 挪进那个真正生效的节点，并删掉重复块）。
 
 ---
 

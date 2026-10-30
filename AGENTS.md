@@ -25,7 +25,7 @@
 | 项 | 值 |
 |---|---|
 | 设备 | Xiaomi Pad 6 Pro（liuqin），128G，Tianma `m81_36_02_0a` |
-| SoC | sm8475 / SM8450 |
+| SoC | **SM8475（骁龙 8+ Gen 1）**；`sm8450` 只是父 dtsi / 驱动命名（`dpu_8_1_sm8450`、`camcc-sm8450`），不是这颗 SoC |
 | DPU | **8.0**（`dpu hardware revision: 0x80050000`） |
 | DSI | 6G v2.6（`0x20060000`），bonded dual-DSI，4 lane，video mode |
 | DSC | 3:1，slice 450×20，slice_count 2，slice_per_pkt 2，1800×2880@120 |
