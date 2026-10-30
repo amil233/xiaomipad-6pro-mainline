@@ -115,3 +115,7 @@ workflow 触发分支列表在
 - 附：另有一个本地提交 `8ca4a94d4b52`（.gitignore 取消忽略 `.github`，
   见 AGENTS.md §5.2）未推送——对构建无影响，且 workflow 有
   `cancel-in-progress: true`，故等本次 CI 落定后再随下一轮推上去。
+
+**结果（2026-10-30）：6.17 final 刷机点亮** ✅ ——逐级升级第一级成功，
+显示通路零回归。镜像 `repack/617s-boot/` 已记入 checklist §11 镜像表。
+进入第二级：在 `liuqin-6.17-stable` 之上合并 v6.18（见 §3）。
