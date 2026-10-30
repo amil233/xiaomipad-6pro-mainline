@@ -50,9 +50,16 @@ workflow 触发分支列表在
      catalog 引用了 6.17 侧 `dpu_hw_mdss.h` 里不存在的枚举（上游已加到
      CTL_7/DSPP_7），同时 `STAGES_PER_PLANE` 本地=2 / 上游=1 语义冲突。
 
-这三处问题在 **v6.18 里都不存在**（无 glymur catalog、
-`snd_soc_kcontrol_component` API 还在、dwc3 未合并），所以把 6.18 作为
-6.17 之后的下一级，而不是直接修 6.19。
+这三处问题里，**cs35l41 helper 移除**和 **glymur catalog 枚举缺失**在 v6.18
+确实不存在（实证：`snd_soc_kcontrol_component` 仍在 v6.18 的
+`include/sound/soc.h`；v6.18 无 `dpu_12_2_glymur.h`）。但 **dwc3 合并在
+v6.18 同样发生**——早先"v6.18 未合并 dwc3"的判断是错的：CI run
+`41031588689`（merge `25cca3bba20a`）在 DTC 阶段（8m34s）以同一个
+`Label or path usb_1_dwc3 not found` 失败。已由 `6ba4e603cf21` 按
+`e77eae91afa2` 同款修法修复（dwc3 属性并入 `&usb_1`，base dtsi 已自带
+`usb-role-switch`/`phys`/`phy-names`），并跑过 label 引用闭包离线校验
+（预处理后 399 个 `&label` 引用全部可解析）。教训：**上游 API/结构变动
+不能凭印象判断，要用 `git grep <tag>` 实证**。
 
 ## 3. v6.18 试验合并的冲突分析（合并已做过，尚未落盘）
 
