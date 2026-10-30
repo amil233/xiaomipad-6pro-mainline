@@ -109,6 +109,15 @@ v6.18 同样发生**——早先"v6.18 未合并 dwc3"的判断是错的：CI ru
 > 数组要自带 `};`（共享的 `};` 留给 ours 的 `sm8450_data`）。
 > 已执行：merge commit `25cca3bba20a`（基座含 `8ca4a94d4b52`，推这一个
 > 分支即同时带上 .gitignore 修复）。
+> **两次 CI 失败与修复**（均因照抄 theirs 侧，已记为教训）：
+> 1. run `41031588689`（8m，DTC）：v6.18 同样合并了 dwc3 → 修 `6ba4e603cf21`。
+> 2. run `41045897486`（30m，编译）：`dpu_plane.c:1383 assignment to expression
+>    with array type` —— 冲突 hunk3 里 theirs 的 `prev_adjacent_plane_state =
+>    plane_state;` 照抄，但本树该变量是 `struct drm_plane_state
+>    *[STAGES_PER_PLANE]` 数组，写回已在被调函数 `dpu_plane_virtual_assign_resources`
+>    内按下标完成 → 修 `636b65781fcd`（只留 `return ret;` 错误传播）。
+> **教训**：冲突解决不能照抄任一侧代码，必须先核对合并后本树的声明类型
+> 与数据结构（数组 vs 标量、参数个数、ID 是否重复）。
 
 ## 4. v6.17 final 合并记录（第一级，已完成）
 
