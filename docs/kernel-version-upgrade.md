@@ -431,10 +431,23 @@ sha256 `9771be3cdc9f8dc703067bb7b17e91013af4ef756c2c39800f540cf7b0e31943`
 （输入：Image.gz `283134a5…f9a9b`；ABL DTB `643337f7…65f36e`、
 ramdisk `a04d2b25…7682` 与前四级相同）。
 
-**判读**：`fastboot boot repack/618fix3-boot/boot-liuqin-firstboot.img`
-- **点亮** ⇒ 第二级（v6.18）完成：把 fix2+fix3 快进进 `liuqin-6.18`，
-  进 v6.19。**v6.19 已自带 a6xx NULL 保护，但 pinctrl-sm8475 同样漏标
-  （已核实：连 `origin/master` 至今仍是 NO_FLAG，上游从未回补），
-  第三级必须把 fix3 一起带上**，否则同样黑屏。fix3 是合格的上游候选修复。
-- 仍黑 ⇒ 串口看面板是否已过 `reset-gpios`：若 `panel-nt36532` 不再
-  `-EINVAL`，转 `disp_cc_mdss_mdp_clk_src` 线（fix4）。
+**刷机结果：✅ 2026-10-31 点亮**（`fastboot boot
+repack/618fix3-boot/boot-liuqin-firstboot.img`，串口可见
+`liuqin-initramfs starting local emergency shell`，屏幕出画面）。
+
+至此 v6.18 两处回归都已修复且验证：
+fix2（a6xx NULL 解引用）+ fix3（pinctrl-sm8475 漏标）。
+
+**第二级（v6.18）完成。已做的收尾**：
+`liuqin-6.18` 已 fast-forward 到点亮点 `9c6dfba69e93`
+（含 fix1 的 mode 过滤回退——无害的实验轨迹，保留完整谱系），
+`liuqin-6.19` 从同一点出发，待第三级合并。
+
+**第三级（v6.19）注意事项**：
+- v6.19 已自带 a6xx `if (reglist)` 保护（fix2 自动消化）。
+- **pinctrl-sm8475 漏标在 v6.19 乃至 `origin/master` 仍存在**，
+  fix3 必须保留在谱系上（合并冲突时注意不要丢掉 `MSM_GPIO_PIN_FUNCTION`）。
+- 旧 `liuqin-6.19` 废路线（从 tianma 直接合并 v6.19-rc6）已用
+  `git branch -f` 覆盖为第三级起点；其 CI 失败教训仍适用：
+  cs35l41 `snd_soc_kcontrol_component` 移除、glymur 目录枚举缺失
+  （dwc3 label 问题 6.18 已解决）。
