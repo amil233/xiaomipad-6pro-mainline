@@ -242,3 +242,23 @@ cat /sys/kernel/debug/dri/0/debug/core_perf/max_core_clk_rate
 ```
 
 读数 `< 412253000` 即证实头号嫌疑，可直接推 fix1；`≥` 则转二号嫌疑。
+**实测（2026-10-31）：`dri/0` 整个路径不存在**——`dri/<minor>` 符号链接在
+DRM 设备注册时建立，它缺失意味着 msm 显示驱动可能**根本没 probe/注册成功**
+（比 atomic check 更早的失败），需要 `dmesg` 进一步定位：
+`ls /sys/kernel/debug/dri/`、`dmesg | grep -iE 'mdss|dpu|dsi|drm|panel'`。
+
+### fix1 构建与镜像（2026-10-31）
+
+CI 通过（`liuqin-6.18-fix1`，artifact
+`ci/liuqin-kernel-a2f0e2d326619882e03e854f3e9fe4924c827949/`，`sha256sum -c`
+全过，`kernel.release = 6.18.0-ga2f0e2d32661`）。镜像
+`repack/618fix1-boot/boot-liuqin-firstboot.img`，58,859,520 字节，
+sha256 `0e9b3b86344877c60f0826098edf26b72e8a72d9aa99924ca6de34ba119a3ba0`
+（输入：Image.gz `9b0b53e5…23f3c56`、ABL DTB `643337f7…65f36e`、
+ramdisk `a04d2b25…7682` —— 后两者与 618-boot 相同）。
+
+**判读**：`fastboot boot repack/618fix1-boot/boot-liuqin-firstboot.img`
+- 点亮 ⇒ 根因确认，把 fix1 快进进 `liuqin-6.18`，第二级完成。
+- 仍黑 ⇒ 两条线并行：(1) 抓 dmesg 看 msm/mdss/dpu probe 到哪一步
+  （`dri/0` 缺失指向早期 probe 失败，不是 mode_valid 阶段）；
+  (2) 回退 `dsi_phy_7nm.c` 那 6 个提交。
