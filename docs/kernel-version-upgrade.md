@@ -439,15 +439,58 @@ repack/618fix3-boot/boot-liuqin-firstboot.img`，串口可见
 fix2（a6xx NULL 解引用）+ fix3（pinctrl-sm8475 漏标）。
 
 **第二级（v6.18）完成。已做的收尾**：
-`liuqin-6.18` 已 fast-forward 到点亮点 `9c6dfba69e93`
-（含 fix1 的 mode 过滤回退——无害的实验轨迹，保留完整谱系），
-`liuqin-6.19` 从同一点出发，待第三级合并。
+**收尾修正（用户两点意见，2026-10-31）**：
+1. **fix1 是证伪旁支，不应入谱系**——已重建干净的 `liuqin-6.18`：
+   从 `47048e710209`（原 6.18 tip）cherry-pick 两个实质修复
+   （`755c769d253e` a6xx + `d73093a229fc` pinctrl），新 tip
+   `d73093a229fc`。树与点亮的 fix3 tip `9c6dfba69e93` **逐字节等价**
+   （唯一差异是 workflow 触发列表），已用 `git diff --stat` 与 blob
+   hash 双重验证。顺带修正谱系：fix2/fix3 本就是从 6.18 tip 直分，
+   fix1 从未进入点亮链。
+2. **旧 6.19 废路线作废**——它是在本地尚无主线源码时按 Ubuntu 26.04
+   源码/tag 合并的（本地 `v6.19-rc6` tag 是 `24d479d26b25`，与
+   kernel.org 的 rc6 `c8a4a774a9b0` 哈希不同，来源不纯）。
 
-**第三级（v6.19）注意事项**：
-- v6.19 已自带 a6xx `if (reglist)` 保护（fix2 自动消化）。
-- **pinctrl-sm8475 漏标在 v6.19 乃至 `origin/master` 仍存在**，
-  fix3 必须保留在谱系上（合并冲突时注意不要丢掉 `MSM_GPIO_PIN_FUNCTION`）。
-- 旧 `liuqin-6.19` 废路线（从 tianma 直接合并 v6.19-rc6）已用
-  `git branch -f` 覆盖为第三级起点；其 CI 失败教训仍适用：
-  cs35l41 `snd_soc_kcontrol_component` 移除、glymur 目录枚举缺失
-  （dwc3 label 问题 6.18 已解决）。
+## 8. 第三级 v6.19：合并完成，待推送 CI（2026-10-31）
+
+### 来源与基线
+
+- tag `v6.19` 从上游 `git.kernel.org/torvalds/linux.git` fetch
+  （`e9ec05addd1a` → commit `05f7e89ab973` "Linux 6.19"），**与工作区
+  `linux/` 主线仓的 v6.19 tag 完全一致**。fetch 意外带回 942 个历史
+  tag（v2.6.11…v7.3-rc7），已按 mtime 识别并删除，只留 v6.19。
+- 基线：干净的 `liuqin-6.18` = `d73093a229fc`；merge commit
+  `92457c175160`（`--no-ff`），加 CI 触发后 tip
+  `f4ba03317a7c415008e3d1453e9185dabafaab51`。
+
+### 10 个冲突与解决（含一个重要发现）
+
+**重要发现**：liuqin 依赖的 quad-pipe 系列**本来就是 yzddmr6 提交到
+上游的**，v6.19 合并后又把其中两个 revert 了：
+`da9168d8ef1c Revert "Enable quad-pipe for DSC and dual-DSI case"`、
+`35ab5123bd24 Revert "support plane splitting in quad-pipe case"`。
+liuqin 双 DSI DSC 点亮依赖完整 quad-pipe，故必须保留 ours。
+
+| 文件 | 解决 |
+|---|---|
+| `dpu_hw_mdss.h` | ours：`STAGES_PER_PLANE=2`（上游 revert 回 1） |
+| `dpu_encoder.c` | ours：`MAX_CHANNELS_PER_ENC=4`（上游 revert 回 2）；非 quad-pipe 上游修复（WB number、dead-code）在自动合并区已合入 |
+| `dpu_plane.c` (7处) | ours：完整 quad-pipe 多 pipe 结构 |
+| `msm_gpu.h` | ours：`busy_percent` sysfs |
+| `sc8280xp.c` | theirs：v6.19 改用通用 `qcom_snd_sdw_*` helper，liuqin cs35l41 TDM 定制让位（音频非当前目标） |
+| `qcom_scm.c` | 混合：保留 liuqin QSEECOM TEE init（及注释），allowlist 检查换用上游新 API `of_machine_device_match()`——旧 helper 已被上游删除；两者语义等价 |
+| `ubwc_config.c` | 合并：`qcom,cape`（liuqin）+ `kaanapali`/`glymur`（上游） |
+| `dts/qcom/Makefile` | 合并：xiaomi 板级 dtb + 上游 sm8550-hdk 规则 |
+| `iris_platform_common.h` | const 化 + 并集（补回 liuqin 的 sm8450_data 声明） |
+| `iris_platform_gen2.c` | 保留 liuqin `sm8450_data` 定义（const 化）；v6.19 已从上游列表删 sm8450，但 SM8475 liuqin 视频解码匹配它 |
+
+**安全检查（merge 后）**：`MSM_GPIO_PIN_FUNCTION(gpio)` ✓、a6xx
+`if (reglist)` ✓、quad-pipe 三个标记 ✓、`busy_percent` ✓、板级
+dtb 在 Makefile ✓、全树无残留冲突标记。
+
+**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.18 liuqin-6.19`
+（先 6.18 树等价复跑 CI，或直接推 6.19 也可；两者 push 都会触发 CI）。
+**判读**：CI 通过 → 装配 `repack/619-boot/` → `fastboot boot` →
+- **点亮** ⇒ 第三级完成，进 v6.20 规划；
+- 黑屏 ⇒ 串口看 dmesg（`dpu/dsi/panel/gpu`），重点检查 quad-pipe
+  与 v6.19 上游 DPU 重构的交互。
