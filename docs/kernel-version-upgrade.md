@@ -337,3 +337,96 @@ ramdisk `a04d2b25…7682` —— 后两者与前两级相同）。
   让 6.18 提前变好）。
 - 仍黑 ⇒ 再抓 dmesg（`dmesg | grep -iE 'mdss|dpu|dsi|drm|panel'`，
   `/tmp` 不存在就直接屏幕输出），转其它线索。
+
+### fix2 刷机结果：仍黑，但 a6xx 修复确认有效（2026-10-31）
+
+fix2 镜像刷机**仍然黑屏**，串口 dmesg 证实 fix2 的 a6xx NULL 保护**起了作用**：
+GPU oops 消失，`msm_drm`、`mdss_gdsc`、`mdss_int2_gdsc`、`dispcc`、
+`ae94000.dsi`、`ae96000.dsi` 全部探测成功（return 0）。**失败点后移到面板**，
+真凶露面：
+
+```
+[    2.169048] disp_cc_mdss_mdp_clk_src: rcg didn't update its configuration.
+[    2.500591] sm8475-tlmm f100000.pinctrl: pin GPIO_0 already requested by ae94000.dsi.0; cannot claim for f100000.pinctrl:551
+[    2.501948] panel-nt36532 ae94000.dsi.0: error -EINVAL: Failed to get reset-gpios
+[    2.501965] panel-nt36532 ae94000.dsi.0: probe with driver panel-nt36532 failed with error -22
+```
+
+面板探测 `-EINVAL` ⇒ DSI 永远不会 prepare ⇒ 整条 DRM 管线一次没起来 ⇒
+黑屏（ABL 背光还在）。同次 dmesg 里 `[NVT-ts] failed to add panel follower:
+-517` 只是触摸屏跟随者在面板缺失时的连带 deferral。
+
+## 7. 第二个根因：pinctrl `strict` 语义 + sm8475 漏标 GPIO 函数（2026-10-31）
+
+### 机制（源码级，逐行验证）
+
+v6.18 的 `drivers/pinctrl/qcom/pinctrl-msm.c` 转用通用 pinmux ops，带来
+三个新东西：`.strict = true`、`.function_is_gpio =
+pinmux_generic_function_is_gpio`、`gpio_request_enable`。其中
+`pinmux_generic_function_is_gpio()`（`drivers/pinctrl/pinmux.c:891`）只认
+函数表里带 `PINFUNCTION_FLAG_GPIO` 的条目。
+
+上游 `480dc1952404`（"pinctrl: qcom: mark the `gpio` and `egpio` pins
+function as non-strict functions"，2025-09-02 落入 v6.18）把 **48 个高通
+平台**的函数表改成 `MSM_GPIO_PIN_FUNCTION(gpio/egpio)`，**唯独漏掉
+`pinctrl-sm8475.c`**——本机芯片正是 SM8475。同代相邻的 sm8450、sm8550、
+sar2130p 全都有。
+
+于是板级 dts 里面板节点（`sm8475-xiaomi-liuqin.dts` 的 `panel@0`）：
+
+```dts
+pinctrl-0 = <&sde_dsi_active>;      /* 先把 GPIO_0 mux 到 function "gpio" */
+pinctrl-names = "default";
+reset-gpios = <&tlmm 0 GPIO_ACTIVE_HIGH>;   /* 再用 gpiod 申请同一个脚 */
+```
+
+在 `pin_request()`（`drivers/pinctrl/pinmux.c:140-165`）里：
+
+- 6.17：`ops->strict=false` ⇒ 第一个检查 `(!gpio_range || ops->strict)`
+  对 GPIO 请求为 **false** ⇒ 直接放行，面板正常。
+- 6.18：`strict=true` 且 `function_is_gpio()` 因漏标返回 **false**
+  （`gpio_ok=false`）⇒ `desc->mux_usecount=1`、`mux_owner="ae94000.dsi.0"`
+  ⇒ **"pin GPIO_0 already requested by ae94000.dsi.0; cannot claim for
+  f100000.pinctrl:551"**（申请方标签 `f100000.pinctrl:551` 来自
+  `pinmux_request_gpio()` 的 `kasprintf("%s:%d", range->name, gpio)`，
+  551 是 tlmm 的全局 GPIO 基号，即本机的 reset-gpios 请求）。
+
+这是**上游的真实遗漏 bug**，不只影响本机：任何 6.18 上的 SM8475 设备，
+只要"先用 pinctrl 状态把脚 mux 到 gpio、再用 gpiod 申请"，都会被拒。
+
+### 修复实验：分支 `liuqin-6.18-fix3`
+
+从 `liuqin-6.18-fix2` 顶点（`7c18dc40cbd9`）分出，**只改上游忘改的那两行**
+（`drivers/pinctrl/qcom/pinctrl-sm8475.c`）：
+
+```diff
+ static const struct pinfunction sm8475_functions[] = {
+-	MSM_PIN_FUNCTION(gpio),
++	MSM_GPIO_PIN_FUNCTION(gpio),
+ ...
+-	MSM_PIN_FUNCTION(egpio),
++	MSM_GPIO_PIN_FUNCTION(egpio),
+```
+
+与 `480dc1952404` 对 sm8450 的改法**逐字同构**（同 commit 同样两行）。
+提交 `7bac0e681a93`；`9c6dfba69e93` 把 `liuqin-6.18-fix3` 加进 workflow
+触发列表。分支顶点 `9c6dfba69e9386356cf3d6fd7066e7c7e4941974`。
+
+**设计说明（为什么不动 DTS 也不回退 strict）**：
+不动面板节点的 `pinctrl-0`、也不回退 `pinctrl-msm.c` 的 strict 语义——
+strict 行为本身是上游有意引入的，DTS 的 pinctrl 状态是正常的设备树用法；
+漏的是平台驱动的一行宏。这不是 workaround，是**上游遗漏的回补**，
+未来上游若补上也必然是这一步。
+
+**遗留观察（不在本变量内）**：fix2 dmesg 里还有
+`disp_cc_mdss_mdp_clk_src: rcg didn't update its configuration.`（clk-rcg2
+`update_config` 超时，`fc2fb59..47048e71` 之间该文件 +8/-4 行）。dispcc 探测
+返回 0、无失败对应，按单变量原则暂不动，记为下一轮候选（fix4）。
+
+**判读**：`fastboot boot repack/618fix3-boot/boot-liuqin-firstboot.img`
+- **点亮** ⇒ 第二级（v6.18）完成：把 fix2+fix3 快进进 `liuqin-6.18`，
+  进 v6.19。**v6.19 已自带 a6xx NULL 保护，但 pinctrl-sm8475 同样漏标
+  （已核实：连 `origin/master` 至今仍是 NO_FLAG，上游从未回补），
+  第三级必须把 fix3 一起带上**，否则同样黑屏。fix3 是合格的上游候选修复。
+- 仍黑 ⇒ 串口看面板是否已过 `reset-gpios`：若 `panel-nt36532` 不再
+  `-EINVAL`，转 `disp_cc_mdss_mdp_clk_src` 线（fix4）。
