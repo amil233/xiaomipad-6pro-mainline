@@ -423,6 +423,14 @@ strict 行为本身是上游有意引入的，DTS 的 pinctrl 状态是正常的
 `update_config` 超时，`fc2fb59..47048e71` 之间该文件 +8/-4 行）。dispcc 探测
 返回 0、无失败对应，按单变量原则暂不动，记为下一轮候选（fix4）。
 
+**已构建并装配**（CI run 41205848526 success，artifact
+`ci/liuqin-kernel-9c6dfba69e9386356cf3d6fd7066e7c7e4941974/`，
+`sha256sum -c` 全过，`kernel.release = 6.18.0-g9c6dfba69e93`）。
+镜像 `repack/618fix3-boot/boot-liuqin-firstboot.img`，58,855,424 字节，
+sha256 `9771be3cdc9f8dc703067bb7b17e91013af4ef756c2c39800f540cf7b0e31943`
+（输入：Image.gz `283134a5…f9a9b`；ABL DTB `643337f7…65f36e`、
+ramdisk `a04d2b25…7682` 与前四级相同）。
+
 **判读**：`fastboot boot repack/618fix3-boot/boot-liuqin-firstboot.img`
 - **点亮** ⇒ 第二级（v6.18）完成：把 fix2+fix3 快进进 `liuqin-6.18`，
   进 v6.19。**v6.19 已自带 a6xx NULL 保护，但 pinctrl-sm8475 同样漏标
