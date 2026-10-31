@@ -27,7 +27,8 @@ liuqin-6.17            c64b7fc85a8b  上游作者 yzddmr6 的分支（只读参�
 | `liuqin-6.17-tianma` | `liuqin-6.17` | —（+ 天马面板文件） | ✅ 点亮（6.17-rc1，`c7e51cdf3290`） |
 | `liuqin-6.17-stable` | `liuqin-6.17-tianma` | `v6.17`（`e5f0a698b34e`） | ✅ 点亮（`fc2fb59ef397`，2026-10-30 上机） |
 | `liuqin-6.18` | `liuqin-6.17-stable` | `v6.18`（`f7b88edb52c8`） | ✓ CI 通过（run `41065191567`，tip `47048e710209`），镜像 `repack/618-boot/` **刷机黑屏**（回归定位见 §5，实验分支 `liuqin-6.18-fix1`） |
-| `liuqin-6.18-fix1` | `liuqin-6.18` | —（回退 2 个上游提交） | 回归实验分支，待推送 CI |
+| `liuqin-6.18-fix1` | `liuqin-6.18` | —（回退 mode 过滤 2 个上游提交） | **证伪**：刷机仍黑（见 §6），失败层比该过滤更早 |
+| `liuqin-6.18-fix2` | `liuqin-6.18` | —（回移 a6xx NULL 保护 1 个提交） | 回归实验分支，**真根因**（见 §6），待推送 CI |
 | `liuqin-6.19` | —（废路线，**不在链上**） | `v6.19-rc6` | CI 两次失败，弃 |
 
 workflow 触发分支列表在
@@ -262,3 +263,70 @@ ramdisk `a04d2b25…7682` —— 后两者与 618-boot 相同）。
 - 仍黑 ⇒ 两条线并行：(1) 抓 dmesg 看 msm/mdss/dpu probe 到哪一步
   （`dri/0` 缺失指向早期 probe 失败，不是 mode_valid 阶段）；
   (2) 回退 `dsi_phy_7nm.c` 那 6 个提交。
+
+## 6. 真正的根因：a6xx `ifpc_reglist` NULL 解引用（2026-10-31）
+
+fix1 刷机**仍黑**（黑屏+背光），串口取证如下：
+
+```
+~ # ls /sys/kernel/debug/dri/
+bridges                 ← 只有空目录
+~ # ls /sys/class/drm/
+version                 ← 没有 card0：没有任何 DRM 设备注册
+```
+
+失败发生在 **component master bind 之前/之中**，比模式过滤（atomic check）
+和 DSI PHY（link 层）都更早。顺这条线重查 diff，定位到上游 v6.18 提交
+`a6a0157cc68e` `drm/msm/a6xx: Enable IFPC on Adreno X1-85`：
+
+```c
+/* a6xx_gpu.c, a7xx_patch_pwrup_reglist() */
+reglist = adreno_gpu->info->a6xx->ifpc_reglist;   /* Adreno 730 条目里是 NULL */
+lock->ifpc_list_len = reglist->count;             /* ← 开机必现 NULL 解引用 */
+```
+
+成立的三段证据：
+
+1. 本机 GPU 是 Adreno 730（`qcom,adreno-730.1`，`&gpu { status = "okay" }`），
+   目录条目 `0x07030001` / `ADRENO_7XX_GEN1` 只有 `pwrup_reglist`，
+   **没有 `ifpc_reglist`**（全表只有 X1-85 与 Adreno 740 两个条目带它）。
+2. `adreno_is_a7xx()` 对 7xx family（含 730）返回 true，`a6xx_hw_init()`
+   会调用 `a7xx_patch_pwrup_reglist()`。
+3. **上游已在 v6.19 补上 `if (reglist) {…}` 保护**（即本修复的出处）。
+
+崩溃链：
+
+```
+component master: msm_drm_bind()
+  → adreno_load_gpu()
+    → msm_gpu.c:169  gpu->funcs->hw_init()
+      → a6xx_hw_init()
+        → a7xx_patch_pwrup_reglist()  ← oops，bind 中断
+  → drm_dev_register() 永不执行 ⇒ 没有 card0
+  ⇒ 整条显示管线一次都没起来（DSI/panel 从未 enable）
+  ⇒ 黑屏（ABL splash 背光还在）
+```
+
+与全部观察吻合：`/sys/class/drm/` 只有 `version`、无 dmesg 报错线索（默认
+atomic 调试信息不打印）、6.17 不含此重构所以一切正常、GPU 固件
+（`a730_sqe.fw` / `gmu_gen70000.bin` / `a730_zap.mbn`）都在 initramfs 里，
+GPU 初始化能走到崩溃点。fix1（mode 过滤回退）证伪：失败层比它早，但其中
+两个 revert 无害，fix2 不含它（单变量）。
+
+### 修复实验：分支 `liuqin-6.18-fix2`
+
+从 `liuqin-6.18` tip（`47048e710209`）分出，只加一个提交
+`c4f967f12ea0`：回移 v6.19 的 `if (reglist)` 保护（patch 后函数体与
+`liuqin-6.19` 里的版本**逐字节一致**，已 diff 验证；GEM 分配的
+`pwrup_reglist` 缓冲页是清零的，NULL 时 `ifpc_list_len` 保持 0，与 6.17
+行为等价）。另 `7c18dc40cbd9` 把 `liuqin-6.18-fix2` 加进 workflow 触发
+列表。
+
+**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.18-fix2`
+
+CI 通过后用同一管线装配镜像（`repack/618fix2-boot/`），判读：
+- **点亮** ⇒ 根因确认，第二级（v6.18）完成，进 v6.19（fix2 也要合进
+  `liuqin-6.18`）。注意：**v6.19 已含此 NULL 保护**，第三级合并时这处
+  会自动消化，fix2 只是让 6.18 提前变好。
+- 仍黑 ⇒ 再抓 dmesg（`dmesg | grep -iE 'mdss|dpu|dsi|drm|panel'`，
+  `/tmp` 不存在就直接屏幕输出），转其它线索。
