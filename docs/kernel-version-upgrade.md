@@ -488,8 +488,58 @@ liuqin 双 DSI DSC 点亮依赖完整 quad-pipe，故必须保留 ours。
 `if (reglist)` ✓、quad-pipe 三个标记 ✓、`busy_percent` ✓、板级
 dtb 在 Makefile ✓、全树无残留冲突标记。
 
+### Review 与二次修正（2026-11-01 凌晨）
+
+用户要求"在不破坏我们驱动的前提下尽量符合主线新设计"，遂把每个冲突
+解决重新审了一遍，发现一个系统性问题并已修正：
+
+**问题**：初版对 `dpu_hw_mdss.h`/`dpu_encoder.c`/`dpu_plane.c`/
+`msm_gpu.h` 用了 `git checkout --ours`——这是**整文件**替换，把上游
+在冲突区之外的改动也一并丢了（例如 dpu_hw_mdss.h 里上游为 Glymur
+新增的 `DSPP_4..7`/`CTL_6..7`，msm_gpu.h 里 cd5697865258 的
+kernel-doc 修复）。
+
+**修正**：前三个非 dpu_plane 文件改为**真实三方合并**
+（`git merge-file` ours vs 7d0a66e4bb90 vs v6.19），只保留 quad-pipe
+使能的 delta，其余全部回到上游；结果（相对 v6.19 的偏离）：
+- `dpu_hw_mdss.h`：仅 `STAGES_PER_PLANE=2`（Glymur enum 已合入）
+- `dpu_encoder.c`：仅 quad-pipe 使能（DSC 拓扑延后到 crtc），
+  上游 `helper_reset_mixers` 修复已合入
+- `msm_gpu.h`：仅 liuqin `busy_percent` 字段（kernel-doc 风格已
+  换成上游格式）
+
+**dpu_plane.c 维持 ours 的论证**：
+1. 上游 base..v6.19 对该文件的改动**全部**是 quad-pipe 系列
+   （Jun Nie 的 5 个 + Abel Vesa 的 2 个 revert），**没有**独立
+   bugfix 可吸收。
+2. 上游 revert 的两条理由：Hamoa（X Elite）上 plane splitting 引起
+   IOMMU fault；quad-pipe 使能"dual-DSI dual-DSC seems to be broken"
+   ——**后者正是我们的配置**。我们的 SM8475 机器靠 yzddmr6 树里的
+   早期 quad-pipe 版本实测点亮（铁证），换成上游最终版反而是引入
+   被维护者报告 broken 的行为到我们的场景。
+3. ours 与上游"完整 quad-pipe 版本"（d7ec9366b15c 时刻）的 143 行
+   diff 全是风格清理（guard clause、参数简化、label 移除），功能等价。
+   结论：采用 ours 无功能损失，也不丢任何上游修复。
+
+**iris 编译性核对**：sm8450_data 的 51 个字段逐一对照 v6.19 的
+`struct iris_platform_data`（61 字段），全部兼容；caps/clks 定义
+风格与上游一致。
+
+**谱系澄清（回答"liuqin 定制"）**：这一轮冲突涉及的上游改动里，
+quad-pipe 系列是 **Jun Nie (Linaro)** 的主线提交（v6.19 有他 81 个
+提交），**不是**我们的私有内容；被 Abel Vesa (Qualcomm) revert 了
+其中 2 个。真正 ours 侧的内容是 yzddmr6/本机私有：
+`2cd5a6f8` 板级支持（含 sc8280xp cs35l41 TDM 音频、ubwc cape、
+SM8450 iris 平台数据）、`e8f8cc13bcb7` QSEECOM TEE init、
+`0301490788d9` gpu_busy_percent——**经查 v6.19 主线没有 yzddmr6 的
+任何提交**（按作者名与邮箱查均为空）。sc8280xp.c 的 TDM 定制让位于
+上游 sdw helper 重构（音频非当前目标）。
+
+修正落在 commit `8c9e1062d984`（merge `92457c175160` 之上），
+CI 触发 `191acc9719dd`。
+
 **待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.18 liuqin-6.19`
-（先 6.18 树等价复跑 CI，或直接推 6.19 也可；两者 push 都会触发 CI）。
+（两条都触发 CI）。
 **判读**：CI 通过 → 装配 `repack/619-boot/` → `fastboot boot` →
 - **点亮** ⇒ 第三级完成，进 v6.20 规划；
 - 黑屏 ⇒ 串口看 dmesg（`dpu/dsi/panel/gpu`），重点检查 quad-pipe
