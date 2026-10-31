@@ -322,11 +322,18 @@ GPU 初始化能走到崩溃点。fix1（mode 过滤回退）证伪：失败层�
 行为等价）。另 `7c18dc40cbd9` 把 `liuqin-6.18-fix2` 加进 workflow 触发
 列表。
 
-**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.18-fix2`
+**已推送并构建通过**（CI artifact
+`ci/liuqin-kernel-7c18dc40cbd9eb39767db875fc839b653c659270/`，`sha256sum -c`
+全过，`kernel.release = 6.18.0-g7c18dc40cbd9`）。
 
-CI 通过后用同一管线装配镜像（`repack/618fix2-boot/`），判读：
-- **点亮** ⇒ 根因确认，第二级（v6.18）完成，进 v6.19（fix2 也要合进
-  `liuqin-6.18`）。注意：**v6.19 已含此 NULL 保护**，第三级合并时这处
-  会自动消化，fix2 只是让 6.18 提前变好。
+镜像 `repack/618fix2-boot/boot-liuqin-firstboot.img`，58,855,424 字节，
+sha256 `f2a64964caf9085b19d97d0f57bdfe930b48954b61bd63d87ab0750c371d536e`
+（输入：Image.gz `1a660fa4…d536e`、ABL DTB `643337f7…65f36e`、
+ramdisk `a04d2b25…7682` —— 后两者与前两级相同）。
+
+**判读**：`fastboot boot repack/618fix2-boot/boot-liuqin-firstboot.img`
+- **点亮** ⇒ 根因确认，第二级（v6.18）完成：把 fix2 快进进 `liuqin-6.18`，
+  进 v6.19 合并（**v6.19 已自带此 NULL 保护**，第三级会自动消化，fix2 只是
+  让 6.18 提前变好）。
 - 仍黑 ⇒ 再抓 dmesg（`dmesg | grep -iE 'mdss|dpu|dsi|drm|panel'`，
   `/tmp` 不存在就直接屏幕输出），转其它线索。
