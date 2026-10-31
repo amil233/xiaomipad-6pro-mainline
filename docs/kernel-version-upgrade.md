@@ -538,8 +538,16 @@ SM8450 iris 平台数据）、`e8f8cc13bcb7` QSEECOM TEE init、
 修正落在 commit `8c9e1062d984`（merge `92457c175160` 之上），
 CI 触发 `191acc9719dd`。
 
-**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.18 liuqin-6.19`
-（两条都触发 CI）。
+**首次 CI 失败与修复（run 41220679779）**：唯一编译错误是
+`cs35l41.c:333: implicit declaration of 'snd_soc_kcontrol_component'`——
+v6.19 移除了该 ASoC helper，正是旧废路线记录的"cs35l41
+`snd_soc_kcontrol_component` 移除"破坏因素（旧路线自己也没修）。
+已按 v6.19 标准模式改为 `snd_kcontrol_chip()`（88pm860x/ab8500 等
+codec 的惯用写法，经 `soc.h → control.h` 可见），commit
+`9c518c034818`。日志确认全树只有这一处编译错误。
+
+**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.19`
+（触发重跑 CI）。
 **判读**：CI 通过 → 装配 `repack/619-boot/` → `fastboot boot` →
 - **点亮** ⇒ 第三级完成，进 v6.20 规划；
 - 黑屏 ⇒ 串口看 dmesg（`dpu/dsi/panel/gpu`），重点检查 quad-pipe
