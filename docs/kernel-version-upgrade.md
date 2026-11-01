@@ -645,3 +645,29 @@ tag（`v7.0`、`Ubuntu-7.0.0-*` 9 个、`archive/github-main-import`、
   pinctrl+interconnect 19 文件、qcom DTS + sound/soc 433 文件。
 - 新分支 `liuqin-7.0` 从点亮 6.19 tip（`11d739ea62a6`）直分；旧同名
   Ubuntu 产品线分支已清理。
+
+**merge 完成**（`2973d45c5c9f`，8 个冲突全部解决；CI 触发
+`367984528b38`）：
+
+| 冲突文件 | 解决方式 |
+|---|---|
+| `drivers/gpu/drm/msm/adreno/adreno_gpu.c` | 采用上游 `family >= ADRENO_6XX_GEN4`（与 ours 的 a650/a730/a740 集合精确等价的清理） |
+| `drivers/media/i2c/s5kjn1.c` | 整文件采用上游（上游 6.19→7.0 合入该驱动；ours 是本地移植，相机非当前目标，同 6.19 sc8280xp 先例） |
+| `samsung,s5kjn1.yaml` | 保留 ours 的 `power-domains`（板级 DTS 在用） |
+| `drivers/power/reset/nvmem-reboot-mode.c` | 采用上游重写的写入路径（cell 长度校验）；ours 的 `cpu_to_le32`+`cell_bytes` 在 LE arm64 功能等价 |
+| `drivers/soc/qcom/pmic_glink_altmode.c` | 整文件采用上游（`mux_ctrl` 状态机 + extended_data 报文结构）；ours 的 liuqin DP svid 0xff01/去重通知探索补丁退场（DP 控制器在 DTS 本就 disabled，且与新报文格式不兼容） |
+| `drivers/soc/qcom/qcom_pdr_msg.c` | 采用上游 `SERVREG_PFR_LENGTH + 1`（与 `sizeof_field` 语义相同：结构体字段即 `reason[SERVREG_PFR_LENGTH+1]`） |
+| `include/linux/soc/qcom/mdt_loader.h` | 保留 ours 的 split-image 原型/存根 + 上游新原型并集 |
+| `sound/soc/qcom/qdsp6/audioreach.h` | ours AUDIO_IF + 上游 SPEAKER_PROTECTION 宏并集 |
+
+**显示管线零冲突**：上游 6.19→v7.0 未改 `dpu_hw_mdss.h` /
+`dpu_encoder.c` / `dpu_plane.c`，quad-pipe（`STAGES_PER_PLANE=2`、
+`MAX_CHANNELS_PER_ENC=4`）原样保留。sm8450 ICC 描述符自动合并（含上游
+`dbbd550d7c8d` NULL 修复）；FROMLIST `pinctrl-sm8475.c` 连同
+`MSM_GPIO_PIN_FUNCTION` 标记保留（上游从未有此文件）；a6xx `if (reglist)`
+保护、cs35l41 `snd_kcontrol_chip` 适配、`qcom_scm_qseecom_init`（v7.0
+仍在）均存活。
+
+**待推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-7.0`（新分支，
+无需 force）。CI 通过 → artifact 核对 → 装配 `repack/700-boot/` →
+`fastboot boot` 验证点亮。
