@@ -546,8 +546,20 @@ v6.19 移除了该 ASoC helper，正是旧废路线记录的"cs35l41
 codec 的惯用写法，经 `soc.h → control.h` 可见），commit
 `9c518c034818`。日志确认全树只有这一处编译错误。
 
-**待用户推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-6.19`
-（触发重跑 CI）。
+**复跑 CI 通过**（run 41253853040，`6.19.0-g9c518c034818`）；
+artifact `ci/liuqin-kernel-9c518c034818…/` 按契约核对通过
+（commit 一致、`sha256sum -c` 全过）。
+
+**镜像已装配**：`repack/619-boot/boot-liuqin-firstboot.img`，
+59,162,624 字节，sha256
+`44968430133d171aa57a612f024a9850853ef9f70e71f825dafbf2c5cb896271`
+（Image.gz `b832f3d6…` 唯一变量；ABL DTB `7626954b…`、
+ramdisk `a04d2b25…`）。
+
+**判读**：`fastboot boot repack/619-boot/boot-liuqin-firstboot.img`
+- **点亮** ⇒ 第三级完成，进 v6.20 规划；
+- 黑屏 ⇒ 串口看 dmesg；首要怀疑 quad-pipe（ours 早期版本）与
+  v6.19 上游 DPU 重构的交互，备选 fix 是回退到上游双 pipe 语义。
 **判读**：CI 通过 → 装配 `repack/619-boot/` → `fastboot boot` →
 - **点亮** ⇒ 第三级完成，进 v6.20 规划；
 - 黑屏 ⇒ 串口看 dmesg（`dpu/dsi/panel/gpu`），重点检查 quad-pipe
