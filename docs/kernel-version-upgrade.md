@@ -1028,3 +1028,46 @@ git -C linux-sm8450-liuqin push GitHub liuqin-7.2
 其 include 的头（`qcom_scm.h`、`mdt_loader.h` 新位置）与调用 API 齐备；
 运行期变量集中在 iris 退役（节点不绑定）与上游新增 milos 平台（无关）。
 若 CI 失败，按 v7.0/v7.1 的"结构体重构 vs merge 惯性旧表"模式排查。
+
+### v7.3 预研：SM8475 核心外设的上游支持（2026-11-02）
+
+复查本级 merge 时顺手预研了 v7.3（`c03c1a14507d`，工作区 `linux/` 仓），
+确认 v7.3 为 **SM8475 新增了三个核心外设的主线支持**（作者均为
+Esteban Urrutia，应持有实机）：
+
+| v7.3 提交 | 内容 | 对我们的影响 |
+|---|---|---|
+| `9583243a524c` + binding `f8bb67fa3651` | `phy: qcom: qmp-combo: Add SM8475 support`——注册 `qcom,sm8475-qmp-usb3-dp-phy` | **板级 DTS 已用该兼容串为首选**（`sm8475-xiaomi-liuqin.dts:1846`：`"qcom,sm8475-qmp-usb3-dp-phy", "qcom,sm8450-..."`）；v7.2 下走的是我们 yzddmr6 移植的本地表 |
+| `9e953732c3ed` + `bae047e91213` + `f8b4493d5e7e` | `phy: qcom: qmp-pcie: Add support for SM8475 Gen3x1 PCIe0 port`（`qcom,sm8475-qmp-gen3x1-pcie-phy`，v5 offsets + sar2130p pcs_lane1） | 我们 dtsi 用的是 `qcom,sm8450-qmp-gen3x1-pcie-phy`（v7.2 有）；v7.3 提供了 sm8475 专用条目可选 |
+| `1ad05292c01b` + `a95cfed54bf9` + `c1d0a877c7be` | `ASoC: qcom: sc8280xp: Add support for SM8475`——`qcom,sm8475-sndcard` 机器驱动 | 我们 DTS 用 `qcom,sm8450-sndcard`（§8 记录的 liuqin TDM/cs35l41 音频链） |
+
+**表来源差异（重要的合并预判）**：上游的 `sm8475_usb3dpphy_cfg` 复用
+`sar2130p_usb3_serdes_tbl`（+ 独立的 `sm8475_usb3_pcs_usb_tbl`），DP 侧
+同样是 `qmp_v6_dp_v1_*` 表；我们的本地版用的是**厂商移植的
+`sm8475_usb3_*` 表**（注释说明 QSERDES V5 / QPHY V4 布局，DP 用 v6 表
+因为本机 DP PHY 是 4nm "4nm-v1"）。**merge v7.3 时 qmp-combo.c 会冲突，
+需要在"上游 sar2130p 源"与"我们的厂商移植源"之间定夺**——优先按主线
+原则取上游（作者有实机），若 USB 出现回归再保留 ours，并用一次 CI 分别
+验证。
+
+**明确没有 SM8475/SM8450 支持的（v7.3 仍然没有）**：
+- iris / venus 视频编解码（v7.3 的 iris dt_match 与 v7.2 相同：
+  milos/qcs8300/sc7280/sm8250/sm8550…，**无 sm8450**）——本级退役
+  sm8450 平台数据的选择在 v7.3 仍然成立；
+- 无 sm8475 的 dtsi/板级、interconnect provider、pinctrl
+  （`pinctrl-sm8475.c` 继续保持 FROMLIST）。
+
+**复查结论（v7.2 当前状态）**：iris 七个文件（`iris_hfi_gen2.c`、
+`iris_platform_common.h`、`iris_hfi_gen2_command.c`、`iris_probe.c`、
+`iris_hfi_gen1.c`、`iris_platform_vpu2/vpu3x.c`、Makefile）与上游 v7.2
+**逐字节一致**；全 iris 目录无 `sm8450_data`/旧结构字段
+（`get_instance`/`fwname`/`dec_input_config_params_*`/
+`resume_without_payload` 等）的悬空引用；`iris_platform_genN.c` 已从
+工作树删除。9 个冲突文件的最终 delta 全部复核：
+- `q6apm.c/q6apm-dai.c` 残留 = 我们的错误路径回滚 + DAI 状态机守卫（有意）；
+- `ktz8866.c` = 双芯片（a/b）寄存器镜像逻辑（有意）；
+- `dp_display.c` = 仅 DPCD 重试环；`dp_ctrl.c` = 仅 `msm_dp_ctrl_off_link`
+  删除（其余与点亮 7.1 逐字节一致）；
+- 其余自动合并的 38 个"双方都改过"文件 ours delta 亦全部为有意改动
+  （a6xx 冷启动、`gpu_busy_percent`、SM8475 USB3 表、`slpi_auto_boot`、
+  `qcom,sm8475` pd_mapper、`IFLA_PARENT_DEV_NAME` NULL 守卫等）。
