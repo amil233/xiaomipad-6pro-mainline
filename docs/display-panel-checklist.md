@@ -1426,7 +1426,7 @@ OnePlus Pad 2 的驱动在 review），所以"这块 DDIC 在 mainline 上驱不
 
 ---
 
-## 11. 关键测试镜像与生成时的源码状态（2026-10-30 更新）
+## 11. 关键测试镜像与生成时的源码状态（2026-11-01 更新）
 
 这张表是"想复现某个现象时该 boot 哪张镜像"的唯一索引。**sha256 都已重算核对**。
 所有镜像都用 `repack/unpacked/ramdisk`（installer.img，`a04d2b25…`）同一份 ramdisk。
@@ -1446,7 +1446,8 @@ OnePlus Pad 2 的驱动在 review），所以"这块 DDIC 在 mainline 上驱不
 | `repack/618fix3-boot/boot-liuqin-firstboot.img` | `9771be3c…1943` | 58,855,424 | `6.18.0-g9c6dfba69e93`，`liuqin-6.18-fix3` @ `9c6dfba69e93`（`7bac0e681a93`：`pinctrl-sm8475.c` 的 `MSM_PIN_FUNCTION(gpio/egpio)` → `MSM_GPIO_PIN_FUNCTION`，回补上游 `480dc1952404` 漏掉的 sm8475） | 无（同上） | ✅ **点亮**（2026-10-31）：第二级 v6.18 完成。`liuqin-6.18` ff 到 `9c6dfba69e93`；见 `kernel-version-upgrade.md` §7 |
 | `repack/619-boot/boot-liuqin-firstboot.img` | `4496843…6271` | 59,162,624 | `6.19.0-g9c518c034818`，`liuqin-6.19` @ `9c518c034818`（干净 6.18 + merge 上游 v6.19 + 10 冲突解决 + cs35l41 `snd_kcontrol_chip` 修复） | 无（同上） | ❌ **未点亮也未黑屏，2.22s 卡死**（2026-11-01）：`icc_link_nodes` NULL deref @ `0x8`（上游 v6.19 sm8450 ICC 转换漏改两条链），与显示无关；见 `kernel-version-upgrade.md` §8.1 |
 | `repack/619fix1-boot/boot-liuqin-firstboot.img` | `e4fed406…890f25` | 59,162,624 | `6.19.0-g11d739ea62a6`，`liuqin-6.19-fix1` @ `11d739ea62a6`（`919a8ab07908` = 上游 `dbbd550d7c8d` 回移两行 + `11d739ea62a6` CI 触发） | 无（唯一变量 Image.gz；ABL DTB `7626954b…`、ramdisk `a04d2b25…` 与 619 镜像逐字节一致） | ✅ **点亮**（2026-11-01）：第三级 v6.19 完成；`liuqin-6.19` ff 到 `11d739ea62a6`。修复已用点亮的 6.18 全量核对（150/150 节点拓扑等价）；见 `kernel-version-upgrade.md` §8.1 |
-| `repack/710-boot/boot-liuqin-firstboot.img` | `414c64fa…8dea` | 59,969,536 | `7.1.0-g065fea6a7712`，`liuqin-7.1` @ `065fea6a7712`（7.0 点亮 tip + merge 上游 v7.1 `4ea6e0f42a3f` + of_gpio 适配 `f1afdbeb9edd`） | 无（唯一变量 Image.gz；ramdisk `a04d2b25…` 与 700 逐字节一致；ABL DTB `998b90b0…` 与 700 仅差 4 处上游 dtsi 清理，**显示节点零变化**） | ⏳ 待刷：第五级 v7.1；上游 quad-pipe 定稿 + 虚拟平面默认开；黑屏备用调试 `msm.dpu_use_virtual_planes=false`；见 `kernel-version-upgrade.md` §10 |
+| `repack/710-boot/boot-liuqin-firstboot.img` | `8f3ff94c…407ec1` | 59,969,536 | `7.1.0-g6ded9f48ec96`，`liuqin-7.1` @ `6ded9f48ec96`（7.0 点亮 tip + merge 上游 v7.1 `4ea6e0f42a3f` + of_gpio 适配 `f1afdbeb9edd` + 两轮显示修复 `988a7f6e14c6`/`6ded9f48ec96`） | 无（唯一变量 Image.gz；ramdisk `a04d2b25…` 与 700 逐字节一致；ABL DTB `998b90b0…` 与 700 仅差 4 处上游 dtsi 清理，**显示节点零变化**） | ✅ **点亮**（2026-11-01）：第五级 v7.1 完成；平面栈为纯上游 v7.1（`dpu_plane.c` 与上游逐字节相同）+ 虚拟平面延迟 SSPP 分配默认开，拓扑回到上游 2 LM/2 DSC；见 `kernel-version-upgrade.md` §10 |
+| `repack/710-novirt-boot/boot-liuqin-firstboot.img` | `57bda704…0a1ca` | 59,969,536 | 同上（同一 kernel artifact） | 命令行追加 `msm.dpu_use_virtual_planes=false`（其余零差异） | ✅ **点亮**（2026-11-01）：同源内核关虚拟平面的对照，证明 4-LM 花屏与虚拟平面延迟分配无关，根因是 4-DSC 拓扑本身 |
 | `repack/700-boot/boot-liuqin-firstboot.img` | `128ac4e9…550c5` | 59,375,616 | `7.0.0-gb560194ffc4b`，`liuqin-7.0` @ `b560194ffc4b`（6.19 点亮 tip + merge 上游 v7.0 `2973d45c5c9f` + camss/iris/mdt_loader 三个自动合并盲区修复） | 无（唯一变量 Image.gz；ABL DTB `7626954b…`、ramdisk `a04d2b25…` 与 619fix1 镜像逐字节一致） | ✅ **点亮**（2026-11-01）：第四级 v7.0 完成；`liuqin-7.0` tip `b560194ffc4b` = 点亮内核（修复直接在分支上）；见 `kernel-version-upgrade.md` §9 |
 | `repack/617-boot/boot-617-nodp.img` | `99fcc9b2…4935a8` | 58,687,488 | 同上 | **唯一改动**：`fdtput` 把 `/soc@0/display-subsystem@ae00000/displayport-controller@ae90000` 的 `status` 设为 `disabled` | **天马面板点亮**（首张）：`card0`、`card0-DSI-1`、`dsc:` 正常、屏幕出画面 |
 | `repack/7fps-boot/boot-fps120.img` | `c69f1884…f9b05d` | 58,572,800 | `7.0.14-g…`，`liuqin-7.0` @ `c4ba514b1256`（desc 已是 `VIDEO_BURST`、默认 60 Hz） | 命令行加 `panel_novatek_nt36532.force_fps=120`（零构建） | ❌ **上机直接重启**：`c4ba514b` 是坏提交（内核自身起不来），不可用 |

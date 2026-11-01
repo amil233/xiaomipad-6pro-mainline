@@ -733,7 +733,7 @@ pmic_glink_altmode.c（v7.0 换上游 mux_ctrl 版）；camss 后摄三件套
 tip `b560194ffc4b` = 点亮内核（三个修复直接在 merge 分支上，无需
 fix 分支或 ff）。镜像清单与判读记录见 `display-panel-checklist.md` §11。
 
-## 10. 第五级 v7.1：合并完成，待推送 CI（2026-11-01）
+## 10. 第五级 v7.1：合并 → 花屏两轮 → 点亮（2026-11-01，✅ 完成）
 
 tag `v7.1` = `8cd9520d35a6`（2026-06-14 "Linux 7.1"），已从工作区
 `linux/` 主线仓一次性 fetch（路径 fetch 带回的全历史 tag 已清理，仓内只留
@@ -867,3 +867,74 @@ git -C linux-sm8450-liuqin push GitHub liuqin-7.1
 `PIPES_PER_PLANE=4` 的组合是运行期变量，编译无碍；qcom_scm/TEE 区段
 上游改动（+64/-7，QSEECOM allowlist 扩展、kmemdup 清理）为自动合并，
 ours TEE 段纯增量。
+
+### 刷机：两轮花屏与定位（2026-11-01）
+
+**背景**：v7.1 把 `dpu_use_virtual_planes` 默认从 false 翻成 **true**
+（`dpu_kms.c:55`）——这激活了我们 `dpu_crtc_get_topology` 里的 4-LM 扩展
+（`num_dsc = num_rt_intf * 2`），即拓扑首次在双 DSI 上走到 **4 LM / 4 DSC**。
+
+**第一轮花屏（四个竖条）** → 取证 `/sys/kernel/debug/dri/0/state`：
+
+| 拓扑 | rect | LM |
+|---|---|---|
+| 点亮（2 LM/2 DSC） | 2 个 900 宽（sspp_0 rect_0/rect_1 parallel） | 2 个 900 宽 |
+| 花屏（4 LM/4 DSC） | **只有 2 个 900 宽**（sspp_8/solo、sspp_9/solo） | 4 个 **450** 宽（`lm_bounds=hdisplay/num_mixers`） |
+
+根因：`dpu_plane_split` 只在 src 宽 > `max_linewidth`（5120）或 MDP 时钟
+超限时拆 rect；4-LM 时每段 900 宽不触发，一**对** LM 共享一个 900 宽
+rect → 每个 450 宽的 LM 渲染了错的 900 宽流 → 四竖条。
+修复 `988a7f6e14c6`：拆分条件增加「rect 不得比单个 mixer 宽」
+（`mixer_rect / PIPES_PER_STAGE`）。4-LM 时产出 4×450 rect；
+2-LM 时复现原 900+900 拆分，行为不变。
+
+**第二轮花屏（上下/左右两种图案）** → 寄存器转储显示 **DPU 侧全对**：
+LM 4×450、4 个 DSC（MULTIPLEX + num_active=1）、`CTL DSC_ACTIVE=0xF` /
+`INTF_ACTIVE=0x6`、双 INTF 同帧数扫描、SSPP rect 正确；DSC `ENC_DF_CTRL`
+两 DCE 的差异属 NATIVE_42x 的正常 2400/1-1 vs 2400/2-1。LM 寄存器长度
+也已核实为 `0x400`（`f7bf13197392`，v7.0 已入）。
+
+**真根因在上游**：quad-pipe + 双 DSI 双 DSC 是**上游已 revert 的已知缺陷**：
+
+| 上游提交 | 内容 |
+|---|---|
+| `d7ec9366b15c` | "Enable quad-pipe for DSC and dual-DSI case" |
+| `da9168d8ef1c` | 2025-12-19 revert，理由逐字 *"The dual-DSI dual-DSC scenario seems to be broken by this commit"* |
+| `35ab5123bd24` | 关联 revert（IOMMU faults + "all sorts of artifacts on eDP"） |
+
+v7.1..master（至 2026-11-01）无重启用、无修复。Jun Nie 的通用拆分系列
+（`9c171c36d83a`/`febcd37fec12`/`25ee10927752`）保留在 v7.1 且与我们的
+拆分修复不冲突。结论：这是**上游设计性缺陷**，不是可修 bug——用户要求
+查证上游已知缺陷后，确认我们的 4-DSC 扩展恰落在被 revert 的场景里。
+
+**修复 `6ded9f48ec96`**：撤掉 4-DSC 拓扑扩展，拓扑选择回到上游 v7.1：
+
+- `dpu_crtc.c`：恢复上游拓扑分支（`num_intf==2 && !cwb` → 2 LM；
+  `num_dsc==2` → 2 LM），删除 `num_rt_intf` 与 `num_dsc = num_rt_intf * 2`；
+- `dpu_encoder.c`：`dpu_encoder_update_topology` 恢复上游 2-DSC 块
+  （`WARN(num_intf > 2)` + `num_intf >= 2 || dsc_count >= 2` → 2 DSC）；
+- 保留 `STAGES_PER_PLANE=2` / `MAX_CHANNELS_PER_ENC=4`（惰性常量：
+  拓扑回到上游逻辑后 4-LM 不可能被选中）；
+- v7.1 的 `dpu_use_virtual_planes=true` 与 `dpu_crtc_reassign_planes`
+  延迟 SSPP 分配**全保留**（上游新设计核心）；`dpu_plane.c` 与上游
+  **逐字节相同**。
+
+### CI 与点亮（2026-11-01）
+
+- CI（`6ded9f48ec96`）：✅ 通过；artifact
+  `ci/liuqin-kernel-6ded9f48ec96…/` 按契约核对（commit 一致、
+  `sha256sum -c` 全过，`7.1.0-g6ded9f48ec96`）。
+- **镜像**：`repack/710-boot/boot-liuqin-firstboot.img`（59,969,536 字节，
+  sha256 `8f3ff94c…407ec1`；唯一变量 Image.gz `0b001b6f…`）。
+- 判读：`fastboot boot repack/710-boot/boot-liuqin-firstboot.img`
+  → **✅ 点亮**。参照 `repack/710-novirt-boot/`（同源 +
+  `msm.dpu_use_virtual_planes=false`，2-LM 下同样点亮）证明虚拟平面
+  延迟分配不是因素。
+- **第五级完成**：`liuqin-7.1` tip `6ded9f48ec96` 即点亮内核；分支已推送
+  远端（用户推送 + CI 与本地逐一一致）。
+
+**点亮拓扑结论（供后续级别沿用）**：本机双 DSI + DSC 的稳定拓扑是
+**2 LM / 2 DSC**（每链路 1 DSC、900+900 拆分）。上游 quad-pipe 在
+"每 mixer 一个 SSPP 段"的通用拆分上可用，但 **num_dsc > num_intf 的
+合流路径（DSC MULTIPLEX）上游自己都撤了**——后续级别不要重新启用
+4-DSC，除非上游重新合入。
