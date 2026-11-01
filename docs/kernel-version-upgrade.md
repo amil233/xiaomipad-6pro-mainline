@@ -564,3 +564,66 @@ ramdisk `a04d2b25…`）。
 - **点亮** ⇒ 第三级完成，进 v6.20 规划；
 - 黑屏 ⇒ 串口看 dmesg（`dpu/dsi/panel/gpu`），重点检查 quad-pipe
   与 v6.19 上游 DPU 重构的交互。
+
+### 8.1 刷机结果：ICC NULL deref（上游 v6.19 回归），fix1 已装配
+
+**结果（2026-11-01）**：`repack/619-boot/` 刷机后未点亮也未黑屏，
+内核在 2.22s 捕获 oops 后挂起（`panic=0` 不重启）：
+
+```
+Unable to handle kernel NULL pointer dereference at virtual address 0000000000000008
+pc / lr: icc_link_nodes+0x34/0xf0
+Workqueue: events_unbound deferred_probe_work_func
+Call trace: icc_link_nodes ← qcom_icc_rpmh_probe+0x1b4/0x528 ← platform_probe
+  ← really_probe ← … ← deferred_probe_work_func
+Code: … (f94002a0)
+```
+
+**与显示无关**（原"首要怀疑 quad-pipe 与 v6.19 DPU 重构交互"的预判
+作废——oops 发生在显示探测之前的 ICC 阶段）。
+
+**根因**：v6.19 的 `51513bec806f`（"sm8450: convert to dynamic IDs"）
+把 sm8450 ICC 描述符从 `u16 links[]`（ID 数组）改为
+`struct qcom_icc_node *link_nodes[]`（指针柔性数组），**漏改两条**：
+`qhs_compute_cfg`（`.link_nodes = { MASTER_CDSP_NOC_CFG }`）与
+`qhs_lpass_cfg`（`.link_nodes = { MASTER_CNOC_LPASS_AG_NOC }`）。
+两个 ID 在 `dt-bindings/interconnect/qcom,sm8450.h` 都定义为 0 ⇒
+指针槽位存 0 ⇒ probe 里
+`icc_link_nodes(node, &qn->link_nodes[j]->node)` ⇒ `&NULL->node` = 0x8。
+本机 `sm8475.dtsi` include `sm8450.dtsi`，ICC provider 全是
+`qcom,sm8450-*`，deferred probe 重试时必现。
+
+**上游修复**（v6.19 之后）：`dbbd550d7c8d`（Vladimir Zapolskiy, Linaro，
+"interconnect: qcom: sm8450: Fix NULL pointer dereference in
+icc_link_nodes()"）——其 commit message 所贴 oops 与本机串口日志
+**逐字一致**（同 0x8、同 `qcom_icc_rpmh_probe+0x1b4/0x528`、同
+`deferred_probe_work_func`、连 Code 尾部 `(f94002a0)` 都相同）。
+
+**fix1 分支** `liuqin-6.19-fix1` tip `11d739ea62a6`（从干净 6.19 tip
+`9c518c034818` 直分）：
+- `919a8ab07908` = `dbbd550d7c8d` 回移，`sm8450.c` 两行，**diff 与上游
+  逐字节一致**（blob hash 同为 `669a638bf3ef..c88327d200ac`）；目标
+  `&qhm_nsp_noc_config` / `&qhm_config_noc` 与文件内遗留
+  `[MASTER_*] = &node` 查找表一致。
+- **用点亮的 `liuqin-6.18` 全量核对**（`scratch/compare-icc-topology.py`，
+  6.18 `.links = { ID }` 经两版一致的 `[ID] = &node` 表解析后比对
+  6.19 `link_nodes`）：150/150 节点拓扑逐节点等价、`num_links` 与
+  条目数全一致（无 NULL 尾巴残留）、全文件非指针 `link_nodes` 条目
+  只有被修复的那两条 ⇒ 转换只漏了这两条，与点亮基线无其他差异。
+- `11d739ea62a6` = workflow 触发列表加 `liuqin-6.19-fix1`。
+
+**CI 通过**：artifact `ci/liuqin-kernel-11d739ea62a68…/` 按契约核对
+通过（commit 一致、`sha256sum -c` 全过，`6.19.0-g11d739ea62a6`）。
+
+**镜像已装配待刷**：`repack/619fix1-boot/boot-liuqin-firstboot.img`
+（59,162,624 字节，sha256
+`e4fed406aa3b915dee6860c091585ec1a2090d584bca250033feb7052e890f25`；
+唯一变量 Image.gz `7c9071bc…`，ABL DTB `7626954b…`、ramdisk
+`a04d2b25…` 与 619 镜像逐字节一致——`cmp` 首个差异在 boot header 的
+kernel_size 字段）。
+
+**判读**：`fastboot boot repack/619fix1-boot/boot-liuqin-firstboot.img`
+- 串口不再有 `icc_link_nodes` oops ⇒ 修复生效；之后按 6.18 点亮基线
+  的探测序列看 msm/mdss/dsi/panel；
+- 点亮 ⇒ 第三级完成，`liuqin-6.19` 谱系并入 fix1 tip，进 v6.20 规划；
+- oops 消失但仍黑/卡住 ⇒ 按 6.18 fix2/fix3 取证方式定位下一个失败点。
