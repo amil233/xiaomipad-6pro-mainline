@@ -844,6 +844,24 @@ git -C linux-sm8450-liuqin push GitHub liuqin-7.1
 指导的调试手段：cmdline 加 `msm.dpu_use_virtual_planes=false`
 （上游 v7.1 虚拟平面默认开启，关闭可排除该路径）。
 
+### CI 与装配（2026-11-01）
+
+- **CI run 41293956964：✅ 首次即通过**（of_gpio 类 API 删除在 push
+  前已被静态扫描抓出修复，无其他编译错误）。
+- artifact `ci/liuqin-kernel-065fea6a7712…/` 按契约核对：
+  `build-info.json.commit` 与目录名一致，`kernel/`（6 件）+
+  `kernel-modules/`（4 件）`sha256sum -c` 全过，
+  `kernel.release` = `7.1.0-g065fea6a7712`。
+- **镜像已装配待刷**：`repack/710-boot/boot-liuqin-firstboot.img`
+  （59,969,536 字节，sha256 `414c64fa…8dea`；唯一变量 Image.gz
+  `35850124…b88c`；ramdisk `a04d2b25…7682` 与 700 镜像逐字节一致）。
+  ABL DTB `998b90b0…` 与 700 的 `7626954b…` 仅差 4 处上游 dtsi
+  清理（GPU OPP 160→162 MHz、GIC ITS reg 窗口、sdhci-caps-mask
+  删除、timer PPI flags），**显示节点零变化**。
+- **判读**：`fastboot boot repack/710-boot/boot-liuqin-firstboot.img`——
+  点亮 ⇒ 第五级完成；黑屏 ⇒ 串口取证，备用调试
+  `msm.dpu_use_virtual_planes=false`。
+
 **CI 若失败的风险预判**：本级与 v7.0 同类的"结构体重构 vs merge 惯性旧表"
 盲区已按模式排查（of_gpio 已抓到）；`dpu_plane.c` 上游定稿 +
 `PIPES_PER_PLANE=4` 的组合是运行期变量，编译无碍；qcom_scm/TEE 区段
