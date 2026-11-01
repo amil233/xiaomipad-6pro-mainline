@@ -695,3 +695,23 @@ switch、camcc-sm8450、SLPI、a6xx cold-boot、gpu_busy_percent 等）；
 三处主动让位：sc8280xp.c（6.19 上游 sdw 重构）、s5kjn1.c（v7.0 换上游版）、
 pmic_glink_altmode.c（v7.0 换上游 mux_ctrl 版）；camss 后摄三件套
 （camss-csid/vfe-780）早在 6.18 随上游 rename（780→gen2）消失。
+- **二次 CI（run 41276402613）：camss 已过，iris 同类报错，已修复
+  （`b560194ffc4b`）**：`iris_platform_gen2.c:967`
+  `-Werror=incompatible-pointer-types`——上游 v7.0 把平台数据的
+  `tz_cp_config` 拆成"指针 + 显式 size 字段"（`iris_firmware.c` 按
+  `tz_cp_config_data_size` 遍历），而 6.19 树保留的 SM8450 条目仍用旧的
+  `&数组` 写法且无 size。改为上游形式（与 sm8550/sm8650/sm8750/qcs8300
+  条目一致）。**此类"上游结构体/字段重构 vs merge 惯性带过来的旧表"是
+  本级主要破坏模式**（camss regulators、iris tz_cp_config 两连），机制
+  相同：结构体在头里变、新增表所在的 .c 区域上游不碰，git 自动合并无感。
+- **推 CI 前的静态排查（已做，2026-11-01）**：分析 run 日志发现
+  `drivers/firmware`、`drivers/tee`、`drivers/misc`、`drivers/remoteproc`
+  在两次失败中**几乎没编到**——`qcom_scm.c`、`qseecom`、指纹、SLPI 尚未
+  经 v7.0 编译检验（合并前点名的头号风险）。静态核对结果：
+  - 上游把 `qcom_scm.h` 从 `include/linux/soc/qcom/` 挪到
+    `include/linux/firmware/qcom/`，**全树 36 处 includer 已全部跟随新路径**（merge 自动完成）；
+  - qseecom 调用的 6 个 `qcom_scm_qseecom_*` 函数在新头全部有声明（另两个误匹配是 static 函数注释与结构体）；
+  - `qcom_scm.c` 对 v7.0 的 delta 是**纯增量**（444+/3-），全部挂在上游 QSEECOM 区段上，未改动上游核心调用路径；
+  - 未编译的 yzddmr6 文件 include 路径全部可解析；`earlycon-simplefb.c`
+    引用了哪都不存在的 `<asm/early_ioremap.h>`，但该文件在当前 config
+    （`CONFIG_SERIAL_EARLYCON` 未开）下不参与编译——6.17/6.19 亦如此，良性。
