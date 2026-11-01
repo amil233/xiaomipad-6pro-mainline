@@ -728,3 +728,53 @@ pmic_glink_altmode.c（v7.0 换上游 mux_ctrl 版）；camss 后摄三件套
 判读：`fastboot boot repack/700-boot/boot-liuqin-firstboot.img`——
 点亮 ⇒ 第四级完成，进 v7.1 规划；黑/卡住 ⇒ 串口取证（上游
 6.19→v7.0 未改显示管线三件套，首要怀疑延迟探测顺序或运行时交互）。
+
+**刷机结果：✅ 2026-11-01 点亮——第四级 v7.0 完成**。`liuqin-7.0`
+tip `b560194ffc4b` = 点亮内核（三个修复直接在 merge 分支上，无需
+fix 分支或 ff）。镜像清单与判读记录见 `display-panel-checklist.md` §11。
+
+## 10. 第五级 v7.1 规划（delta 分析已完成，待执行）
+
+tag `v7.1` = `8cd9520d35a6`（2026-06-14 "Linux 7.1"，工作区 `linux/`
+torvalds 仓已有；内核仓尚未 fetch）。
+
+**delta：17275 提交 / 13457 文件**——显著大于 v6.19→v7.0，且**上游
+重新推进了 quad-pipe 系列**：`9c171c36d83a`（plane splitting in
+quad-pipe case）、`febcd37fec12`（拆分 plane splitting 函数）、
+`25ee10927752`（延迟 SSPP 分配到 CRTC check）、`1ce61688875d`（去掉
+VBIF index）。**`dpu_plane.c` 上游改 303 行 ⇒ 必冲突**，策略与 v6.19 时
+相反：上游现在主动向 quad-pipe 收敛，应做**真正的三方合并**——吸收
+上游重构，同时保留我们的双 DSI DSC 点亮行为（ours 是实测点亮的分支）。
+
+风险分级：
+
+| 文件 | 变化 | 冲突风险 | 策略 |
+|---|---|---|---|
+| `dpu_plane.c` | 上游 303 行（quad-pipe 续作 + VBIF） | **高** | 手术式三方合并 |
+| `audioreach.h/.c` | 9/71 行（上游清理，可能顺带修 const 告警） | 中 | 合并（注意 v7.0 的宏并集） |
+| `sound/soc/qcom/common.c` | +6 | 中 | 保留 ours TDM helper + 上游增量 |
+| `qcom_scm.c` | +64/-7（QSEECOM allowlist 扩展、kmemdup 清理） | 低 | 自动 + 关注 TEE 区段 |
+| `pinctrl-msm.h` | +10（新增 `QCA_GPIO_PIN_FUNCTION`，无关 sm8475） | 无 | 验证 `MSM_GPIO_PIN_FUNCTION` 仍在 |
+| camss.c / iris vpu* | bugfix（sa8775p 时钟、iris UAF/依赖） | 低 | 自动（平台表区域未动） |
+| `dsi_host.c` / `dsi_phy_7nm.c` | 5 个小修（寄存器转储边界、RGB101010、版本比较 helper） | 低 | 自动 |
+
+**显示不变量（相对 v7.0 全部安全）**：
+- `dpu_encoder.c` 上游未改 ⇒ `MAX_CHANNELS_PER_ENC=4` 不变；
+- `dpu_hw_mdss.h` 上游只删了无关的 `enum dpu_vbif`，`STAGES_PER_PLANE`
+  定义保持（ours=2 的行未动）⇒ 可自动合并；
+- `drivers/interconnect/qcom/sm8450.c` 上游未改（ICC 修复安全）；
+- `pinctrl-sm8475.c` 是 FROMLIST 本地文件，上游任何版本都没有；
+- 其它 6.17→7.0 存活项（QSEECOM、指纹、触控、battmgr 等）未受影响。
+
+**执行步骤**（等用户确认）：
+1. `git fetch /home/ubuntu/linux_kernel_git/linux tag v7.1`（路径一次性
+   fetch，不带 remote；fetch 会带回全历史 tag，事后
+   `git tag -l | grep -vE '^(v6\.17|v6\.19|v7\.0|v7\.1)$' | xargs git tag -d`
+   只留四个分级 tag）；
+2. 从 `liuqin-7.0` tip（`b560194ffc4b`）直分 `liuqin-7.1`；
+3. `git merge v7.1`；
+4. 冲突按上表处理；合并后逐项验证不变量（dp0 disabled、面板 desc、
+   quad-pipe 三处、pinctrl `MSM_GPIO_PIN_FUNCTION`、a6xx `if (reglist)`、
+   cs35l41、ICC 修复行）；
+5. CI 触发 commit；用户 push liuqin-7.1 → 构建 → 装配 `repack/710-boot/`
+   → 刷机验证。
