@@ -733,24 +733,23 @@ pmic_glink_altmode.c（v7.0 换上游 mux_ctrl 版）；camss 后摄三件套
 tip `b560194ffc4b` = 点亮内核（三个修复直接在 merge 分支上，无需
 fix 分支或 ff）。镜像清单与判读记录见 `display-panel-checklist.md` §11。
 
-## 10. 第五级 v7.1 规划（delta 分析已完成，待执行）
+## 10. 第五级 v7.1：合并完成，待推送 CI（2026-11-01）
 
-tag `v7.1` = `8cd9520d35a6`（2026-06-14 "Linux 7.1"，工作区 `linux/`
-torvalds 仓已有；内核仓尚未 fetch）。
+tag `v7.1` = `8cd9520d35a6`（2026-06-14 "Linux 7.1"），已从工作区
+`linux/` 主线仓一次性 fetch（路径 fetch 带回的全历史 tag 已清理，仓内只留
+`v6.17` / `v6.19` / `v7.0` / `v7.1` 四个分级 tag）。
 
 **delta：17275 提交 / 13457 文件**——显著大于 v6.19→v7.0，且**上游
 重新推进了 quad-pipe 系列**：`9c171c36d83a`（plane splitting in
 quad-pipe case）、`febcd37fec12`（拆分 plane splitting 函数）、
 `25ee10927752`（延迟 SSPP 分配到 CRTC check）、`1ce61688875d`（去掉
-VBIF index）。**`dpu_plane.c` 上游改 303 行 ⇒ 必冲突**，策略与 v6.19 时
-相反：上游现在主动向 quad-pipe 收敛，应做**真正的三方合并**——吸收
-上游重构，同时保留我们的双 DSI DSC 点亮行为（ours 是实测点亮的分支）。
+VBIF index）。**`dpu_plane.c` 上游改 303 行，如预期冲突**。
 
 风险分级：
 
 | 文件 | 变化 | 冲突风险 | 策略 |
 |---|---|---|---|
-| `dpu_plane.c` | 上游 303 行（quad-pipe 续作 + VBIF） | **高** | 手术式三方合并 |
+| `dpu_plane.c` | 上游 303 行（quad-pipe 续作 + VBIF） | **高** | 实际为整文件 theirs（见下"执行记录"：上游定稿原生支持 PIPES_PER_PLANE=4） |
 | `audioreach.h/.c` | 9/71 行（上游清理，可能顺带修 const 告警） | 中 | 合并（注意 v7.0 的宏并集） |
 | `sound/soc/qcom/common.c` | +6 | 中 | 保留 ours TDM helper + 上游增量 |
 | `qcom_scm.c` | +64/-7（QSEECOM allowlist 扩展、kmemdup 清理） | 低 | 自动 + 关注 TEE 区段 |
@@ -778,3 +777,75 @@ VBIF index）。**`dpu_plane.c` 上游改 303 行 ⇒ 必冲突**，策略与 v6
    cs35l41、ICC 修复行）；
 5. CI 触发 commit；用户 push liuqin-7.1 → 构建 → 装配 `repack/710-boot/`
    → 刷机验证。
+
+### 执行记录（2026-11-01）
+
+步骤 1–3 已按计划执行：`liuqin-7.1` 从点亮 7.0 tip（`b560194ffc4b`）
+直分，`git merge --no-edit v7.1` 产出 **12 个冲突**（比规划表的预估更广：
+`dpu_plane.c` 之外还有 dp_ctrl、wm_adsp、ipa_data 等），全部解决：
+
+| 冲突文件 | 解决方式 |
+|---|---|
+| `.gitignore` | 并集：保留上游新 `# bc language scripts` 段 + 我们的 `!.github` / `!.github/**`（§5.2 的 8ca4a94d4b52 修复） |
+| `drivers/of/platform.c` | 取 theirs 的变量重命名（`rmem`→`reserved`）+ 保留 ours 的高通 vendor-overlay ramoops 0 地址注释 |
+| `MAINTAINERS` | 两节并集（NANOSIC ours + NAMESPACES theirs，按字母序） |
+| `sound/soc/qcom/common.h` | 并集：ours `struct qcom_snd_tdm_slot_cfg` + theirs `#define LPASS_MAX_PORT` |
+| `drivers/soc/qcom/ubwc_config.c` | 表头并集 `qcom,cape`（ours WIP）+ `qcom,eliza`（theirs）；`qcom,sm8475` 在表尾安全 |
+| `drivers/clk/qcom/camcc-sm8450.c` | 保留 ours 的 `cam_cc_sm8450_clk_regs_configure`（SM8475 GDSC 保留）+ struct 加 `const`（theirs） |
+| `drivers/power/supply/qcom_battmgr.c` | `of_variants` 表并集（glymur/kaanapali/sc8180x/sc8280xp/sm8475/sm8550/x1e80100）；`QCOM_BATTMGR_SM8475` 枚举存活 |
+| `dpu_crtc.c` | 保留 ours 的 else-if 链：外层 `if (topology.num_dsc)` 块已整体处理 DSC，`num_rt_intf==2` 比 theirs 的 `num_intf==2&&!cwb` 更准，theirs 的 `num_dsc==0` 守卫在我们结构下是空操作 |
+| `dpu_plane.c` | **整文件 theirs**（6 处冲突一次消除）：上游版本是 quad-pipe 系列定稿，原生支持我们的 `PIPES_PER_PLANE=4`（`STAGES_PER_PLANE=2`）；残留 30 处 `r_pipe` 全是局部变量（向 `pstate->pipe_cfg[idx+1]` 取址），非被删字段 |
+| `dp_ctrl.c`（3 处） | 全取 ours：`msm_dp_ctrl_phy_init` 的 PHY-before-AUX 扩展；两处 `msm_dp_ctrl_phy_power_off` + DRM_DEBUG_DP。v7.1 把该函数改 void，但 `dp_display.c` 自动合并保留了 ours 的 `ret = msm_dp_ctrl_phy_init(...)`，int 签名一致 |
+| `wm_adsp.c`（2 处） | 冲突 1 保留 ours 的 `asoc_component_prefix` 分支但翻译为新 API（`fw->filename = kasprintf(...)`）；冲突 2 全取 theirs（`&fw->coeff` + `goto err` + 完整 suffix 回退） |
+| `ipa_data-v5.2.c` | **整文件 theirs**：ours 是 yzddmr6 WIP（FIXME 满篇），theirs 是同 Luca Weiss 系列的上游定稿（值相同）；theirs 去掉的 `.imem_addr/.imem_size` 仅 v5.2 未初始化（v5.0/v4.9 仍有） |
+
+**自动合并的险情（无需改动，已核实）**：
+- `wm_adsp.h` 的 `struct wm_adsp` 中 ours 加的 `post_run`/`post_stop` 回调
+  字段、`wm_adsp.c` 内两个钩子调用点（`wm_adsp_event_post_run` /
+  `wm_adsp_event_post_stop`）**都被自动合并保留**（ours 未改的位置 vs
+  theirs 删除，git 站 ours 一边）⇒ cs35l41 的
+  `pre_run`/`post_run`/`post_stop` liuqin 钩子链完整存活。
+- `dpu_plane.h` 自动合并为数组布局（`pipe[PIPES_PER_PLANE]` /
+  `pipe_cfg[PIPES_PER_PLANE]`），与 dpu_plane.c theirs 版本一致。
+
+**上游 API 删除适配（`b6420bd5aa0c`，v7.1 删 `<linux/of_gpio.h>` 与
+`of_get_named_gpio()`）**——merge 后静态扫描发现 ours 的两个触控驱动仍用
+旧 API（nt36xxx.c 是 CI 必编文件），修为公共 gpiod API（commit
+`f1afdbeb9edd`）：
+- `nt36xxx.c` / `fts.c`：新增 `*_of_get_named_gpio()` helper
+  （`fwnode_gpiod_get_index()` + `desc_to_gpio()` + `gpiod_put()`，
+  均为 EXPORT_SYMBOL_GPL 公共 API；get 后立即 put 保持原先"先查编号、
+  后另行 request"的语义；DTS 属性不用改——`of_find_gpio()` 的
+  `for_each_gpio_property_name` 会同时尝试 `foo-gpios` 与 legacy
+  `foo-gpio` 后缀）；
+- `fts_lib/ftsIO.c`：删掉无使用者的 `#include <linux/of_gpio.h>`。
+- 全树扫描确认无其他 `of_get_named_gpio()` 调用方（仅剩 gpiolib-of.c
+  内部实现）。
+
+**合并后不变量逐项验证通过**：`STAGES_PER_PLANE=2` / `PIPES_PER_PLANE=4`
+（dpu_hw_mdss.h）、`MAX_CHANNELS_PER_ENC=4`（dpu_encoder.c）、
+pinctrl-sm8475 两处 `MSM_GPIO_PIN_FUNCTION`、sm8450.c ICC 两行
+（`&qhm_nsp_noc_config` / `&qhm_config_noc`）、a6xx `if (reglist)`
+（a6xx_gpu.c:889）、`&mdss_dp0` disabled、面板 `pipa_tm_desc`
+（compatible `xiaomi,pipa-nt36532`）、`snd_kcontrol_chip`、audioreach
+宏并集 3 处、`mdt_loader.h` 无 `qcom_mdt_pas_init` 残留、
+`qcom_scm.h` 位于 `include/linux/firmware/qcom/`（36 处 includer 跟随）。
+
+**提交**：merge `4ea6e0f42a3f`（12 冲突）+ of_gpio 适配
+`f1afdbeb9edd` + CI 触发 `065fea6a7712`（workflow 分支表加
+`liuqin-7.1`）。工作树干净。
+
+**待推送**：
+```
+git -C linux-sm8450-liuqin push GitHub liuqin-7.1
+```
+（新分支，无需 force。推送即触发 CI。）CI 通过 → artifact 核对 →
+装配 `repack/710-boot/` → `fastboot boot` 验证。若黑屏，按用户预先
+指导的调试手段：cmdline 加 `msm.dpu_use_virtual_planes=false`
+（上游 v7.1 虚拟平面默认开启，关闭可排除该路径）。
+
+**CI 若失败的风险预判**：本级与 v7.0 同类的"结构体重构 vs merge 惯性旧表"
+盲区已按模式排查（of_gpio 已抓到）；`dpu_plane.c` 上游定稿 +
+`PIPES_PER_PLANE=4` 的组合是运行期变量，编译无碍；qcom_scm/TEE 区段
+上游改动（+64/-7，QSEECOM allowlist 扩展、kmemdup 清理）为自动合并，
+ours TEE 段纯增量。
