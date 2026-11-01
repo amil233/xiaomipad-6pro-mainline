@@ -671,3 +671,27 @@ tag（`v7.0`、`Ubuntu-7.0.0-*` 9 个、`archive/github-main-import`、
 **待推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-7.0`（新分支，
 无需 force）。CI 通过 → artifact 核对 → 装配 `repack/700-boot/` →
 `fastboot boot` 验证点亮。
+
+**首次 CI（run 41272915901）：失败，已修复（`8b8477af0a3c` +
+`640a16da3722`）**：构建死在 `drivers/media/platform/qcom/camss/camss.o`，
+唯一致命错误类是 `-Werror=incompatible-pointer-types` —— 上游 6.19→v7.0 把
+`struct camss_subdev_resources.regulators` 从 `char *[]` 改成
+`struct regulator_bulk_data[]`，而 yzddmr6 加的 SM8450/SM8475 资源表被
+merge 原样带过来、还用旧的位置初始化 `.regulators = { "vdda-phy",
+"vdda-pll" }`（camss.c:2742/2755/2768）。**这是自动合并的典型陷阱**：
+结构体在 camss.h 变了、而新增的表所在的 camss.c 区域上游从不碰，git 无法
+察觉。修复 = 改成上游的 designated-initializer 形式 `{ { .supply = ... } }`
+（消费端 camss-csiphy.c/camss-csid.c 按 `.supply != NULL` 计数，无需动）。
+顺带清掉合并残留：`mdt_loader.h` 里 `qcom_mdt_pas_init` 原型在 v7.0 的
+`__qcom_mdt_pas_init`/`qcom_mdt_pas_load` 重构后已无实现无调用方，且仍引用
+已删除的 `struct qcom_scm_pas_metadata` → 删除原型与存根（split-image 两个
+helper 保留，QSEECOM 在用）。另有若干非致命告警（audioreach const 丢弃、
+nt36523 缺原型、dpu_encoder 未用变量）为 6.17 既有代码，不动。
+**yzddmr6 驱动存活盘点（merge 后全树核对）**：66 个全新驱动文件 100% 在
+（fts_spi/nt36523 触控、nt36532 面板、fpc1264 指纹、qseecom TEE、
+ipa_data-v5.2、tfa9872、eusb2 repeater、pinctrl-sm8475…）；修改型补丁全部
+以"上游 v7.0 + 补丁"形式存活（battmgr 小米鉴权、ucsi CCI 去抖、dwc3 role
+switch、camcc-sm8450、SLPI、a6xx cold-boot、gpu_busy_percent 等）；
+三处主动让位：sc8280xp.c（6.19 上游 sdw 重构）、s5kjn1.c（v7.0 换上游版）、
+pmic_glink_altmode.c（v7.0 换上游 mux_ctrl 版）；camss 后摄三件套
+（camss-csid/vfe-780）早在 6.18 随上游 rename（780→gen2）消失。
