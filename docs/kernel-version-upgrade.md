@@ -715,3 +715,16 @@ pmic_glink_altmode.c（v7.0 换上游 mux_ctrl 版）；camss 后摄三件套
   - 未编译的 yzddmr6 文件 include 路径全部可解析；`earlycon-simplefb.c`
     引用了哪都不存在的 `<asm/early_ioremap.h>`，但该文件在当前 config
     （`CONFIG_SERIAL_EARLYCON` 未开）下不参与编译——6.17/6.19 亦如此，良性。
+
+**第三次 CI：✅ 通过**（`7.0.0-gb560194ffc4b`）。artifact
+`ci/liuqin-kernel-b560194ffc4b…/` 按契约核对：
+`build-info.json.commit` 与目录名一致，`kernel/` 与 `kernel-modules/`
+的 `sha256sum -c` 全过。
+
+**镜像已装配待刷**：`repack/700-boot/boot-liuqin-firstboot.img`
+（59,375,616 字节，sha256 `128ac4e9…550c5`；唯一变量 Image.gz
+`5c7dd102…`，ABL DTB `7626954b…d48f`、ramdisk `a04d2b25…7682` 与
+619fix1 镜像逐字节一致；CMDLINE 与点亮的 619fix1 逐字相同）。
+判读：`fastboot boot repack/700-boot/boot-liuqin-firstboot.img`——
+点亮 ⇒ 第四级完成，进 v7.1 规划；黑/卡住 ⇒ 串口取证（上游
+6.19→v7.0 未改显示管线三件套，首要怀疑延迟探测顺序或运行时交互）。
