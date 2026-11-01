@@ -622,8 +622,26 @@ icc_link_nodes()"）——其 commit message 所贴 oops 与本机串口日志
 `a04d2b25…` 与 619 镜像逐字节一致——`cmp` 首个差异在 boot header 的
 kernel_size 字段）。
 
-**判读**：`fastboot boot repack/619fix1-boot/boot-liuqin-firstboot.img`
-- 串口不再有 `icc_link_nodes` oops ⇒ 修复生效；之后按 6.18 点亮基线
-  的探测序列看 msm/mdss/dsi/panel；
-- 点亮 ⇒ 第三级完成，`liuqin-6.19` 谱系并入 fix1 tip，进 v6.20 规划；
-- oops 消失但仍黑/卡住 ⇒ 按 6.18 fix2/fix3 取证方式定位下一个失败点。
+**刷机结果：✅ 点亮**（2026-11-01）。第三级 v6.19 完成：`liuqin-6.19`
+fast-forward 到 `11d739ea62a6`（= fix1 tip，树与点亮内核一致），
+`liuqin-6.19-fix1` 作为历史见证分支保留；远端推送为 fast-forward
+（`git -C linux-sm8450-liuqin push GitHub liuqin-6.19 liuqin-6.19-fix1`）。
+镜像 `repack/619fix1-boot/`。
+
+**清理（第四级启动前，2026-11-01）**：删除内核仓 Ubuntu 比对时代遗留：
+`liuqin-7.0` 分支（Ubuntu-7.0.0 产品线，领先远端 1 个提交
+`0b86178f3fc0`；远端 `GitHub/liuqin-7.0` 是否删由用户定）与 15 个比对
+tag（`v7.0`、`Ubuntu-7.0.0-*` 9 个、`archive/github-main-import`、
+`archive/liuqin-7.0-orphan`、`liuqin-7.0-dts-v1`、`liuqin-dts-v1`）；
+从 `linux/` 主线仓 fetch v7.0 时被带回的全历史 tag 一并清理，**只保留
+`v6.17`/`v6.19`/`v7.0` 三个分级 tag**。
+
+## 9. 第四级 v7.0：合并（进行中）
+
+- tag `v7.0`（commit `028ef9c96e96`，2026-04-12 "Linux 7.0"）从工作区
+  `linux/` 主线仓 fetch（torvalds master 一致；merge base 与 v6.19 的
+  `05f7e89ab973` 吻合，谱系干净）。
+- delta：15623 提交 / 17955 文件；msm 显示驱动 86 文件 2291+/2338-、
+  pinctrl+interconnect 19 文件、qcom DTS + sound/soc 433 文件。
+- 新分支 `liuqin-7.0` 从点亮 6.19 tip（`11d739ea62a6`）直分；旧同名
+  Ubuntu 产品线分支已清理。
