@@ -938,3 +938,93 @@ v7.1..master（至 2026-11-01）无重启用、无修复。Jun Nie 的通用拆�
 "每 mixer 一个 SSPP 段"的通用拆分上可用，但 **num_dsc > num_intf 的
 合流路径（DSC MULTIPLEX）上游自己都撤了**——后续级别不要重新启用
 4-DSC，除非上游重新合入。
+
+## 11. 第六级 v7.2：合并完成，待推送 CI（2026-11-02）
+
+tag `v7.2` = `8d3ae59288f1`，从工作区 `linux/` 主线仓一次性 fetch（带回的
+全历史 tag 已清理，仓内只留 `v6.17`/`v6.19`/`v7.0`/`v7.1`/`v7.2` 五个分级
+tag）。**delta：17833 提交 / 16355 文件**。merge base = v7.1
+（`8cd9520d35a6`），谱系干净：`liuqin-7.2` 从点亮 7.1 tip
+（`6ded9f48ec96`）直分。
+
+**v7.2 的两处主干变化**（决定本级冲突形状）：
+
+1. **`drm_atomic_state` → `drm_atomic_commit` 半树重命名**：DRM 各驱动
+   的 atomic 回调签名换类型名（v7.2 仍保留 `drm_atomic_state` 给未改造
+   的路径）。msm 显示栈全部自动合并，无手工干预。
+2. **iris 平台数据整体重构**：`iris_platform_gen1/2.c` 删除，平台数据
+   移入按 SoC 的头文件（`iris_platform_sm8550.h` 等）并在
+   `iris_platform_vpu2/vpu3x.c` 装配；`iris_platform_data` 结构换面——
+   `fwname`/`pas_id`/`core_arch` 等并入 `firmware_desc`，删除
+   `get_instance`/`inst_fw_caps_dec`/`dec_input_config_params_*`/
+   `hw_response_timeout`/`resume_without_payload`/`ubwc_config`
+   （UBWC 改从 `drivers/soc/qcom/ubwc_config.c` 的
+   `qcom_ubwc_config_get_data()` 取）。上游 mainline 对 SM8450 视频编解码
+   仍无任何支持（venus 止于 sm8250，iris 无 sm8450 条目）。
+
+**9 个冲突与解决**：
+
+| 冲突文件 | 解决方式 |
+|---|---|
+| `drivers/gpu/drm/msm/dp/dp_display.c` | **整体取 v7.2**：采用新 HPD 设计（`host_phy_init` 返回 bool，`plugged`/`sink_count` 取代 `hpd_state` 状态机）。**回移**：我们的 DPCD 读 5 次重试环（`process_hpd_high` 结构 v7.2 未动，直接套入） |
+| `drivers/gpu/drm/msm/dp/dp_ctrl.c` | 保留我们的 PHY-before-AUX 补丁（int 签名 + `phy_powered` 引用计数包装）；**接受**上游对 `msm_dp_ctrl_off_link()` 的删除（v7.2 无调用方，`dp_ctrl.h` 自动合并已同步删声明） |
+| `iris_hfi_gen2.c` / `iris_platform_common.h` | **整体取 v7.2**：撤下 yzddmr6 的 sm8450 平台数据（用了约 15 个结构里已删除的字段）。**iris 驱动不再绑定** DTS 的 `qcom,sm8450-iris`（视频解码从未验证可用，等同 v7.0 退役 s5kjn1 的先例；板级 dtsi 节点保持 okay 但不绑定，无运行期影响） |
+| `iris_probe.c` | 删除 `qcom,sm8450-iris` 的 dt_match 条目（自动合并保留了它，引用已删除的 `sm8450_data` 会编译失败） |
+| `qcom,sm8550-iris.yaml` | 取 v7.2（加 `x1p42100` 条件分支），撤我们的 `qcom,sm8450-iris` compatible 与 resets 条件 |
+| `camss-csiphy-3ph-1-0.c` | **并集**：保留我们的 `lane_regs_sm8450`（GEN2 2.1.3 2PH）+ 上游新增 `lane_regs_sm6350`（同位置两侧各加一张表）；派发表两套都在 |
+| `q6apm.c` / `q6apm-dai.c` | 跟随上游 push-pull shmem 系列；我们的 `alloc_fragments` 重复调用删除（else 分支已分配），CMD-format 错误传播上游已做 |
+| `ktz8866.c` | i2c ID 指定初始化风格（树级清理）；我们的 `driver_data` 1/2（a/b 双芯片联动）保留 |
+
+**自动合并险情（已核实）**：
+- `iris_hfi_gen2_command.c` 自动合并把我们的 `resume_without_payload`
+  `session_resume` 包装与 v7.2 的 drc/drain 并存——v7.2 删了该字段，
+  保留包装会编译失败；已手工回退为 v7.2 的直接实现（`reason` payload）。
+- `iris_platform_common.h` 的冲突块（我们的 4 个字段）随 iris 决策删除；
+  `core_arch` 在 v7.2 移入 `struct iris_firmware_data`（保留在新结构）。
+- `mdt_loader.h`：v7.2 把它从 `drivers/soc/qcom/` **移到**
+  `include/linux/soc/qcom/` 并统一 API；qseecom 用的
+  `qcom_mdt_get_image_size()`/`qcom_mdt_read_image()` 在新头与
+  `mdt_loader.c`（EXPORT_SYMBOL）中齐备（我们 v7.1 的 split-image
+  helper 与上游 v7.2 的 `qcom_mdt_read_image` 形态收敛）。
+- `qcom_scm.h` 的 qseecom 导出 API 7 个全部在合并后的头中
+  （`qcom_scm_qseecom_call` 是 `qcom_scm.c` 的 static 内部函数，qseecom
+  仅注释引用，不是缺声明）。
+
+**显式决策（用户确认）**：
+- **iris**：全面采用上游 v7.2，放弃 sm8450 平台数据（正向移植需新建
+  平台头 + Waipio 固件描述符，且无法设备验证；视频解码非当前目标）。
+- **DP**：同意上述 dp_display/dp_ctrl 处理。
+
+**合并后不变量逐项验证通过**：`STAGES_PER_PLANE=2` / `PIPES_PER_PLANE=4`
+（dpu_hw_mdss.h）、`MAX_CHANNELS_PER_ENC=4`、拓扑选择 = 上游 2 LM/2 DSC
+（dpu_crtc.c `num_intf==2&&!cwb`、dpu_encoder.c
+`num_intf>=2||dsc_count>=2`）、`dpu_use_virtual_planes=true`（上游默认，
+dpu_kms.c:55）、`dpu_plane.c` mixer 粒度拆分条件（`988a7f6e14c6`，2-LM 下
+等价 900+900）、pinctrl-sm8475 ×2 `MSM_GPIO_PIN_FUNCTION`、sm8450.c ICC
+两行、a6xx `if (reglist)` ×2、`&mdss_dp0` disabled、面板
+`pipa_tm_desc`（nt36532.c）、`snd_kcontrol_chip`、of_gpio 适配
+（fwnode get-put helper）、a6xx 冷启动修复、`gpu_busy_percent`、
+SM8475 USB3 PHY 表、`slpi_auto_boot`、pd_mapper `qcom,sm8475`。
+
+**盲区扫描**（v7.0 教训：结构体在头里变、表所在 .c 上游不碰）：双方都改过
+的文件 38 个（排除 9 个已解决）；高风险的 camss 系列在 v7.2 只**增**字段
+（`camss.h` 无字段重命名/删除），我们的 `.supply` 形表保持有效；
+`a6xx_gmu`/`msm_gpu`/`qmp-combo`/`fsa4480`/`drm_mipi_dsi.h`/`pd_mapper`/
+`platform.c`/`rtnetlink.c`/`q6v5_pas` 的 ours 残留 delta 全部是我们有意
+的本地改动（注释、sysfs、模块参数、NULL 守卫、板级表项），无合并伪影。
+DTSI 的显示节点零 delta。
+
+**提交**：merge `0e2962579d78`（含 workflow 触发列表加 `liuqin-7.2`——
+本轮把 CI 触发放进了 merge commit 而非独立 commit，效果等价）。
+
+**待推送**：
+```
+git -C linux-sm8450-liuqin push GitHub liuqin-7.2
+```
+（新分支，无需 force；推送即触发 CI。）
+
+**风险预判**：编译期风险最高的是 yzddmr6 的 TEE/remoteproc/指纹等
+"未经 v7.2 编译检验" 的文件（qseecom、SLPI、fpc1264）——已按契约核对
+其 include 的头（`qcom_scm.h`、`mdt_loader.h` 新位置）与调用 API 齐备；
+运行期变量集中在 iris 退役（节点不绑定）与上游新增 milos 平台（无关）。
+若 CI 失败，按 v7.0/v7.1 的"结构体重构 vs merge 惯性旧表"模式排查。
