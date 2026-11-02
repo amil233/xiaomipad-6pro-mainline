@@ -122,6 +122,8 @@
 | R12 | **按小端解析 `liuqin_images_V14…/images/dtbo.img`**：magic 按小端读成 `0x1eabb7d7`，`count` 变成 `637534208` | 这个镜像的头和条目表是**大端**（文件首 4 字节 `d7 b7 ab 1e`，字段用 `>8I`）。"Android dtbo 都是小端"的经验在这里不成立，先 dump 前 32 字节确认 |
 | R13 | **把 `signal=0x80`、`display=0x00` 当作"面板没收到有效视频流"**（第二十轮起几乎所有结论都建在这条上） | 6.17 **正常显示**时读到的同样是 `signal=0x80 display=0x00`（§8 第二十七轮）。这两个字节证明不了任何事；判断"面板有没有画面"只能看屏幕本身，或 `power` 的 bit1 在能亮/不能亮之间的差异 |
 | R14 | **把 `0x0a4` 当 `LANE_STATUS`** | 能亮时 `0x0a4` 也读 0。`dsi.xml` 的偏移整体比硬件小 4（CTRL 在 XML 是 `0x0`、硬件是 `0x4`），有意义的是 `0xa8`（能亮时 `0x1F00`） |
+| R16 | **把 `dri/0/state` 里 obj 的 `start=00101b7b`（≈4GB）当成 SMMU IOVA/PA**，据此论证 MDSS 走了 identity 域 | 该字段是 `drm_gem_print_info()` 打的 `drm_vma_node_start()`——GEM 在 **mmap 偏移空间里的假偏移**，既非 IOVA 也非 PA。要判 SMMU 域模式应看 `dmesg | grep -i smmu`/iommu sysfs，别读 state 里的 start |
+| R17 | **"本机 PHY 是 5nm ⇒ `dsi_phy_7nm.c` 的改动与本案无关"** | `dsi_phy_7nm.c` 一个文件同时含 7nm/5nm/4nm 三套配置（`dsi_phy_5nm_8450_cfgs` 就定义在其中）。以后凡是 PHY 文件级的 diff，先 `grep -n "dsi_phy_5nm_8450\|<本机兼容串>"` 确认该文件是否覆盖本机再决定是否排除 |
 | R15 | **把 `0x0a` 的绝对值当"面板健康值"** | 原厂 DT 写 `0x9d`、6.17 正常显示读到 `0x9c`、7.0 黑屏读到 `0x9e`——三个值互不相同，绝对值没有意义；只有 bit1 在"能亮/不能亮"之间有稳定差异，而 6.17 静置 60 s 也不变，说明它不是"画面静止"触发的 |
 
 ### W8 板级 DTS 里加了**第二个** `&mdss_dp0` 节点，被文件后面那个 `status = "okay"` 覆盖
