@@ -116,3 +116,62 @@
 `net/core/rtnetlink.c` 的 NULL 守卫是跑 Ubuntu 桌面（gnome-shell）的
 实际前提之一。外设侧哪些有主线等价驱动、哪些只能用厂商树，见
 `docs/` 内主线兼容性核查记录（同阶段产出）。
+
+---
+
+## 主线兼容性核查（liuqin 基本功能视角，2026-11-02）
+
+对照上游 v7.3 逐文件核实（含 blob hash 直接比对，避免 grep 误判）。
+**注意**：`tfa9872`（功放）与 `fts_spi`（FocalTech 触控）虽在我们的偏离
+清单里，但**不被 liuqin 引用**——tfa9872 只服务于 `sm8475-nothing-pong`
+（树内另一块板），fts 是 yzddmr6 多设备树的遗留。liuqin 基本功能与它们
+无关。
+
+### ✅ 主线已有驱动，基本功能开箱可用
+
+| 功能 | 芯片/节点 | 主线驱动 | 我们的偏离性质 |
+|---|---|---|---|
+| WiFi | WCN6855（PCIe 0x1103） | `ath11k/pci.c` | 无（纯主线） |
+| 蓝牙 | WCN6855 | `hci_qca.c`（QCA_WCN6855） | 无 |
+| 音频编解码 | wcd9380 | `sound/soc/codecs/wcd938x.c` | **完全相同**（blob 一致） |
+| 音频功放 | cs35l41 ×4 | `sound/soc/codecs/cs35l41*.c` | 喇叭保护是增强 |
+| USB-C / 充电 | pmic-glink + ucsi | `pmic_glink.c`/`ucsi*.c`/`qcom_battmgr.c`/`qcom_pd_mapper.c` 全在主线 | 厂商表 + 小米鉴权是增强 |
+| USB DP mux | fsa4480 | `fsa4480.c` | 去抖是增强 |
+| USB3+DP PHY | qmp-combo | `phy-qcom-qmp-combo.c`（v7.3 已含 SM8475 表） | DP PLL 失败上送是增强 |
+| 背光 | ktz8866 | `ktz8866.c` | 双芯片互锁是增强 |
+| GPU | Adreno 730 | `a6xx_gpu.c` | 冷启动修复是增强 |
+| UFS / SCM / SLPI | — | `ufs-qcom.c`/`qcom_scm.c`/`qcom_q6v5_pas.c` | 小补丁 |
+| 相机传感器 | s5kjn1 | `drivers/media/i2c/s5kjn1.c` | **完全相同**（上游 7.0 合入） |
+| eUSB2 中继 | ptn3222 | `drivers/phy/phy-nxp-ptn3222.c` | 主线 compatible 是 `nxp,ptn3222`；我们 DTS 用 `nxp,eusb2-repeater` + 本地驱动 |
+| TEE（替代路线） | qcomtee | `drivers/tee/qcomtee/` | 与 qseecom API 不同，见下 |
+
+### ❌ 主线没有、liuqin 基本功能必需的本地驱动
+
+| 功能 | 芯片 | 本地驱动 | 主线缺口 |
+|---|---|---|---|
+| **触控** | Novatek NT36532（**SPI**） | `input/touchscreen/nt36523/`（6 文件） | 主线 `novatek-nvt-ts.c` **仅 I2C**（NT11205/NT36672A），不支持 SPI |
+| **显示面板** | 天马 m81_36_02_0a | `panel-novatek-nt36532.c` | 主线 nt36523 驱动无本机 desc |
+| **pinctrl** | SM8475 TLMM | `pinctrl-sm8475.c`（FROMLIST） | 上游至今没有 SM8475 pinctrl |
+
+### ⚠️ 非基本功能、但设备特性依赖的本地驱动
+
+| 功能 | 芯片 | 本地驱动 | 主线缺口 |
+|---|---|---|---|
+| 键盘套 | Nanosic WN8030 | `hid-nanosic.c` | 无（gnome 磁吸键盘/SW_TABLET_MODE） |
+| 指纹 | fpc1020（SPI） | `fpc1264_spi_diag.c` + qseecom | 无 fpc1020；qseecom 也无（主线 qcomtee 不同 API） |
+| 相机捕获 | SM8475 CAMSS | `camss*` 五件套 + `camcc-sm8450.c` 加 sm8475 | 主线 camss 无 SM8475 资源表、无 camcc-sm8475 |
+| 早期串口 | simplefb | `earlycon-simplefb.c` | 无（调试用，`CONFIG_SERIAL_EARLYCON` 未开不参与编译） |
+
+### 显示点亮链（主线驱动 + 我们的补丁）
+
+DSI/DPU/PHY/ubwc 主体全是主线驱动，但**没有我们的补丁就点不亮**：
+拓扑（2LM/2DSC）+ bonded PLL 修复 + UBWC cape 别名 + dsc_slice_per_pkt
++ 面板驱动。详见 divergence 报告 §1。
+
+### 结论
+
+liuqin 的"基本功能"在主线 v7.3 上的真实缺口只有 **三个硬缺口**：
+触控（SPI Novatek）、显示面板 desc、pinctrl-sm8475；其余基础
+（WiFi/BT/音频/充电/USB-C/GPU/UFS/相机传感器）主线已有驱动，
+我们的偏离多为厂商增强而非功能前提。stage 2 的 rootfs 可以在任何
+情况下正常工作，因为内核侧的缺口已由本树补齐。
