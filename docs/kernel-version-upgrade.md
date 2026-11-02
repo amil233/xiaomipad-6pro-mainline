@@ -1378,3 +1378,24 @@ git -C /home/ubuntu/linux_kernel_git/linux-sm8450-liuqin push GitHub liuqin-7.3
  点亮的改动。81 个 msm 提交里本轮唯一命中流路径的三个是
  `44784327815b`（本根因）、`ce73a5db44e3`（slice_per_pkt，merge 时
  已保留 liuqin 路径）、`997c9974cdd2`（atomic bridge 回调，纯签名）。
+
+### 刷机结果：✅ 点亮（2026-11-02）—— 第七级 v7.3 完成
+
+`repack/730fix-boot/boot-liuqin-firstboot.img`（59,457,536 字节，sha256
+`90917ffe…063d`）复刷出画面，`liuqin-7.3` tip `db08160915e3` = 点亮内核。
+CI run 41409689334 首次即通过；artifact
+`ci/liuqin-kernel-db08160915e3…/` 按契约核对全过（commit 一致、
+`sha256sum -c` 6/6）。装配输入：Image.gz `8a1132e3…` 唯一变量；ABL DTB
+`28a0a6e9…` 与 730 逐字节一致（DTS 零变化）；ramdisk `a04d2b25…`。
+
+**v7.3 两轮黑屏、两轮修复**：
+1. ubwc `qcom,cape` 机器别名丢失（`489807127e50`）；
+2. bonded-DSI PLL 初始化修复被上游 `44784327815b` revert
+   （`db08160915e3` 重新应用 `93c97bc8d85d`）。
+
+点亮拓扑仍是 2 LM / 2 DSC（每链路 1 DSC、900+900 拆分）。
+
+**下一步**：v7.4 尚在 RC1，暂不升级。`linux/` 仓的 `stable/linux-7.3.y`
+（= 7.3.1，40 个提交）已全量审阅：全部为 signal/coredump/io_uring/keys/
+tracing 等通用子系统修复，**无显示/msm/qcom/IOMMU/clk/DTS 相关内容**，
+无需 backport。
