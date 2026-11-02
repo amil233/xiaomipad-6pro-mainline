@@ -1263,6 +1263,55 @@ hfi_gen1）与 v7.3 逐字节一致**；dpu_plane mixer 粒度拆分
   换回厂商表的 fix commit 即可（不影响点亮，充电走 pmic_glink 不经此
   PHY 的 USB3 部分）。
 
+### v7.3 SM8475/SM8450 上游提交全量复查（2026-11-02，用户要求）
+
+v7.2..v7.3 之间**全部** 21 个与我们 SoC 直接相关的上游提交（Esteban
+Urrutia 13 个 + sm8450.dtsi 6 个 + qmp-combo 通用修正 2 个）逐项核对，
+确认 merge 覆盖完整、无遗漏、无悬空引用：
+
+1. **预研已覆盖并在 merge 里处理的**：qmp-combo SM8475（`9583243a524c`），
+   qmp-pcie Gen3x1（`9e953732c3ed` + `f8b4493d5e7e` pcs_lane1 offset），
+   ASoC sndcard（`1ad05292c01b`/`c1d0a877c7be`/`a95cfed54bf9`）——
+   `sm8475_priv_data` 与 of_match、`sm8475_qmp_gen3x1_pciephy_cfg`、
+   `qmp_pcie_offsets_v5.pcs_lane1=0x1400` 全部在合并树确认。
+2. **sm8450.dtsi 六个上游提交**（我们板级 dtsi 直接 include）全部正确并入：
+   - `9b10e56647fa` PCIe iommu-map 修复（`0x1c00 0x0 0x1` 形式）✓
+   - `987150965d14` OS PDC DRV span 收缩到 `0x10000` ✓
+   - `5cd325bf0f59` 补 PCM_OUT 端口（dout-ports 5→6）✓
+   - `90a6f902c8de` SCM minidump SRAM ✓
+   - `8a2b4481b66c` qmpphy `mode-switch` ✓
+   - **`0ed8261e0ebd` 删除三块保留区（高风险项，已查证安全）**：
+     `mte_mem`(512MB) / `trusted_apps_mem`(57MB) / `trusted_apps_ext_mem`(59MB)。
+     证据链：①上游 commit message 称 downstream 无这些节点、实测无崩溃——
+     但**本机原厂 V14 ROM 的 base dtb 有后两块**（`trusted_apps_region@
+     ea000000` 0x3900000、`@ed900000` 0x3b00000，与上游 dtsi 逐字节一致）；
+     ②然而原厂 dtbo entry.15 的 fragment@50 给这两个区域设
+     `status="disabled"`——即**原厂 Linux 本来就不保留它们**（rmem 跳过
+     disabled 节点）；③entry.15 fragment@50 的 target 是 base 的 label
+     `reserved_memory`（往里追加空壳节点），**不依赖** base 有
+     `trusted_apps_mem` label，故删除不影响 ABL 应用 ROM overlay 集；
+     ④mte 在原厂 base dtb 也无。结论：删除 = 与原厂运行时行为对齐，
+     无新风险；反而省下 v7.2 起多保留的 628MB no-map。**唯一变化**是
+     内核 dtb 不再"双保险"保留 TA 区域，与原厂一致。
+3. **上游修复了我们也有但未察觉的 SMMU bug**（`d149c8b2c014`）：
+   `qcom,sm8450-mdss` 加入 `qcom_smmu_client_of_match`——修复
+   "UEFI 已配置 framebuffer 导致 unhandled context fault"。我们正是
+   ABL 预配置显示启动的场景，**这是对显示路径的正面修复**，已自动合并
+   （quirk 表里 v7.2 已有的 sm8450-mdss 条目不动）。
+4. **qmp-combo 两个通用修正**：`481807f93907` v5 DP pre-emphasis 表
+   `0x0d→0x0e`、`8fd2b30d187f` 删 `qmp_v4_calibrate_dp_phy`——均随上游
+   表并入 ✓。
+5. **msm 显示栈 v7.2→v7.3 delta 复核**：`dpu_crtc.c`/`dpu_plane.c`
+   **零改动**（点亮拓扑唯一 delta 仍只是我们的 mixer 粒度拆分）；
+   `dpu_encoder.c` 仅 1 处（YUV420 判断改用通用 `drm_mode_is_420_only`，
+   `msm_dp_is_yuv_420_enabled` 删除后树内**无悬空引用**——历代反复踩的
+   "上游删 API vs 我们调用点"盲区本次干净）；`dsi_host.c` 47 处、
+   `dp_display.c` 297 处均自动合并且我们的补丁存活。
+
+**复查结论：v7.3 merge 无需任何修改**，预研三定夺与 17 冲突解决全部
+成立；需要注意的行为性变化仍是 qmp-combo 换上游表（USB3 刷机验证）
+与"保留区删除与原厂对齐"（中性）。
+
 ### 推送
 
 ```
