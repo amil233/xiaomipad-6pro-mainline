@@ -1130,6 +1130,17 @@ message-out 载荷，不必再走 `write_message_out`；后者 v7.2 **保留**�
   `f68afce8e8a7`（iio 初始化）。
 - v7.2 删除的 40 个头文件**无任何** drivers//sound//arch/ 文件再 include。
 
+### 刷机结果：✅ 点亮（2026-11-02）—— 第六级 v7.2 完成
+
+`fastboot boot repack/720-boot/boot-liuqin-firstboot.img` 出画面。
+`liuqin-7.2` tip `bf7540f8f07b` 即点亮内核（v7.2 merge + 两轮 API 适配
+都在分支上，同 v7.0 的做法）。**总结：v7.2 三轮 CI 才点亮——两轮 CI
+分别被"上游改公开 API、我们的 FROMLIST/补丁 hunk 沿用旧签名"拦下
+（`drm_panel_init`→`devm_drm_panel_alloc`、ucsi `sync_control` 扩参），
+与 v7.1 的 `of_gpio` 同类。** 点亮拓扑仍是 2 LM / 2 DSC，全量表（38 个
+"双方都改过"文件 + 平面栈 diff）证明显示路径相对 v7.1 只差上游的
+`drm_atomic_commit` 重命名与上游 dtsi 的 crypto 节点修复。
+
 ### 第三次 CI（run 41371562984）：✅ 通过，镜像已装配（2026-11-02）
 
 CI 通过；artifact `ci/liuqin-kernel-bf7540f8f07b…/` 按契约核对
