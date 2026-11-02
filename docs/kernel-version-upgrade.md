@@ -1320,3 +1320,61 @@ git -C /home/ubuntu/linux_kernel_git/linux-sm8450-liuqin push GitHub liuqin-7.3
 
 新分支，无需 force。推送即触发 CI；artifact 落 `ci/` 后按契约核对并
 装配 `repack/730-boot/`。
+
+### 复刷黑屏根因定位与修复（2026-11-02）
+
+ cape 修复版（`489807127e50`）CI 通过、装配 `repack/730-boot/` 复刷后
+ **仍黑屏**，但现象与首轮完全不同：mdss/dpu/dsi0/dsi1/panel 全 probe
+ OK、`card0`+`card0-DSI-1` 注册、GPU 固件加载、`dri/0/state` 显示
+ crtc-0 `enable=1 active=1`、plane-0 武装（双 rect 900+900、sspp_8
+ parallel multirect）、mode `1800x2880@120 785245kHz` 数学正确、无
+ SMMU fault、无 oops——**"全链路初始化正常、视频流为空"**。
+
+ **根因**：v7.3 新进入的上游 revert `44784327815b` 撤掉了
+ `93c97bc8d85d`（"drm/msm: dsi: fix PLL init in bonded mode"；上游撤它
+ 是因为它破坏了**别的平台**的非 bonded 分频器编程）。本机是 bonded
+ dual-DSI（`qcom,dual-dsi`，PLL0 驱动两条链路）：master PHY enable 时
+ 把 `pll_enable_cnt` 置 1，而 slave 的 `vco_set_rate()` →
+ `dsi_pll_enable_pll_bias()` **先于** slave PHY enable 执行、看到
+ cnt≠0 提前返回、**跳过 PLL BIAS 编程** ⇒ 第二条链路字节时钟未初始化
+ ⇒ 面板收不到有效视频流 ⇒ 黑屏。LP 命令通路不经视频 PLL，故面板 DCS
+ 一切正常——与全部观测吻合。720 点亮正是因为 `93c97bc8d85d` 在 v7.2
+ 生效。另注：`dsi_phy_7nm.c` 同时含 5nm/4nm 配置，本机 PHY
+ （`qcom,sm8450-dsi-phy-5nm`）走该文件，故此修复对本机有效。
+
+ **修复 `db08160915e3`** = 按上游 fix 语义逐字节移植（diff blob 与上游
+ `984a66085dfb` 一致）：删掉 `dsi_7nm_phy_enable/disable()` 里的
+ `pll_enable_cnt = 1/0` 写入与 `phy->pll_data` 间接层（含
+ `dsi_phy.h` 字段删除），计数只由
+ `dsi_pll_enable/disable_pll_bias()` 增减。上游的非 bonded 回归对
+ 本树不适用（本树只跑 bonded DSI）。
+
+ **过程中排除的误判**（登记在此避免重复）：
+ ① `dsi_phy_7nm.c` 的改动适用于本机（5nm 配置在该文件内），早前
+ "7nm 与本机无关"的排除是错的；
+ ② `d149c8b2c014`（SMMU client 表加 `qcom,sm8450-mdss`）确实把 MDSS
+ 默认域改成 identity/bypass，但 bypass 下 DPU 直接以 PA 取帧，
+ 不解释"流为空"；且 `dri/0/state` 里 obj 的 `start=` 字段是
+ `drm_vma_node_start()`（mmap 假偏移），既非 IOVA 也非 PA，**不能**
+ 用它论证 SMMU 模式；
+ ③ `2028280686f4`（byte clk round）的 round 发生在 PHY bitclk 计算
+ 之后（`dsi_mgr_bridge_power_on` 先 `dsi_mgr_phy_enable`→
+ `get_phy_clk_req`，后 `msm_dsi_host_power_on`→`link_clk_set_rate`），
+ 不影响 PHY 时钟请求；
+ ④ `9e15123eca79`（DSI 上电时机）2023 年的提交，v7.2 已有；
+ ⑤ `ea9dadeac79c` 只加 `FBINFO_VIRTFB` 标志；
+ ⑥ 面板 diag `display=0x00`/`signal=0x80` **在能亮时也会出现**
+ （§6.-3 R14 判读陷阱），"面板未离开 idle"框架不成立；
+ ⑦ dispcc 的 LUCID_OLE（8475）/EVO（8450）分支配置本就正确。
+
+ **教训（写入后续级别检查清单）**：merge 后除"机器表条目集合"外，
+ 还须扫 v7.N **新进入的 revert 提交**：
+
+ ```
+ git log v7.(N-1)..v7.N --grep '^Revert ' -- drivers/gpu/drm/msm/
+ ```
+
+ 上游为修 A 平台回归而 revert 的修复，可能正是 B 平台（我们）赖以
+ 点亮的改动。81 个 msm 提交里本轮唯一命中流路径的三个是
+ `44784327815b`（本根因）、`ce73a5db44e3`（slice_per_pkt，merge 时
+ 已保留 liuqin 路径）、`997c9974cdd2`（atomic bridge 回调，纯签名）。
