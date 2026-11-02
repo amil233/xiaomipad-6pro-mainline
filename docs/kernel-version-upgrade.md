@@ -1102,3 +1102,30 @@ declaration of function 'drm_panel_init'; did you mean 'drm_panel_put'?
 （`drm_panel_of_backlight`、`drm_panel_add/remove`、
 `of_find_mipi_dsi_host_by_node`、`devm_mipi_dsi_device_register_full`）
 在 v7.2 全部保留。
+
+### 二次 CI（run 41365242101）：ucsi 签名失败，已修复 `bf7540f8f07b`
+
+第一次修复后重推，又一个**同类盲区**（报错全树仅此一处）：
+
+```
+drivers/usb/typec/ucsi/ucsi.c:1634:23: error: too few arguments to
+function 'ucsi->ops->sync_control'
+```
+
+v7.2 给 `struct ucsi_operations.sync_control` 扩了
+`(void *msg_out, size_t msg_out_size)` 两个参数（使命令可以自带
+message-out 载荷，不必再走 `write_message_out`；后者 v7.2 **保留**——
+此前我误读头文件以为删了，复核后订正）。被截的调用点在**我们的 CCI
+去抖补丁**里（`ucsi_reset_ppm` 的 stale-ack 前奏）——merge 时该 hunk
+保留 ours 旧签名。修复 = `NULL, 0` 补齐两个新参数（与 v7.2
+`ucsi_send_command()` 的无载荷惯用法一致）。
+
+补充核对（防同类漏网）：
+- 所有 ucsi 后端（含我们实际使用的 `ucsi_glink.c`）已全部是 v7.2 形态
+  （`.sync_control = ucsi_sync_control_common`）；`ucsi_glink.c` 相对
+  v7.2 唯一差异是我们板级的 `qcom,sm8475-pmic-glink` 兼容串，无害。
+- v7.1→v7.2 的三个机械式大改已确认ours 侧干净：
+  `995832b2cebe`（mod_devicetable include 清理 1507 文件，仅删 include）、
+  `5164f7e7ff8e`（drm_atomic_commit 重命名 362 文件，msm 栈自动合并）、
+  `f68afce8e8a7`（iio 初始化）。
+- v7.2 删除的 40 个头文件**无任何** drivers//sound//arch/ 文件再 include。
