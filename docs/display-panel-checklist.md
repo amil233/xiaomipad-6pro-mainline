@@ -1426,7 +1426,7 @@ OnePlus Pad 2 的驱动在 review），所以"这块 DDIC 在 mainline 上驱不
 
 ---
 
-## 11. 关键测试镜像与生成时的源码状态（2026-11-01 更新）
+## 11. 关键测试镜像与生成时的源码状态（2026-11-02 更新）
 
 这张表是"想复现某个现象时该 boot 哪张镜像"的唯一索引。**sha256 都已重算核对**。
 所有镜像都用 `repack/unpacked/ramdisk`（installer.img，`a04d2b25…`）同一份 ramdisk。
