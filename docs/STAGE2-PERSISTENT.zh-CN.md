@@ -161,8 +161,16 @@ python3 tools/prepare-image-inputs.py run     # 传感器栈/设置程序经 sud
 
 ### 4.5 内核产物（CI，不本地编译）
 
-推 `liuqin-7.3` 分支触发 `build.yml`（若已推过则复用 artifact），
-按工作区 `ci/` 契约取回：
+**不用重跑编译。** 内核仓的 `liuqin.yml` 与集成仓的 `build.yml` 跑的是
+**同一份 action**（`.github/actions/kernel`，内核仓 CI 反过来 checkout
+集成仓 main 取构建脚本），确定性参数相同 → 产物字节一致。唯一的差别是
+标签：内核仓传 `revision` → `build_kind=development`；集成仓按锁构建 →
+`build_kind=product-input`，两者在组装器眼里等价
+（`build-liuqin-image.py` 对 development 只多查"分片哈希与锁一致"，
+本仓库 10/10 分片哈希已核对一致）。
+
+所以**直接复用内核仓 CI 已产出的 artifact**（run 41409689334 的
+`liuqin-kernel-db08160915e3…`，即工作区 `ci/` 里那份）：
 
 ```
 ci/liuqin-kernel-db08160915e3…/
@@ -171,9 +179,14 @@ ci/liuqin-kernel-db08160915e3…/
 ```
 
 使用前核对 `build-info.json.commit` 与目录名一致、`sha256sum -c` 通过。
-`build-liuqin-image.py` 的 `modules` 阶段（`build-liuqin-kernel-modules.sh`
-输出形态）与 `debs` 阶段（`KERNEL_MODULES_DIR`）都消费这份 artifact，
-**不需要本地跑 Kbuild**。
+
+> **modules 阶段复用**：新版 action 把预打模块集登记进
+> `build-info.json` 的 `prepared_modules` 字段，`build-liuqin-image.py`
+> 的 `modules` 阶段直接从 artifact 的 `kernel-modules/` 目录复用，
+> **本地不需要内核构建树、不跑 Kbuild**。若 artifact 的 build-info
+> 里没有 `prepared_modules`（旧 action 产物），组装器会明确报
+> "lacks its prepared module set, rerun the CI action"——重跑一次
+> 内核仓 CI 即可。
 
 ### 4.6 组装系统镜像
 

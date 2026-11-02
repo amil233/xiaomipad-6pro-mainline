@@ -148,25 +148,37 @@ def main():
     except BlockingIOError:
         parser.error('another assembly owns this output')
     for stage in selected:
-        if stage == 'modules' and imported:
-            # Reuse the product module tree already normalized and compared by
-            # the clean A/B build. Never run Kbuild inside a frozen proof OUT.
+        if stage == 'modules' and (imported or info.get('build_kind') == 'development'):
+            # Reuse the prepared module tree the CI action already packaged
+            # (build-info prepared_modules). Never run Kbuild inside a
+            # frozen proof OUT. A development build carries the same
+            # prepared set; the commit and fragment gates above already
+            # proved it belongs to the locked kernel, so local assembly
+            # needs no kernel build tree at all.
             prepared = info.get('prepared_modules', {})
             names = {'modules.tar', 'modules.manifest', 'kernel.release', 'kernel.commit'}
-            if (prepared.get('directory') != 'prepared-modules' or
+            if (prepared.get('directory') not in ('kernel-modules', 'prepared-modules') or
                     set(prepared.get('files', {})) != names):
-                parser.error('Imported kernel lacks its exact prepared module set')
-            source = kernel / prepared['directory']
-            if ((source / 'kernel.commit').read_text().strip() != lock['commit'] or
-                    (source / 'kernel.release').read_text() !=
-                    (kernel / 'include/config/kernel.release').read_text()):
+                parser.error('Kernel build lacks its prepared module set; rerun the CI action')
+            # The CI artifact layout places kernel-modules/ next to kernel/;
+            # the legacy prepared-modules/ form sat inside it. Accept either.
+            source = kernel.parent / prepared['directory']
+            if not source.is_dir():
+                source = kernel / prepared['directory']
+            if not source.is_dir():
+                parser.error('Prepared module directory is missing: ' + str(source))
+            if (source / 'kernel.commit').read_text().strip() != lock['commit']:
+                parser.error('Imported modules do not belong to the locked kernel')
+            kernel_release = kernel / 'include/config/kernel.release'
+            if kernel_release.is_file() and \
+                    (source / 'kernel.release').read_text().strip() != kernel_release.read_text().strip():
                 parser.error('Imported modules do not belong to the locked kernel')
             for name, expected in prepared['files'].items():
                 with (source / name).open('rb') as stream:
                     if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
                         parser.error('Imported module artifact mismatch: ' + name)
             shutil.copytree(source, out / 'modules')
-            print('Stage: modules (verified clean/repro product artifacts)', flush=True)
+            print('Stage: modules (verified prepared CI module artifacts)', flush=True)
             continue
         if stage == 'release-assets':
             changed = installation_path_changes(project, env)
