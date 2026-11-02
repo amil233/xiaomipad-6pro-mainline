@@ -254,9 +254,18 @@ def cmd_run() -> None:
 
     # Paths are absolute: build-liuqin-image.py resolves relative values
     # against the JSON file's own directory, not against the project.
+    # UBUNTU_DESKTOP_ROOT / DESKTOP_ROOTFS_MANIFEST may be overridden for a
+    # repinned release (tools/repin-ubuntu-release.sh); the defaults are the
+    # verified 26.04 tree.
+    def env_path(name: str, default: Path) -> Path:
+        value = os.environ.get(name)
+        return Path(value).resolve() if value else default
+
     inputs = {
-        'UBUNTU_DESKTOP_ROOT': str(PROJECT / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs'),
-        'DESKTOP_ROOTFS_MANIFEST': str(PROJECT / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs.manifest'),
+        'UBUNTU_DESKTOP_ROOT': str(env_path('UBUNTU_DESKTOP_ROOT',
+                                            PROJECT / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs')),
+        'DESKTOP_ROOTFS_MANIFEST': str(env_path('DESKTOP_ROOTFS_MANIFEST',
+                                                PROJECT / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs.manifest')),
         'FIRMWARE_POOL': str(PROJECT / 'tools/local/firmware-liuqin'),
         'FIRMWARE_TREE': str(firmware_dir),
         'FIRMWARE_MANIFEST_SHA256': sha256_file(firmware_manifest),

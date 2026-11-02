@@ -17,13 +17,16 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 input_dir=${UBUNTU_DESKTOP_INPUT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64"}
-iso=$input_dir/ubuntu-26.04-desktop-arm64.iso
+iso=$input_dir/${UBUNTU_DESKTOP_ISO_NAME:-ubuntu-26.04-desktop-arm64.iso}
 iso_url=${UBUNTU_DESKTOP_URL:-https://cdimage.ubuntu.com/ubuntu/releases/26.04/release/ubuntu-26.04-desktop-arm64.iso}
-iso_bytes=4161089536
-iso_sha256=c2afd538d66fdd77377d03f1ed2ac76a34f1c116baecc9a8170d68f833121f57
-base_sha256=82613d06f973778f6d49c817d7eb764a7fd812016a30a7f8006e8f61d718b393
-standard_sha256=fce0e2440cdbb6ebaf03efe3dd844c0e1a3b5facaca913e18f312e30a8f9fdaf
-en_layer_sha256=a22be06ccf2e742570aa0a1925cc6b9a616ebbec87466c59480f7df8022272ba
+# Every pin below defaults to the verified 26.04 release.  Repin a newer point
+# release with tools/repin-ubuntu-release.sh and export the pins it prints
+# (UBUNTU_DESKTOP_ISO_BYTES etc.) instead of editing this file.
+iso_bytes=${UBUNTU_DESKTOP_ISO_BYTES:-4161089536}
+iso_sha256=${UBUNTU_DESKTOP_ISO_SHA256:-c2afd538d66fdd77377d03f1ed2ac76a34f1c116baecc9a8170d68f833121f57}
+base_sha256=${UBUNTU_DESKTOP_BASE_SHA256:-82613d06f973778f6d49c817d7eb764a7fd812016a30a7f8006e8f61d718b393}
+standard_sha256=${UBUNTU_DESKTOP_STANDARD_SHA256:-fce0e2440cdbb6ebaf03efe3dd844c0e1a3b5facaca913e18f312e30a8f9fdaf}
+en_layer_sha256=${UBUNTU_DESKTOP_EN_LAYER_SHA256:-a22be06ccf2e742570aa0a1925cc6b9a616ebbec87466c59480f7df8022272ba}
 rootfs=${DESKTOP_ROOTFS:-"$input_dir/rootfs"}
 
 die() { printf 'build-liuqin-ubuntu-desktop-rootfs: %s\n' "$*" >&2; exit 1; }

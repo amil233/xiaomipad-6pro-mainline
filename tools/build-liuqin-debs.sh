@@ -33,7 +33,7 @@ ubuntu_desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-des
 audio_probe_libasound=$ubuntu_desktop_root/usr/lib/aarch64-linux-gnu/libasound.so.2.0.0
 busybox=${BUSYBOX:-"$project_root/tools/local/busybox-arm64/usr/bin/busybox"}
 busybox_sha256=${BUSYBOX_SHA256:-52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933}
-power_key_cc=${POWER_KEY_CC:-$(command -v aarch64-linux-gnu-gcc || true)}
+power_key_cc=${POWER_KEY_CC:-$(command -v aarch64-linux-gnu-gcc || command -v gcc || command -v cc || true)}
 power_keyd_source=${POWER_KEYD_SOURCE:-"$project_root/device/power-key/liuqin-power-keyd.c"}
 uinput_automation_source=${UINPUT_AUTOMATION_SOURCE:-"$project_root/device/input/liuqin-uinput-automation.c"}
 audio_probe_source=${AUDIO_PROBE_SOURCE:-"$project_root/device/audio-topology/liuqin-audio-hwparams-probe.c"}
@@ -171,7 +171,12 @@ build_device_support() {
 	for src in "$power_keyd_source" "$uinput_automation_source" "$audio_probe_source"; do
 		[ -f "$src" ] && [ ! -L "$src" ] || die "reviewed source is unavailable: $src"
 	done
-	[ -x "$power_key_cc" ] || die "aarch64 compiler is unavailable: $power_key_cc"
+	[ -x "$power_key_cc" ] || die "aarch64 compiler is unavailable: $power_key_cc (set POWER_KEY_CC)"
+cc_machine=$(printf '' | "$power_key_cc" -dumpmachine 2>/dev/null || true)
+case $cc_machine in
+aarch64-*) ;;
+*) die "the C compiler does not target aarch64: $power_key_cc ($cc_machine); set POWER_KEY_CC to a cross compiler on x86 hosts" ;;
+esac
 	[ -f "$audio_probe_libasound" ] && [ ! -L "$audio_probe_libasound" ] ||
 		die "Canonical arm64 libasound is unavailable: $audio_probe_libasound"
 	[ -r "$overlay/$webkit_env" ] ||

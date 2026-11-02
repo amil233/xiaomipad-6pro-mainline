@@ -19,7 +19,8 @@
 #   sudo tools/build-liuqin-native-root.sh [all|copy|debs|assemble|manifest]
 #
 # copy      fresh cp -a of the pinned rootfs + trivial static edits
-# debs      qemu chroot apt/dpkg install of the five debs
+# debs      chroot apt/dpkg install of the five debs (native on AArch64 hosts,
+#           qemu-aarch64/binfmt elsewhere)
 # assemble  BlueZ policy, unit links, marker, boundary asserts, pre-flight
 # manifest  tree manifest + hash list + identity
 # pack      archive the assembled tree with ownership, ACLs and xattrs
@@ -30,7 +31,9 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 out_dir=${OUT_DIR:-"$project_root/out/native-root"}
 desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs"}
 desktop_manifest=${DESKTOP_ROOTFS_MANIFEST:-"$desktop_root.manifest"}
-desktop_manifest_sha256=175ca2299263545973831606e397cce3fbc79298d97eb0bd7e216ac34944eed7
+# Pin override for a repinned release (tools/repin-ubuntu-release.sh); the
+# default is the verified 26.04 tree manifest.
+desktop_manifest_sha256=${DESKTOP_ROOTFS_MANIFEST_SHA256:-175ca2299263545973831606e397cce3fbc79298d97eb0bd7e216ac34944eed7}
 debs_dir=${DEBS_DIR:-"$project_root/out/liuqin-debs"}
 # Shared with test-liuqin-debs.sh: the archive indexes are downloaded once per
 # host, not once per runner, and the shipped tree keeps the pinned (empty)
@@ -50,8 +53,12 @@ case $out_dir in
 "$project_root"/out/*) ;;
 *) die "refusing an output directory outside out/: $out_dir" ;;
 esac
-command -v qemu-aarch64 >/dev/null || grep -q P /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null ||
-	die 'qemu-aarch64 binfmt with the P flag is required'
+# An AArch64-native host runs the chroot directly; the interpreter requirement
+# exists only for x86 hosts. The chroot below is inert without it there.
+if [ "$(uname -m)" != aarch64 ]; then
+	command -v qemu-aarch64 >/dev/null || grep -q P /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null ||
+		die 'qemu-aarch64 binfmt with the P flag is required (or run on an AArch64 host)'
+fi
 root=$out_dir/rootfs
 
 stage_copy() {
