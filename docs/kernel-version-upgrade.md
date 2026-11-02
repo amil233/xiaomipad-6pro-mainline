@@ -1129,3 +1129,22 @@ message-out 载荷，不必再走 `write_message_out`；后者 v7.2 **保留**�
   `5164f7e7ff8e`（drm_atomic_commit 重命名 362 文件，msm 栈自动合并）、
   `f68afce8e8a7`（iio 初始化）。
 - v7.2 删除的 40 个头文件**无任何** drivers//sound//arch/ 文件再 include。
+
+### 第三次 CI（run 41371562984）：✅ 通过，镜像已装配（2026-11-02）
+
+CI 通过；artifact `ci/liuqin-kernel-bf7540f8f07b…/` 按契约核对
+（`build-info.json.commit` 一致，kernel/modules 的 `sha256sum -c` 全过，
+`kernel.release` = `7.2.0-gbf7540f8f07b`）。
+
+**镜像已装配待刷**：`repack/720-boot/boot-liuqin-firstboot.img`
+（59,174,912 字节，sha256 `fb3332bd…5c`；唯一变量 Image.gz
+`9dabb7ee…`；ramdisk `a04d2b25…` 与 710 逐字节一致）。
+
+**ABL DTB 与 710 的差异**（反编译逐节点比对）：**仅一处**，且与显示
+无关——v7.2 上游修了 `sm8450.dtsi` 的 `crypto@1d88000`
+（inline-crypto-engine：`reg` 窗口 `0x8000`→`0x18000`、加 `iface`
+时钟与 power-domain）。DSI/DPU/面板/PHY 节点零变化。
+
+判读：`fastboot boot repack/720-boot/boot-liuqin-firstboot.img`——
+点亮 ⇒ 第六级完成；否则取 `/sys/kernel/debug/dri/0/state` 与 710
+点亮态（2 rect×900 / 2 LM）对比定位。
