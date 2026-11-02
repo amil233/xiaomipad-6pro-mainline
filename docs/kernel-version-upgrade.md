@@ -1071,3 +1071,34 @@ Esteban Urrutia，应持有实机）：
 - 其余自动合并的 38 个"双方都改过"文件 ours delta 亦全部为有意改动
   （a6xx 冷启动、`gpu_busy_percent`、SM8475 USB3 表、`slpi_auto_boot`、
   `qcom,sm8475` pd_mapper、`IFLA_PARENT_DEV_NAME` NULL 守卫等）。
+
+### 首次 CI（run 41326639294）：失败，已修复 `d837cfa6f187`
+
+唯一编译错误（全树仅此一处）：
+
+```
+drivers/gpu/drm/panel/panel-novatek-nt36532.c:1208:9: error: implicit
+declaration of function 'drm_panel_init'; did you mean 'drm_panel_put'?
+```
+
+**根因（同 v7.1 的 of_gpio 同类盲区）**：v7.2 把 `drm_panel_init()`
+从公开头里删除——面板改为"refcounted panel"范式，由
+`devm_drm_panel_alloc(dev, struct type, member, funcs, connector_type)`
+一次完成分配+初始化+引用计数（内部 static `drm_panel_init` 只服务它）。
+我们的三个面板驱动都是 FROMLIST/yzddmr6 文件（v7.2 不触碰 merge 不到），
+仍用 `devm_kzalloc` + `drm_panel_init` 旧范式。
+
+**修复** = 完全照上游转换 `panel-novatek-nt36523.c` 的写法：`devm_kzalloc`
+换成 `devm_drm_panel_alloc`（`IS_ERR`/`PTR_ERR`），删掉 `drm_panel_init`
+调用，保留 `prepare_prev_first` 与 `drm_panel_remove`（两者 v7.2 仍在）：
+- `panel-novatek-nt36532.c`——**点亮用的面板驱动**（CI 必编，
+  `CONFIG_DRM_PANEL_NOVATEK_NT36532=y`）；
+- `panel-tianma-nt37705.c` / `panel-visionox-nt37705.c`——同样用了旧
+  API 的 FROMLIST 驱动（config 未开、不参与编译，但是定时炸弹，一并修）。
+
+**教训补充**：逐级合并前的静态扫描要加上"v7.X 上游从公开头删除的导出
+符号 vs 我们 FROMLIST 驱动的调用点"这一项；v7.1 抓到 `of_gpio`，v7.2
+抓到 `drm_panel_init`。已核对面板/DSI 驱动用到的其余 API
+（`drm_panel_of_backlight`、`drm_panel_add/remove`、
+`of_find_mipi_dsi_host_by_node`、`devm_mipi_dsi_device_register_full`）
+在 v7.2 全部保留。
