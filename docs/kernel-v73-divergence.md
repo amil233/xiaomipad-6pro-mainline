@@ -175,3 +175,70 @@ liuqin 的"基本功能"在主线 v7.3 上的真实缺口只有 **三个硬缺�
 （WiFi/BT/音频/充电/USB-C/GPU/UFS/相机传感器）主线已有驱动，
 我们的偏离多为厂商增强而非功能前提。stage 2 的 rootfs 可以在任何
 情况下正常工作，因为内核侧的缺口已由本树补齐。
+
+---
+
+## 触控与 pinctrl 的 v7.3 适配核查（2026-11-02，逐项对照设备树）
+
+### 设备树 ↔ 驱动精确对照（liuqin.dts 全部 30 个 compatible）
+
+全部找到声明驱动。关键绑定：
+`qcom,sm8450-sndcard` → 主线 `sound/soc/qcom/sc8280xp.c`；
+`qcom,wcd9380-codec` → 主线 `wcd938x.c`（blob 相同）；
+`cirrus,cs35l41` → 主线 `cs35l41-i2c.c`；
+`xiaomi,liuqin-keyboard` → 本地 `hid-nanosic.c`（匹配第二 compatible
+`nanosic,wn8030`）；`sdw20217010d00` 走 soundwire 总线枚举（无 of_match）；
+`usb-c-connector` 由 typec 连接器框架按节点引用处理。
+
+### pinctrl（`pinctrl-sm8475.c`）：✅ 完全适配
+
+- **编译**：`CONFIG_PINCTRL_SM8475=y` built-in，CI 通过
+- **框架**：`sm8475_tlmm` soc_data 初始化与主线 `pinctrl-sm8450.c`
+  **逐字段同构**（含 `egpio_func = 9`），标准 `msm_pinctrl_probe()`
+- **6.18 strict 框架**：`MSM_GPIO_PIN_FUNCTION(gpio/egpio)` 两处标记
+  齐全（即 6.18 fix3 的修复内容）
+- **与主线驱动的实质差异**：pin 表/groups 表逐行 diff，**唯一实质差异
+  是 pin[98] 多一个 `pll_clk` 功能**，其余全是 `sm8475_`/`sm8450_`
+  标识符重命名——即它是主线 sm8450 驱动的克隆 + 一引脚扩展
+  （将来可作为 sm8450 的扩展提交上游）
+- **运行时已实测通过**：sm8475.dtsi `&tlmm` 覆盖 compatible 为
+  `qcom,sm8475-tlmm` 绑定本驱动；**显示点亮本身就证明 pinctrl 正常**
+  （面板 reset-gpio/`sde_dsi_active` 等 mux 全部经 tlmm）
+
+### 触控（`nt36523/nt36xxx.c`，SPI Novatek NT36532）：✅ 适配到位，待上机验证
+
+- **编译**：`CONFIG_TOUCHSCREEN_NT36523_SPI=y` built-in，CI 通过
+- **v7.1 API 漂移适配**（有源码注释为证）：`of_get_named_gpio()` 在
+  v7.1 被上游移除（`b6420bd5aa0c`），驱动内 `nvt_of_get_named_gpio()`
+  改用 `fwnode_gpiod_get_index()`，保留 legacy `-gpio` 后缀回退
+- **现代面板跟随者 API**：`drm_is_panel_follower()`（主线为 TDDI 触控
+  设计的机制），DTS 的 `panel = <&panel>` 由该框架处理，probe 跟随
+  面板时序；固件下载用 `nvt_update_firmware_no_eng_reset()`（HW-CRC
+  路径，不动工程复位）
+- **DTS 属性 ↔ 驱动解析完全自洽**：
+  - `NVT_TOUCH_SUPPORT_HW_RST = 0`（编译期关硬件复位脚）⇒ DTS 无
+    `novatek,reset-gpio`，改由 `novatek,swrst-n8-addr = <0x1fb43e>`
+    软件复位——DTS 注释也说"vendor 树没有这个属性但主线 nvt_parse_dt
+    必需"，取主线 NT36532 寄存器表同值
+  - `novatek,irq-gpio` 经 gpiod legacy 后缀匹配驱动的
+    `nvt_of_get_named_gpio(np, "novatek,irq")`
+  - 触控固件按面板模块二选一：DTS 默认 CSOT 固件，驱动读命令行面板
+    名（`m81_36_02_0a`→天马 / `m81_42_02_0b`→CSOT）覆盖
+  - `firmware-name = "novatek/liuqin/novatek_nt36532_m81_fw_csot.bin"`
+- **固件齐备**：`device/firmware/usr/lib/firmware/novatek/liuqin/`
+  下 `novatek_nt36532_m81_fw_tm.bin`（天马）与 `_csot.bin` 两份；
+  当前启动 ramdisk 已含同一目录（217 个固件文件，覆盖 ath11k/qca/
+  qcom GPU/ADSP 全部 built-in 驱动的 probe 期加载）
+- **未验证**：上机 probe 成功与触控_EVENTS（stage 2 刷机后从
+  /proc/interrupts 与 /dev/input 验证）
+
+### stage 2 关键发现：built-in 驱动 + ramdisk 固件模式
+
+所有外设驱动均 `=y` built-in（含 `DRM_MSM`/`ATH11K`/`SND_SOC_*`/
+`QCOM_Q6V5_PAS`/触控），`CONFIG_EXTRA_FIRMWARE` 为空——全部
+`request_firmware` 发生在 boot 期 probe 阶段。当前 lighting 镜像的
+ramdisk 已把 `/lib/firmware` 整包打入（ath11k WCN6855 / qca BT /
+qcom a730_sqe+gmu / novatek 触控 / regulatory.db 共 217 个文件），
+这就是 built-in 驱动在根文件系统挂载前拿到固件的机制。
+**stage 2 的 squashfs 流程必须沿用这个模式**（固件进 initramfs 或
+确保 rootfs 挂载早于 probe）。
