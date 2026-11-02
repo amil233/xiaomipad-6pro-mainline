@@ -63,7 +63,7 @@ def dir_content_hash(path: Path) -> str:
 # --- fingerprints -----------------------------------------------------------
 
 def sensors_fingerprint() -> dict:
-    rom = (PROJECT / 'tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/extracted/'
+    rom = (PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/'
            'super-work/vendor-extract/etc/sensors')
     return {
         'device/sensors': tree_hash('device/sensors'),
@@ -271,8 +271,10 @@ def cmd_run() -> None:
         'FIRMWARE_MANIFEST_SHA256': sha256_file(firmware_manifest),
         'AUDIO_TOPOLOGY': str(topology_bin),
         'WLAN_HSP2_TUPLE': str(PROJECT / 'out/wlan-source-check'),
-        'STOCK_OVERLAY_DIR': str(PROJECT / 'tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/dtbo'),
-        'STOCK_BASE_DIR': str(PROJECT / 'tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/analysis/vendor_boot/dtbs'),
+        'STOCK_OVERLAY_DIR': str(env_path('STOCK_OVERLAY_DIR',
+                                          PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo')),
+        'STOCK_BASE_DIR': str(env_path('STOCK_BASE_DIR',
+                                       PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs')),
         'SENSOR_STACK_TAR': str(sensor_tar),
         'SENSOR_STACK_SHA256': sha256_file(sensor_tar),
         'POWER_SETTINGS_BINARY': str(settings_bin),

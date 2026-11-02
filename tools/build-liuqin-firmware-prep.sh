@@ -12,8 +12,12 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 pool=${FIRMWARE_POOL:-$project_root/tools/local/firmware-liuqin}
-vpu_blob=${VPU_BLOB:-$project_root/tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/extracted/super-work/vendor-extract/firmware/vpu20_4v.mbn}
-vpu_sha256=3567fd4522323b132ae4dd0f94a34782b2bc6a8c5c5fb51edfdbe364450fc118
+vpu_blob=${VPU_BLOB:-$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/firmware/vpu20_4v.mbn}
+# ROM-content pins below default to the OS2.0.6.0 extracts the project was
+# validated against. Override each with its V14.0.9.0 equivalent (compute
+# with sha256sum from your own extraction) to consume the ROM actually
+# installed on this tablet.
+vpu_sha256=${VPU_SHA256:-3567fd4522323b132ae4dd0f94a34782b2bc6a8c5c5fb51edfdbe364450fc118}
 topology_bin=${TOPOLOGY_BIN:?set TOPOLOGY_BIN to the output of tools/build-liuqin-audio-topology.sh}
 topology_sha256=9c9f8bfcffde1f52c143d58cba821c5f6b3899553370ab92a88b90d81fef9ee9
 tuple_dir=${HSP2_TUPLE_DIR:?set HSP2_TUPLE_DIR to the output of tools/build-liuqin-wlan.py}

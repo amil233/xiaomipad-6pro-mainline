@@ -11,7 +11,7 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 rootfs=${ROOTFS:-$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs}
 source_manifest=${SOURCE_MANIFEST:-$project_root/device/sensors/sources.manifest}
 source_cache=${SOURCE_CACHE:-$project_root/tools/local/sensor-stack-src}
-rom_sensors=${ROM_SENSORS:-$project_root/tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/extracted/super-work/vendor-extract/etc/sensors}
+rom_sensors=${ROM_SENSORS:-$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/etc/sensors}
 static_overlay=${SENSORS_OVERLAY:-$project_root/device/sensors-overlay}
 ssc_accel_test_runner=$project_root/tests/ssc-accel-integration.py
 hexagonrpc_patch=${HEXAGONRPC_PATCH:-$project_root/device/sensors/patches/0001-hexagonrpcd-expose-the-SSC-registry-version-sibling.patch}
@@ -28,9 +28,13 @@ assemble_only=${ASSEMBLE_ONLY:-0}
 caller_uid=${SUDO_UID:-$(id -u)}
 caller_gid=${SUDO_GID:-$(id -g)}
 
-expected_config_count=56
-expected_config_manifest_sha256=1cbf79b3ba5bfdd3efa152bcb5900ff6addd703f61b19def59cea62ae3c56867
-expected_sns_reg_sha256=d89a5dfd69b9681f6864bca8d24c17fb922cb19a9ed3a0f7f5c00e4b5dc1089b
+# The ROM-content pins below default to the OS2.0.6.0 extracts the project
+# was validated against. Override each with its V14.0.9.0 equivalent
+# (compute with sha256sum from your own extraction) to consume the ROM
+# actually installed on this tablet.
+expected_config_count=${EXPECTED_CONFIG_COUNT:-56}
+expected_config_manifest_sha256=${EXPECTED_CONFIG_MANIFEST_SHA256:-1cbf79b3ba5bfdd3efa152bcb5900ff6addd703f61b19def59cea62ae3c56867}
+expected_sns_reg_sha256=${EXPECTED_SNS_REG_SHA256:-d89a5dfd69b9681f6864bca8d24c17fb922cb19a9ed3a0f7f5c00e4b5dc1089b}
 expected_hexagonrpc_patch_sha256=856b046e572209b5f13c54ef100e685463aba23eefb850d0f3389c4c7ac6fa90
 expected_hexagonrpc_sns_patch_sha256=7826943d36a93bbddf1746e96b831bbc2efd5e7c7ff1f0d8460fe2f2acf7a1a5
 expected_iio_claim_patch_sha256=84bd7c4986d5e1ad68a6edfe241147e41262db3c95f69b054e464a95846ac808
@@ -65,7 +69,8 @@ case $out_dir in "$project_root"/out/* | /tmp/*) ;; *) die 'OUT_DIR must be belo
 case $source_cache:$out_dir in *'/../'*|*'/..:'*|*':..'*) die 'path traversal is not allowed' ;; esac
 
 # The hash is over a sorted, basename-only SHA256SUMS file, so it is stable
-# across checkout locations.  This pins the exact OS2.0.6.0.VMYCNXM input.
+# across checkout locations.  This pins the exact ROM input (default
+# OS2.0.6.0.VMYCNXM; override the pins above for another ROM release).
 registry_manifest=$(mktemp)
 trap 'rm -f "$registry_manifest"' EXIT
 (cd "$rom_sensors/config" &&
