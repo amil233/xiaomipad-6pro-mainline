@@ -1159,3 +1159,115 @@ CI 通过；artifact `ci/liuqin-kernel-bf7540f8f07b…/` 按契约核对
 判读：`fastboot boot repack/720-boot/boot-liuqin-firstboot.img`——
 点亮 ⇒ 第六级完成；否则取 `/sys/kernel/debug/dri/0/state` 与 710
 点亮态（2 rect×900 / 2 LM）对比定位。
+
+---
+
+## 12. 第七级：v7.3（merge 完成，待推送 CI，2026-11-02）
+
+tag `v7.3` = `c03c1a14507d`，从工作区 `linux/` 主线仓一次性 fetch
+（路径 fetch 带回的全历史 tag 已清理，内核仓只留 `v6.17`/`v6.19`/
+`v7.0`/`v7.1`/`v7.2`/`v7.3` 六个分级 tag）。merge base = `v7.2`
+（`8d3ae59288f1`），谱系干净：`liuqin-7.3` 从点亮 7.2 tip
+（`bf7540f8f07b`）直分。delta **20260 提交 / 14834 文件**。
+
+### 执行记录
+
+**17 个冲突全部解决**（merge commit `45fad2fa4902`，CI 触发
+`d064a0b3f22d`）：
+
+1. **`drivers/gpu/drm/msm/dp/dp_ctrl.c` + `dp_ctrl.h`**：v7.3 把 v7.2 的
+   `msm_dp_ctrl_off_link_stream()` 拆成 `msm_dp_ctrl_off_link(ctrl, panel)`
+   + 纤细的 `msm_dp_ctrl_reinit_phy(ctrl)`（后者只剩 `phy_exit/phy_init`），
+   psm_config 与 pixel-clock 清理上移到 `dp_display.c`（自动合并）。
+   - 取 v7.3 拆分；**保留** PHY-before-AUX 补丁：`msm_dp_ctrl_phy_init()`
+     仍是 int（带 `phy_configure()` + tracked `phy_power_on()` 及 RBR
+     兜底），`msm_dp_ctrl_enable_mainlink_clocks()` 接受 v7.3 新增的
+     `panel` 参数（dpcd 改从 `panel->dpcd` 取），`off_link()` 正文自动
+     合并为我们的 tracked `msm_dp_ctrl_phy_power_off()`；
+   - `msm_dp_ctrl_reset()` 扩参 `panel`；`calibrate_dp_phy` 随 v7.3 删除
+     `qmp_v4_calibrate_dp_phy` 一并退场（DP 控制器在 DTS 里 disabled，
+     且 qmp-combo 的 DP 侧已整体改用上游配置）。
+2. **`drivers/gpu/drm/msm/dsi/dsi_host.c` ×3**：全部围绕
+   `dsc_slice_per_pkt`。保留 liuqin 路径——我们的面板（`panel-novatek-
+   nt36532`）显式设置 `mipi_dsi_device.dsc_slice_per_pkt = 2`，故
+   `dsi_host_attach()` 复制该字段，而不是按 v7.3 新增的
+   `MIPI_DSI_MODE_DSC_ALL_SLICES_IN_PKT` 从 `slice_count` 推导；
+   `dsi_update_dsc_timing()` / `dsi_timing_setup()` 的 WC 计算保留
+   `?: 1` 回退与 slice_per_pkt 合理性校验。`include/drm/drm_mipi_dsi.h`
+   自动合并为"我们的字段 + 上游新 flag"并集。
+3. **`drivers/phy/qualcomm/phy-qcom-qmp-combo.c` ⭐（预研定夺点 ①）**：
+   **整体取上游 v7.3 注册**（Esteban Urrutia 的 SM8475 支持）：
+   `sm8475_usb3dpphy_cfg` = sar2130p serdes + sm8550 tx/pcs + 新增的
+   sm8475 V6 rx/pcs_usb 表 + `qmp_v6_dp_v1_*` DP 表 +
+   `qmp_v6_usb3phy_regs_layout`。我们的厂商移植表（sm8475 serdes/tx/
+   rx/pcs）、自定义 per-rate DP 表、`qmp_v4_calibrate_dp_phy` 引用全部
+   退场。yzddmr6 的 "return DP PLL setup failures" 补丁
+   （`qmp_combo_dp_power_on`）自动存活。**自动合并盲点人工清除**：
+   of_match 表里两条 `qcom,sm8475-qmp-usb3-dp-phy`（ours 与 theirs 各加
+   一条），去重保留上游排序位置的那条。**若 USB3 在设备上回归，用 fix
+   commit 换回厂商移植表即可**（两套表都在 git 历史里）。
+4. **PCIe Gen3x1（预研点 ②）**：无冲突——v7.2 时我们与上游都没有
+   sm8475 PCIe 条目，v7.3 新增的 `sm8475_qmp_gen3x1_pciephy_cfg`
+   （v5 offsets + sm8550 tx/pcs + sm8475 rx/pcs_misc）自动并入，全树
+   仅一个 cfg 定义。板级 dtsi 仍用 `qcom,sm8550-qmp-gen3x2-pcie-phy`
+   （该路表值带我们的调优，未动），故本级不改变设备 PCIe 行为。
+5. **sound/soc/qcom + qdsp6 ×8**（`common.c/h`、`audioreach.c/h`、
+   `q6apm-lpass-dais.c`、`topology.c`、`snd_ar_tokens.h`）：
+   - 保留 liuqin TDM 全链：TDM 配置结构体、`audioreach_tdm_set_media_
+     format()`、`MODULE_ID_TDM_SINK` 调度、拓扑加载的 no-op case；
+   - 采用 v7.3 的 const 化 + `__free(kfree)` 重写
+     （`audioreach_audio_if_set_media_format`、
+     `audioreach_pcm_set_media_format`）；
+   - `audioreach_pcm_set_media_format` = **并集**：我们的 Q27/解包
+     24-bit 修正 **+** 上游的物理→逻辑声道映射循环；
+   - `q6tdm_ops` 跟上游生命周期（`q6i2s_lpass_dai_shutdown` +
+     `set_sysclk` + `trigger`）；
+   - **自动合并盲点人工清除**：`audioreach_set_media_format()` 调度器里
+     `MODULE_ID_AUDIO_IF_SOURCE/SINK` 出现两次（ours 与 theirs 各插一处，
+     duplicate case 必编译错误），删掉 ours 那条；
+   - `common.h` 取上游 `LPASS_MAX_PORT`（`LPI_MI2S_TX_6 + 1`，覆盖 v7.3
+     新增 LPI 端口），`common.c` 保留 CS35L41 的 `-ENOTSUPP` 容忍。
+6. **`drivers/soc/qcom/ubwc_config.c`**：v7.3 把 UBWC 数据全部改为版本
+   命名（`ubwc_4_0_hbb16` 等，旧 `sm8350_data` 之类已不存在）⇒ 整表取
+   上游，补回 `qcom,sm8475` → `ubwc_4_0_hbb16`（与 sm8450/sm8550 同）。
+7. **`drivers/power/supply/qcom_battmgr.c`**：include 并集（我们的
+   `ctype`/`hex`/`swab` 小米鉴权 + 上游 `devm-helpers`）。
+8. **并集式小冲突**：panel Kconfig/Makefile（我们的 NT36532 + 上游新
+   NT36536）、`drivers/misc/Makefile`（fpc1264 + issei）、
+   `vendor-prefixes.yaml`（fpc + focuslcds）。
+
+### 不变量核查（merge 后）
+
+pinctrl-sm8475 `MSM_GPIO_PIN_FUNCTION` ×2；a6xx `if (reglist)` ×2；
+`STAGES_PER_PLANE=2` / `MAX_CHANNELS_PER_ENC=4`；`mdss_dp0` disabled
+（liuqin.dts 1263 行）；`pipa_tm_desc`；cs35l41 `snd_kcontrol_chip`；
+**iris 五文件（hfi_gen2/platform_common/hfi_gen2_command/probe/
+hfi_gen1）与 v7.3 逐字节一致**；dpu_plane mixer 粒度拆分
+（`mixer_rect / PIPES_PER_STAGE`）；dpu_crtc/dpu_encoder 的 2 LM / 2 DSC
+拓扑；of_gpio helper 包装（fts.c/nt36xxx.c）；ucsi CCI 去抖（v7.2 的
+`sync_control` 7 参数签名）。
+
+### 盲区扫描（merge 后）
+
+- **53 个"双方都改过"文件**逐一复核 ours delta 存活且有意：
+  dp_display DPCD 5 次重试环、a6xx 冷启动 `GMU_COLD_BOOT`、
+  `gpu_busy_percent`、rtnetlink `dev_name(parent)==NULL` 防护、
+  `of/platform.c` reserved-memory 遍历收缩、ufs-qcom 850MHz 表项等。
+- **157 个我们偏离 v7.3 的文件**：无被删头文件引用（v7.3 删的 10 个
+  头文件均无引用者）；无 `drm_panel_init(` / 裸 `of_get_named_gpio()`
+  旧 API 调用（命中项均为我们的同名本地 helper 包装）；
+  `devm_drm_panel_alloc`、ucsi `sync_control` 签名 v7.3 未再变；
+  camss.h v7.2→v7.3 零改动（v7.0 的 regulators 盲区 class 本级无风险）。
+- **已知风险**：qmp-combo 换上游表是**唯一的行为性改动**（USB3/DP PHY
+  初始化序列变了）。USB 数据通路的设备验证在刷机后进行；若 USB3 失效，
+  换回厂商表的 fix commit 即可（不影响点亮，充电走 pmic_glink 不经此
+  PHY 的 USB3 部分）。
+
+### 推送
+
+```
+git -C /home/ubuntu/linux_kernel_git/linux-sm8450-liuqin push GitHub liuqin-7.3
+```
+
+新分支，无需 force。推送即触发 CI；artifact 落 `ci/` 后按契约核对并
+装配 `repack/730-boot/`。
