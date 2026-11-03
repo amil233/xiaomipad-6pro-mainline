@@ -53,6 +53,7 @@ kernel_initramfs=${KERNEL_INITRAMFS:-}
 fingerprint_bundle=${FINGERPRINT_BUNDLE:-}
 
 die() { printf 'build-liuqin-debs: %s\n' "$*" >&2; exit 1; }
+say() { printf 'build-liuqin-debs: %s\n' "$*"; }
 
 command -v dpkg-deb >/dev/null || die 'dpkg-deb is required'
 case $out_dir in
