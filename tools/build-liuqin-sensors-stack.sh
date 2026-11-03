@@ -221,6 +221,26 @@ rm -f "$merged/etc/apt/apt.conf.d/50appstream" \
 	"$merged/etc/apt/apt.conf.d/50command-not-found" \
 	"$merged/etc/apt/apt.conf.d/99update-notifier" \
 	"$merged/etc/apt/sources.list.d/cdrom.sources"
+# APT mirror: the build host may be behind a slow link to the canonical
+# ports.ubuntu.com server.  AAPT_MIRROR (an https://.../ubuntu-ports root)
+# replaces the suite sources in the disposable upperdir only; the release
+# root below the overlay stays untouched.  Empty keeps the distro defaults.
+if [ -n "${AAPT_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports}" ]; then
+	cat >"$merged/etc/apt/sources.list.d/ubuntu.sources" <<EOF
+Types: deb
+URIs: ${AAPT_MIRROR}
+Suites: resolute resolute-updates resolute-backports
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: http://ports.ubuntu.com/ubuntu-ports/
+Suites: resolute-security
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+EOF
+	say "apt mirror: ${AAPT_MIRROR}"
+fi
 # Development-library upgrades can trigger dracut to rebuild the base root's
 # unrelated generic-kernel initramfs.  That output is never copied into the
 # sensor layer and takes many minutes under QEMU, so replace only the

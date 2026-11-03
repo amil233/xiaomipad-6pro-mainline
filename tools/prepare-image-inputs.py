@@ -139,11 +139,20 @@ def rebuild_sensors(out_dir: Path) -> Path:
 
 
 def rebuild_settings(out_dir: Path) -> Path:
-    subprocess.run(['python3', 'tools/build-liuqin-settings.py', '--prepare-only'],
-                   cwd=PROJECT, check=True)
-    subprocess.run(['sudo', '-n', 'python3', 'tools/build-liuqin-settings.py',
+    # The builder writes its output (the binary, build-info.json and the
+    # source stamp) into --out; run it directly there so the artifact path
+    # below is the one the cache and build-liuqin-image.py both consume.
+    out_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['sudo', '-n', 'env', f'OUT={out_dir}',
+                    'python3', 'tools/build-liuqin-settings.py',
+                    '--out', str(out_dir),
                     '--jobs', str(os.cpu_count() or 8)], cwd=PROJECT, check=True)
-    return out_dir / 'gnome-control-center'
+    subprocess.run(['sudo', '-n', 'chown', '-R',
+                    f'{os.getuid()}:{os.getgid()}', str(out_dir)], check=True)
+    binary = out_dir / 'gnome-control-center'
+    if not binary.is_file():
+        raise SystemExit(f'settings builder produced no binary: {binary}')
+    return binary
 
 
 def rebuild_topology(out_bin: Path) -> None:
