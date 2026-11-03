@@ -15,7 +15,13 @@ git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || die "not a git checkout: $s
 # Source commit is informational, not a gate: a newer AudioReach release may
 # build a valid topology for the same board file. The structural assertions
 # below (m4 expansion, module-id guards) stay hard.
-echo "audioreach source: $(git -C "$src" rev-parse HEAD 2>/dev/null)$(git -C "$src" show -s --format=' %s' HEAD 2>/dev/null || true)"
+src_commit=$(git -C "$src" rev-parse HEAD 2>/dev/null || true)
+echo "audioreach source: $src_commit$(git -C "$src" show -s --format=' %s' HEAD 2>/dev/null || true)"
+# The board file was authored against 2af1f1e; a newer framework renamed DAPM
+# widgets and the m4 macros, which surfaces as 'undefined sink widget' errors
+# from alsatplg.  Remind, do not gate.
+[ "$src_commit" = '2af1f1ebb8d4fd03b5f53891467ddde2e208a8a0' ] ||
+	echo "build-liuqin-audio-topology: NOTE: board file expects audioreach-topology 2af1f1e; if alsatplg reports undefined widgets, 'git -C $src checkout 2af1f1ebb8d4fd03b5f53891467ddde2e208a8a0'" >&2
 command -v m4 >/dev/null 2>&1 || die 'm4 is unavailable'
 command -v alsatplg >/dev/null 2>&1 || die 'alsatplg is unavailable'
 
@@ -77,5 +83,4 @@ done
 
 mkdir -p "$(dirname -- "$output")"
 install -m 0644 "$tmp/candidate.bin" "$output"
-printf 'source_commit=%s\n' "$expected_commit"
 sha256sum "$board" "$tmp/candidate.conf" "$tmp/candidate.decoded.conf" "$output"
