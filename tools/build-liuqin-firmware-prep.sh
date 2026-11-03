@@ -50,7 +50,9 @@ bt_dir=$pool/bt-qca6490/vendor/bt_firmware/image
 bt_pattern='^(hpbtfw2[01]\.tlv|hpnv2[01]g?\.(bin|b[0-9a-f]+))$'
 bt_names=$(cd "$bt_dir" && ls -1 | LC_ALL=C sort | grep -E "$bt_pattern")
 bt_seen=$(cd "$bt_dir" && printf '%s\n' "$bt_names" | xargs sha256sum | sha256sum | cut -d' ' -f1)
-[ "$bt_seen" = d31712321a1c15591148a2e6a7ce94a12445558d2de82b48e5815abc581203a0 ] ||
+# V14.0.9.0.TMYCNXM BTFM.bin extraction: 84 files match the pattern.
+bt_seen_expected=${BT_SET_SHA256:-c89dd2a8174a5480b7a1ce9411d2eefa3732a9a43ce574a11c76fbfa2652462b}
+[ "$bt_seen" = "$bt_seen_expected" ] ||
 	die "Bluetooth firmware set digest mismatch: $bt_seen"
 
 # WLAN fallback board data (bd_m81.elf) and upstream WCN6855 runtime.
@@ -91,7 +93,10 @@ dsp_dir=$pool/dsp-sm8475/vendor/qcom/sm8475/liuqin
 [ "$(find "$dsp_dir" -maxdepth 1 -type f | wc -l)" = 68 ] || die 'DSP firmware count differs from 68'
 dsp_seen=$(cd "$dsp_dir" && find . -maxdepth 1 -type f -printf '%P\n' | LC_ALL=C sort |
 	xargs sha256sum | sha256sum | cut -d' ' -f1)
-[ "$dsp_seen" = 7f9b43d3815b6592f541e0b870357010488980bc040b925e93bbf12d01282908 ] ||
+# V14.0.9.0.TMYCNXM NON-HLOS.bin extraction: adsp/cdsp/slpi .mdt headers
+# renamed to .mbn plus their .bNN segments.
+dsp_set_sha256=${DSP_SET_SHA256:-8e96ef0bb1c62f58c53e113bde1d9c05186e43636e239c5e1094ad2f30d3051a}
+[ "$dsp_seen" = "$dsp_set_sha256" ] ||
 	die "DSP firmware set digest mismatch: $dsp_seen"
 
 # VPU (Iris decode, vendor_a.img).
