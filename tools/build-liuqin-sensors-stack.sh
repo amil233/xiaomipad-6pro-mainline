@@ -639,21 +639,30 @@ tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
 	--pax-option=delete=atime,delete=ctime -C "$dest" -cf "$out_dir/artifacts/sensor-stack.tar" .
 sha256sum "$out_dir/artifacts/sensor-stack.tar" >"$out_dir/artifacts/sensor-stack.tar.sha256"
 
-say 'running QEMU arm64 static smoke checks'
-qemu=${QEMU_AARCH64:-/usr/bin/qemu-aarch64-static}
-[ -x "$qemu" ] || die 'qemu-aarch64-static is required for the host smoke gate'
-# The smoke greps English output; a localized host locale (e.g. zh_CN) makes
-# gettext binaries print translated usage text.  Pin the C locale.
+# Self-install downgrade: the upstream gate boots the arm64 binaries under
+# QEMU to smoke-test them on an x86 host.  On an arm64-native builder (the
+# Raspberry Pi used here) QEMU is pointless, so run the same three checks
+# natively when the host is aarch64 and keep QEMU as the x86 fallback.
 ld_path=$dest/usr/lib/aarch64-linux-gnu:$rootfs/usr/lib/aarch64-linux-gnu:$rootfs/lib/aarch64-linux-gnu
-version=$(
-	LC_ALL=C LD_LIBRARY_PATH=$ld_path "$qemu" -L "$rootfs" "$dest/usr/bin/ssccli" --version
-)
+run_native=0
+[ "$(uname -m)" = aarch64 ] && run_native=1
+if [ "$run_native" = 1 ]; then
+	say 'running native arm64 smoke checks (aarch64 build host)'
+	runner() { LC_ALL=C LD_LIBRARY_PATH=$ld_path "$@"; }
+else
+	say 'running QEMU arm64 static smoke checks'
+	qemu=${QEMU_AARCH64:-/usr/bin/qemu-aarch64-static}
+	[ -x "$qemu" ] || die 'qemu-aarch64-static is required for the host smoke gate'
+	# The smoke greps English output; a localized host locale (e.g. zh_CN)
+	# makes gettext binaries print translated usage text.  Pin the C locale.
+	runner() { LC_ALL=C LD_LIBRARY_PATH=$ld_path "$qemu" -L "$rootfs" "$@"; }
+fi
+version=$(runner "$dest/usr/bin/ssccli" --version)
 [ "$version" = 'libssc version 0.4.4' ] || die "unexpected ssccli version: $version"
-LC_ALL=C LD_LIBRARY_PATH=$ld_path "$qemu" -L "$rootfs" "$dest/usr/bin/hexagonrpcd" 2>&1 |
-	grep -q 'Usage:' || die 'hexagonrpcd QEMU smoke failed'
-LC_ALL=C LD_LIBRARY_PATH=$ld_path "$qemu" -L "$rootfs" \
-	"$dest/usr/local/libexec/liuqin-iio-sensor-proxy" --help 2>&1 |
-	grep -q '^Usage:' || die 'iio-sensor-proxy QEMU execution smoke failed'
+runner "$dest/usr/bin/hexagonrpcd" 2>&1 |
+	grep -q 'Usage:' || die 'hexagonrpcd smoke failed'
+runner "$dest/usr/local/libexec/liuqin-iio-sensor-proxy" --help 2>&1 |
+	grep -q '^Usage:' || die 'iio-sensor-proxy smoke failed'
 
 say "PASS: $out_dir/artifacts/sensor-stack.tar"
 say "SHA256: $(cut -d' ' -f1 "$out_dir/artifacts/sensor-stack.tar.sha256")"
