@@ -34,7 +34,7 @@ Xiaomi Pad 6 Pro（liuqin），使平板成为一台单系统 ARM PC：
 | 点亮内核 | `liuqin-7.3` @ `db08160915e3`（`7.3.0-gdb08160915e3`） | `docs/kernel-version-upgrade.md` §13；CI run 41409689334 |
 | **产品锁** | `kernel/source.json` 已推进到 `liuqin-7.3 @ db08160915e3`（本手册配套提交 `3a56981`） | 锁值与 CI `build-info.json` 一致；`config_sha256` 与 10 个分片哈希不变 |
 | 基础系统 | Ubuntu Desktop 26.04 LTS arm64（`c2afd538…` / 4161089536 B） | `tools/build-liuqin-ubuntu-desktop-rootfs.sh` 钉扎 |
-| ROM 输入 | boot 侧 DTBO/基 DTB 用 **V14.0.9.0**（设备在装，点亮全程在用）；rootfs 侧固件/传感器配置用 **OS2.0.6.0 提取物**（原作者验证过的钉值） | 见 §2-3 说明 |
+| ROM 输入 | **全部用 V14.0.9.0.TMYCNXM**（设备实际在装的 ROM，点亮全程在用）；ROM 内容哈希钉扎默认仍是 OS2 值，V14 提取后覆盖 | 见 §2-3 说明 |
 | 单系统布局 | 删 userdata，尾部建 `linux_root`(36)+`linux_home`(37)，boot 镜像写 `boot_b`，`--set-active b` | `tools/lib/liuqin_layout.py:340-360`；`install-liuqin.py:36` |
 | 设备门槛 | 出厂分区表、4096 逻辑扇区、userdata 为最后一个分区、Bootloader 解锁、电量 ≥30% | `FLASHING.zh-CN.md`；`liuqin_layout.py:274` |
 
@@ -52,19 +52,17 @@ Xiaomi Pad 6 Pro（liuqin），使平板成为一台单系统 ARM PC：
 
 | 侧 | 输入 | 来源 | 你要做的 |
 |---|---|---|---|
-| **boot 镜像侧** | ABL overlay 符号集（DTBO 条目 + 基 DTB） | **V14.0.9.0** 线刷包 | 已在你的 analysis 树里（38 条目 / 11 基 DTB），`build-bootimg.sh` 默认就是它 |
-| **rootfs 侧** | 触摸/GPU/DSP/蓝牙/WLAN/VPU 固件、传感器配置 | **OS2.0.6.0** 线刷包的 vendor 分区提取物 | 需要你解包 super/vendor_a 等，摆到固件池（哈希脚本校验） |
+| **boot 镜像侧** | ABL overlay 符号集（DTBO 条目 + 基 DTB） | **V14.0.9.0** 线刷包的 `dtbo.img`/`vendor_boot.img` | 用仓库 `tools/extract-stock-*.py` 生成 analysis 树（§4.2） |
+| **rootfs 侧** | 触摸/GPU/DSP/蓝牙/WLAN/VPU 固件、传感器配置 | **V14.0.9.0** 线刷包的 `super.img`/`NON-HLOS.bin`/`BTFM.bin` | 解包后摆到固件池与 ROM 提取目录（布局见 §4.2） |
 
-**为什么 rootfs 侧钉 OS2 而不是 V14**：这些是驱动运行时 `request_firmware()`
-加载的厂商二进制，与硬件版本而非 Android 版本相关，两个 ROM 都能让硬件工作；
-但管线逐项钉死了 OS2 提取物的哈希（`build-liuqin-sensors-stack.sh` 钉
-`sns_reg_config` 与配置清单；`build-liuqin-firmware-prep.sh` 钉 21 处固件哈希）。
-先用 OS2 钉值跑通首装是变量最少的路径；V14 固件作为后续可选替换（需重新
-提取并替换钉值，登记为技术债 S2-5）。
-
-等你换 V14 固件时，从 V14 的 `super.img`/`NON-HLOS.bin`/`BTFM.bin`/
-vendor 分区提取同名文件，用 `sha256sum` 重算，替换两个脚本里的钉值即可——
-文件用途与摆放布局不变。
+**为什么 ROM 全部用 V14**：这些是驱动运行时 `request_firmware()` 加载的
+厂商二进制，与硬件版本而非 Android 版本相关——设备在装 V14，V14 的固件
+就是这批硬件出厂时匹配的。管线的 ROM 内容哈希钉扎
+（`build-liuqin-sensors-stack.sh` 钉 `sns_reg_config` 与配置清单；
+`build-liuqin-firmware-prep.sh` 钉 VPU 哈希）默认仍是上游验证过的 OS2 值，
+因为 V14 提取物的真实哈希要等你解包后才能算（不能编造）。**路径默认值已
+全部改为 V14**（提交 `f092a3c`），ROM 内容钉扎改为环境变量可覆盖——你解包
+后把真实哈希告诉我，我把默认钉值换掉，就不用每次 export。
 
 ## 3. 前置条件
 
@@ -86,10 +84,10 @@ atool 或 lpunpack/simg2img（解 V14 super.img 用）
 | 输入 | 说明 | 从哪来 |
 |---|---|---|
 | Ubuntu 26.04 desktop arm64 ISO | 钉扎 `c2afd538…` / 4161089536 B | **你已下载并校验通过**；放到 `tools/local/ubuntu-desktop-26.04-arm64/ubuntu-26.04-desktop-arm64.iso` 后跑 `verify-iso` |
-| OS2.0.6.0.VMYCNXM 线刷包 | 7.7 GB，固件/传感器物料来源 | 小米官方线刷包（boot 侧另需 V14 包，你已有） |
-| V14.0.9.0.TMYCNXM 线刷包 | DTBO/基 DTB 分析集来源 | 你已有；analysis 树已在仓库本地目录 |
-| QCA6490 原厂目录 | `amss20.bin`/`m3.bin`/`regdb.bin`/`bd_m81gf.elf` | 从 OS2 包 modem/vendor 分区解出 |
-| audioreach-topology 源 | 固定提交 `2af1f1ebb8d…` | `git clone linux-msm/audioreach-topology`，放项目旁 |
+| V14.0.9.0.TMYCNXM 线刷包 | 全部 ROM 物料来源（boot 侧 + rootfs 侧） | 你已有；只需要其中 6 个镜像（§4.2） |
+| QCA6490 原厂目录 | `amss20.bin`/`m3.bin`/`regdb.bin`/`bd_m81gf.elf`（4 个文件哈希钉死） | 从 V14 包 `super` 的 `vendor/firmware_mnt/image/qca6490/` 等位置解出 |
+| 上游 `board-2.bin.zst` | 哈希 `ba583c35…` | linux-firmware 上游；`build-liuqin-wlan.py --base-board` |
+| audioreach-topology 源 | 固定提交 `2af1f1ebb8d…` | `git clone linux-msm/audioreach-topology`，放 `$INT/../audioreach-topology`（或 `tools/local/audioreach-topology`） |
 | 指纹构建输入 | `fingerprint-build-inputs.tar.gz` | `prepare-image-inputs.py` 自动下载并校验 |
 
 ## 4. 执行步骤（每步都有校验关卡）
@@ -112,9 +110,12 @@ sudo sh tools/build-liuqin-ubuntu-desktop-rootfs.sh extract
 `tools/local/ubuntu-desktop-26.04-arm64/rootfs` + `rootfs.manifest`
 （manifest 哈希 `175ca229…`，`native-root` 会再校一次）。
 
-### 4.2 ROM 拆包
+### 4.2 ROM 拆包（全部用 V14.0.9.0）
 
-**boot 侧（V14）——你可能已有 analysis 树，跳过即可**：
+从 V14 线刷包里只需要 **6 个镜像**——格式只有两类操作：拆 Android sparse
+（`super.img`）与挂载文件系统镜像（FAT/ext4）。
+
+**① boot 侧（DTBO/基 DTB）**——仓库工具直接吃 `images/` 下的原文件：
 
 ```sh
 python3 tools/extract-stock-dtbo-entries.py <V14包>/images/dtbo.img \
@@ -123,19 +124,54 @@ python3 tools/extract-stock-base-dtbs.py <V14包>/images/vendor_boot.img \
   tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs
 ```
 
-**rootfs 侧（OS2）**：解 `super.img`（Android sparse 格式，先
-`simg2img` 转成 raw，再挂载或用 lpunpack 拆出 vendor 逻辑分区），
-把 `vendor_a`/`NON-HLOS.bin`/`BTFM.bin` 里的固件按
-`tools/build-liuqin-firmware-prep.sh` 顶部注释的布局摆进固件池
-（`tools/local/firmware-liuqin`，或设 `FIRMWARE_POOL` 指到别处）；
-传感器配置放到
-`tools/local/roms/liuqin/OS2.0.6.0.VMYCNXM/extracted/super-work/vendor-extract/etc/sensors`
-（须含 `config/` 与 `sns_reg_config`），VPU 固件放到同下 `firmware/vpu20_4v.mbn`。
+应产出 38 个 DTBO 条目与 11 个基 DTB。**原理**：bootloader 启动时会把它
+持有的 stock DTBO overlay 应用到 boot 镜像携带的 DTB，缺 `__symbols__`
+就拒绝启动；`build-bootimg.sh` 的 ABL overlay sink 需要这 38+11 个文件的
+符号表。这两个分区不要动其他内容。
+
+**② rootfs 侧（固件物料）**——从另外 3 个镜像提取，按
+`tools/build-liuqin-firmware-prep.sh` 顶部注释的布局摆好：
+
+| 提取物 | 源镜像 | 格式 | 放置位置 |
+|---|---|---|---|
+| 触摸 2 bin | `super` → vendor | sparse→逻辑分区 | `tools/local/firmware-liuqin/touch-nt36532/vendor/firmware/` |
+| GPU 3 bin（`a730_sqe.fw`/`a730_zap.mbn`/`gmu_gen70000.bin`） | `super` → vendor | sparse→逻辑分区 | `…/gpu-adreno730/vendor/` |
+| WLAN 板号 `bd_m81.elf` | `super` → vendor/firmware_mnt/image/qca6490 | sparse→逻辑分区 | `…/wlan-qca6490/vendor/firmware_mnt/image/qca6490/` |
+| VPU `vpu20_4v.mbn` | `super` → vendor | sparse→逻辑分区 | `tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/firmware/`（或 `VPU_BLOB` 直指） |
+| 传感器配置（`config/` 56 个 + `sns_reg_config`） | `super` → vendor | sparse→逻辑分区 | `…/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/etc/sensors/` |
+| DSP 68 个 `.mbn` | `NON-HLOS.bin` | FAT16 | `…/dsp-sm8475/vendor/qcom/sm8475/liuqin/` |
+| 蓝牙整套（`hpbtfw2*.tlv`/`hpnv2*.*`） | `BTFM.bin` | FAT16 | `…/bt-qca6490/vendor/bt_firmware/image/` |
+| QCA6490 原厂 4 文件（`amss20.bin`/`m3.bin`/`regdb.bin`/`bd_m81gf.elf`） | `super` → vendor/firmware_mnt/image/qca6490 | sparse→逻辑分区 | 自选位置，喂给 `build-liuqin-wlan.py --vendor` |
+
+（`super` 是 dynamic partition：先 sparse→raw，再拆出 `vendor` 逻辑分区
+才能挂载。`metadata.img`/`userdata.img`/`cust.img`/`boot.img`/
+`recovery.img`/`vbmeta.img`/`persist.img` 都不需要。）
 
 **关卡**：固件池缺项或哈希不符会在 `prepare-image-inputs.py`（§4.4）
-与构建脚本里 `die`，不会上机失败。传感器的 `sns_reg_config` 哈希
-（`d89a5dfd…`）与配置清单（`1cbf79b3…`）逐项钉死，错了会明确报出名。
+与构建脚本里 `die`，不会上机失败。ROM 内容钉扎（sensor config 清单、
+`sns_reg_config`、VPU 哈希）当前默认是 OS2 值——**你解包算出 V14 哈希后
+告诉我，我把默认钉值换掉**；在此之前可以临时用环境变量覆盖跑通：
 
+```sh
+EXPECTED_CONFIG_COUNT=<V14实际值> \
+EXPECTED_CONFIG_MANIFEST_SHA256=<V14实际值> \
+EXPECTED_SNS_REG_SHA256=<V14实际值> VPU_SHA256=<V14实际值> \
+  sudo python3 tools/prepare-image-inputs.py run
+```
+
+> 需要算的哈希（在 arm64 机器上）：
+> ```sh
+> cd <vendor>/etc/sensors
+> find . -maxdepth 1 -type f -printf '%P\0' | LC_ALL=C sort -z | xargs -0 sha256sum > /tmp/m
+> wc -l < /tmp/m            # → EXPECTED_CONFIG_COUNT
+> sha256sum /tmp/m          # → EXPECTED_CONFIG_MANIFEST_SHA256
+> sha256sum sns_reg_config  # → EXPECTED_SNS_REG_SHA256（并核对 '^property=' 行数 = 2）
+> sha256sum <vendor>/firmware/vpu20_4v.mbn  # → VPU_SHA256
+> ```
+> 固件池其余项（触摸/GPU/WLAN 板号/蓝牙/DSP）脚本是**逐文件明文哈希**，
+> 摆进去后遇到不匹配会把文件名和期望哈希直接打出来，按报错换值即可。
+
+**关卡**：固件池缺项或哈希不符会在 `prepare-image-inputs.py`（§4.4）
 ### 4.3 杂项 fetch
 
 ```sh
@@ -281,7 +317,7 @@ sudo python3 tools/install-liuqin.py \
 | S2-1 | 固件池/ROM 解包无自动化工具，全手工摆目录 | 首装准备时间长、易错 | 哈希断言兜底；后续可加 `tools/fetch-rom-inputs.sh` |
 | S2-3 | 单系统布局未真机验证（与 dual 共用布局引擎） | 分区/挂载风险 | 本次首装即验证 |
 | S2-4 | ISO 点版本重钉扎需手工 | 26.04.1 等需重钉 | `tools/repin-ubuntu-release.sh` 已提供 |
-| S2-5 | rootfs 固件钉 OS2 提取物，V14 固件未验证 | 物料版本与设备在装 ROM 不一致（功能等价但未实测） | 你换 V14 固件重算哈希时关闭 |
+| S2-5 | ROM 内容钉扎默认仍是 OS2 值，V14 提取物的真实哈希待填 | 首跑需 env 覆盖或按报错换值 | 你提供 V14 哈希后，我替换默认钉值 |
 
 ## 8. 复盘检查表（首启成功后回填）
 
