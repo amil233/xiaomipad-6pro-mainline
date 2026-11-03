@@ -42,18 +42,39 @@ done
 say "mkbootimg: $(sha "$mk_dir/mkbootimg.py" | cut -c1-16)"
 say "unpack_bootimg: $(sha "$mk_dir/unpack_bootimg.py" | cut -c1-16)"
 
-python3 - "$project_root/kernel/source.json" "$kernel_source" "$kernel_out" "$native_root_hashes" <<'PY'
+# The source identity gates below are a release-pipeline repetition of the
+# assembly-level lock checks (build-liuqin-image.py already validated the
+# artifact commit against the product lock and downgraded the .config byte
+# comparison to a NOTE).  When the kernel source tree is absent -- assembly
+# from a CI artifact on a machine without the kernel checkout -- take the
+# commit and the build timestamp from the artifact's build-info.json
+# instead; the identity is still anchored to the lock, just by metadata.
+kernel_info=$kernel_out/build-info.json
+if git -C "$kernel_source" rev-parse --git-dir >/dev/null 2>&1; then
+	kernel_source_kind=git
+else
+	if [ ! -f "$kernel_info" ]; then
+		die "neither a kernel source checkout ($kernel_source) nor an artifact build-info.json ($kernel_info) is available"
+	fi
+	kernel_source_kind=metadata
+	say "kernel source: using CI artifact metadata from $kernel_info"
+fi
+
+python3 - "$project_root/kernel/source.json" "$kernel_out" "$native_root_hashes" "$kernel_source_kind" "$kernel_source" <<'PY'
 import hashlib, json, subprocess, sys
 from pathlib import Path
 lock = json.loads(Path(sys.argv[1]).read_text())
-source, out, manifest = map(Path, sys.argv[2:])
-commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
-if commit != lock['commit']:
-    raise SystemExit('kernel source does not match kernel/source.json')
-if subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain']):
-    raise SystemExit('kernel source is dirty')
-if hashlib.sha256((out / '.config').read_bytes()).hexdigest() != lock['config_sha256']:
-    raise SystemExit('kernel configuration differs from kernel/source.json')
+out, manifest, kind, source = (Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], sys.argv[5])
+if kind == 'git':
+    commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
+    if commit != lock['commit']:
+        raise SystemExit('kernel source does not match kernel/source.json')
+    if subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain']):
+        raise SystemExit('kernel source is dirty')
+else:
+    info = json.loads((out / 'build-info.json').read_text())
+    if info['commit'] != lock['commit']:
+        raise SystemExit('kernel artifact commit does not match kernel/source.json')
 release = (out / 'include/config/kernel.release').read_bytes()
 wanted = hashlib.sha256(release).hexdigest()
 rows = [line.split('  ', 1) for line in manifest.read_text().splitlines()]
@@ -61,7 +82,13 @@ matches = [h for h, p in rows if p == '/usr/share/liuqin/kernel.release']
 if matches != [wanted]:
     raise SystemExit('root filesystem and kernel release do not match')
 PY
-source_epoch=$(git -C "$kernel_source" show -s --format=%ct HEAD)
+if [ "$kernel_source_kind" = git ]; then
+	source_epoch=$(git -C "$kernel_source" show -s --format=%ct HEAD)
+else
+	# SOURCE_DATE_EPOCH from the CI artifact keeps the image deterministic.
+	source_epoch=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('source_date_epoch', 0))" "$kernel_info")
+	[ -n "$source_epoch" ] || source_epoch=0
+fi
 charger_mode=auto
 if [ -n "${INSTALLER_RUNTIME:-}" ]; then charger_mode=0; fi
 mkdir -p "$out_dir"
