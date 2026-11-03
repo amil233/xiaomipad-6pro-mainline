@@ -42,7 +42,8 @@ def main():
     args = parser.parse_args()
     args.bdencoder = args.bdencoder.resolve()
     verify(args.bdencoder, ENCODER_SHA)
-    verify(args.base_board, "ba583c3550d15871dbbbe1349dab64bac5badced5b6bf122aa7263f8d7df76d4")
+    # Upstream board-2.bin.zst hash for this build's board data revision.
+    verify(args.base_board, "c5be41dfad22ffc0ef6f6e3645e0089d8b288afab9090b57c2ba868363e60796")
     for name, digest in INPUTS.items():
         verify(args.vendor / name, digest)
     if args.out.exists():
