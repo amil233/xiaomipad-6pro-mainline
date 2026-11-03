@@ -37,11 +37,11 @@ power_key_cc=${POWER_KEY_CC:-$(command -v aarch64-linux-gnu-gcc || command -v gc
 power_keyd_source=${POWER_KEYD_SOURCE:-"$project_root/device/power-key/liuqin-power-keyd.c"}
 uinput_automation_source=${UINPUT_AUTOMATION_SOURCE:-"$project_root/device/input/liuqin-uinput-automation.c"}
 audio_probe_source=${AUDIO_PROBE_SOURCE:-"$project_root/device/audio-topology/liuqin-audio-hwparams-probe.c"}
-power_settings_binary=${POWER_SETTINGS_BINARY:-"$project_root/out/gnome-control-center/gnome-control-center"}
+power_settings_binary=${POWER_SETTINGS_BINARY:-"$project_root/out/prepared-inputs/settings/gnome-control-center"}
 power_settings_sha256=${POWER_SETTINGS_SHA256:-}
-power_settings_manifest=${POWER_SETTINGS_MANIFEST:-"$project_root/out/gnome-control-center/build-info.json"}
+power_settings_manifest=${POWER_SETTINGS_MANIFEST:-"$project_root/out/prepared-inputs/settings/build-info.json"}
 # SENSOR_STACK_SHA256 selects the sensor build to include in this package set.
-sensor_stack=${SENSOR_STACK_TAR:-"$project_root/out/liuqin-sensors-stack/artifacts/sensor-stack.tar"}
+sensor_stack=${SENSOR_STACK_TAR:-"$project_root/out/prepared-inputs/sensors/artifacts/sensor-stack.tar"}
 sensor_stack_sha256=${SENSOR_STACK_SHA256:-9dcb2b8cb3a6539ccd6d2b410476f3e6ebc725072a3b63089a570ebdaeec5701}
 webkit_env=etc/environment.d/50-liuqin-dmabuf.conf
 webkit_env_sha256=1db6b589d305556a976c72b20500d9e932650eb090ba845052a0b8f659bdcca5
