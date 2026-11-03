@@ -165,28 +165,49 @@ def main():
             # prepared set; the commit and fragment gates above already
             # proved it belongs to the locked kernel, so local assembly
             # needs no kernel build tree at all.
-            prepared = info.get('prepared_modules', {})
+            prepared = info.get('prepared_modules') or {}
             names = {'modules.tar', 'modules.manifest', 'kernel.release', 'kernel.commit'}
-            if (prepared.get('directory') not in ('kernel-modules', 'prepared-modules') or
-                    set(prepared.get('files', {})) != names):
-                parser.error('Kernel build lacks its prepared module set; rerun the CI action')
-            # The CI artifact layout places kernel-modules/ next to kernel/;
-            # the legacy prepared-modules/ form sat inside it. Accept either.
-            source = kernel.parent / prepared['directory']
-            if not source.is_dir():
-                source = kernel / prepared['directory']
-            if not source.is_dir():
-                parser.error('Prepared module directory is missing: ' + str(source))
+            if prepared:
+                if (prepared.get('directory') not in ('kernel-modules', 'prepared-modules') or
+                        set(prepared.get('files', {})) != names):
+                    parser.error('Kernel build lacks its prepared module set; rerun the CI action')
+                # The CI artifact layout places kernel-modules/ next to kernel/;
+                # the legacy prepared-modules/ form sat inside it. Accept either.
+                source = kernel.parent / prepared['directory']
+                if not source.is_dir():
+                    source = kernel / prepared['directory']
+                if not source.is_dir():
+                    parser.error('Prepared module directory is missing: ' + str(source))
+                expected_files = prepared['files']
+            else:
+                # Older CI actions did not register the prepared module set in
+                # build-info.json.  Fall back to the sibling kernel-modules/
+                # directory and verify it directly: file set, the recorded
+                # commit, the kernel release, and the packaged SHA256SUMS.
+                source = kernel.parent / 'kernel-modules'
+                if not source.is_dir():
+                    parser.error('Prepared module directory is missing: ' + str(source))
+                if set(names) - {p.name for p in source.iterdir()}:
+                    parser.error('Kernel build lacks its prepared module set; rerun the CI action')
+                expected_files = None
             if (source / 'kernel.commit').read_text().strip() != lock['commit']:
                 parser.error('Imported modules do not belong to the locked kernel')
             kernel_release = kernel / 'include/config/kernel.release'
             if kernel_release.is_file() and \
                     (source / 'kernel.release').read_text().strip() != kernel_release.read_text().strip():
                 parser.error('Imported modules do not belong to the locked kernel')
-            for name, expected in prepared['files'].items():
-                with (source / name).open('rb') as stream:
-                    if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
-                        parser.error('Imported module artifact mismatch: ' + name)
+            if expected_files is not None:
+                for name, expected in expected_files.items():
+                    with (source / name).open('rb') as stream:
+                        if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
+                            parser.error('Imported module artifact mismatch: ' + name)
+            else:
+                sums = source / 'SHA256SUMS'
+                if sums.is_file():
+                    subprocess.run(['sha256sum', '-c', '--quiet', 'SHA256SUMS'],
+                                   cwd=source, check=True)
+                else:
+                    parser.error('Prepared module set carries no checksums; rerun the CI action')
             shutil.copytree(source, out / 'modules')
             print('Stage: modules (verified prepared CI module artifacts)', flush=True)
             continue
