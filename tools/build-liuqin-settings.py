@@ -102,6 +102,24 @@ def build(rootfs, source, out, lock, jobs):
         if not guest_source.exists():
             shutil.copytree(source, guest_source, symlinks=True)
         (root / 'etc/apt/sources.list.d/cdrom.sources').unlink(missing_ok=True)
+        # APT mirror: same preference as the other chroot builders.  The
+        # upperdir is disposable; the release root below the overlay keeps
+        # its own sources.  AAPT_MIRROR='' keeps the distro defaults.
+        mirror = os.environ.get('AAPT_MIRROR',
+                                'https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports')
+        if mirror:
+            (root / 'etc/apt/sources.list.d/ubuntu.sources').write_text(
+                'Types: deb\n'
+                f'URIs: {mirror}\n'
+                'Suites: resolute resolute-updates resolute-backports\n'
+                'Components: main restricted universe multiverse\n'
+                'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n'
+                '\n'
+                'Types: deb\n'
+                'URIs: http://ports.ubuntu.com/ubuntu-ports/\n'
+                'Suites: resolute-security\n'
+                'Components: main restricted universe multiverse\n'
+                'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n')
         # APT hooks are lists; assigning a scalar does not remove inherited entries.
         (root / 'etc/apt/apt.conf.d/zz-liuqin-build').write_text(
             '#clear APT::Update::Post-Invoke;\n#clear APT::Update::Post-Invoke-Success;\n')
