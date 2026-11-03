@@ -154,7 +154,11 @@ mv "$out_dir/boot/boot-liuqin-firstboot.img" "$out_dir/boot-liuqin-native.img"
 
 {
 	printf 'status=OFFLINE_BUILT\n'
-	printf 'kernel_commit=%s\n' "$(git -C "$kernel_source" rev-parse HEAD)"
+	if [ "$kernel_source_kind" = git ]; then
+		printf 'kernel_commit=%s\n' "$(git -C "$kernel_source" rev-parse HEAD)"
+	else
+		printf 'kernel_commit=%s\n' "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['commit'])" "$kernel_info")"
+	fi
 	printf 'source_date_epoch=%s\n' "$source_epoch"
 	printf 'image_sha256=%s\n' "$(sha "$image")"
 	printf 'raw_dtb_sha256=%s\n' "$(sha "$raw_dtb")"
