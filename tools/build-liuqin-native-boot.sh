@@ -60,11 +60,20 @@ else
 	say "kernel source: using CI artifact metadata from $kernel_info"
 fi
 
-python3 - "$project_root/kernel/source.json" "$kernel_out" "$native_root_hashes" "$kernel_source_kind" "$kernel_source" <<'PY'
+release_file=$kernel_out/include/config/kernel.release
+if [ ! -f "$release_file" ]; then
+	# CI artifacts do not carry the kernel build tree; the release string
+	# is packaged with the prepared module set instead.
+	release_file=$kernel_out/../kernel-modules/kernel.release
+fi
+[ -f "$release_file" ] || die 'kernel release string is unavailable: no build tree and no packaged release'
+
+python3 - "$project_root/kernel/source.json" "$kernel_out" "$native_root_hashes" "$kernel_source_kind" "$kernel_source" "$release_file" <<'PY'
 import hashlib, json, subprocess, sys
 from pathlib import Path
 lock = json.loads(Path(sys.argv[1]).read_text())
-out, manifest, kind, source = (Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], sys.argv[5])
+out, manifest, kind, source, release_file = (Path(sys.argv[2]), Path(sys.argv[3]),
+                                             sys.argv[4], sys.argv[5], Path(sys.argv[6]))
 if kind == 'git':
     commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     if commit != lock['commit']:
@@ -75,7 +84,7 @@ else:
     info = json.loads((out / 'build-info.json').read_text())
     if info['commit'] != lock['commit']:
         raise SystemExit('kernel artifact commit does not match kernel/source.json')
-release = (out / 'include/config/kernel.release').read_bytes()
+release = release_file.read_bytes()
 wanted = hashlib.sha256(release).hexdigest()
 rows = [line.split('  ', 1) for line in manifest.read_text().splitlines()]
 matches = [h for h, p in rows if p == '/usr/share/liuqin/kernel.release']
