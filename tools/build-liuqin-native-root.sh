@@ -102,11 +102,12 @@ stage_debs() {
 	say 'installing the liuqin deb set in a qemu-aarch64 chroot'
 	# APT mirror (same rationale as the sensors stack): replace the distro
 	# sources in the copied tree only.  AAPT_MIRROR='' keeps the defaults.
-	if [ -n "${AAPT_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports}" ]; then
+	: "${AAPT_MIRROR:=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports}"
+	if [ -n "$AAPT_MIRROR" ]; then
 		rm -f "$root/etc/apt/sources.list.d/cdrom.sources"
 		cat >"$root/etc/apt/sources.list.d/ubuntu.sources" <<EOF
 Types: deb
-URIs: ${AAPT_MIRROR}
+URIs: $AAPT_MIRROR
 Suites: resolute resolute-updates resolute-backports
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
@@ -117,7 +118,7 @@ Suites: resolute-security
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
-		say "apt mirror: ${AAPT_MIRROR}"
+		say "apt mirror: $AAPT_MIRROR"
 	fi
 	mkdir -p "$root/tmp/liuqin-debs"
 	cp "$debs_dir"/*.deb "$root/tmp/liuqin-debs/"

@@ -225,10 +225,11 @@ rm -f "$merged/etc/apt/apt.conf.d/50appstream" \
 # ports.ubuntu.com server.  AAPT_MIRROR (an https://.../ubuntu-ports root)
 # replaces the suite sources in the disposable upperdir only; the release
 # root below the overlay stays untouched.  Empty keeps the distro defaults.
-if [ -n "${AAPT_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports}" ]; then
+: "${AAPT_MIRROR:=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports}"
+if [ -n "$AAPT_MIRROR" ]; then
 	cat >"$merged/etc/apt/sources.list.d/ubuntu.sources" <<EOF
 Types: deb
-URIs: ${AAPT_MIRROR}
+URIs: $AAPT_MIRROR
 Suites: resolute resolute-updates resolute-backports
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
@@ -239,7 +240,7 @@ Suites: resolute-security
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
-	say "apt mirror: ${AAPT_MIRROR}"
+	say "apt mirror: $AAPT_MIRROR"
 fi
 # Development-library upgrades can trigger dracut to rebuild the base root's
 # unrelated generic-kernel initramfs.  That output is never copied into the
