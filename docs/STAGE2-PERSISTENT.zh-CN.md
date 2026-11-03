@@ -181,6 +181,12 @@ python3 tools/prepare-image-inputs.py run     # 传感器栈/设置程序经 sud
 缓存在 `tools/local/artifacts-cache/`，重跑可复用）。传感器栈与设置程序
 在 chroot 里构建（arm64 原生宿主直接执行，无 qemu）。
 
+> SSC mock 集成门需要宿主内核的 `AF_QIPCRTR`（`CONFIG_QRTR`）。树莓派
+> 内核没有该选项，脚本检测到后自动**跳过该门并打印提示**（hexagonrpc
+> 5/5、iio-sensor-proxy 21/21 等其余校验全部保留；服务器因其他原因死亡
+> 仍然致命）。四个 liuqin 传感器补丁因此只受 umockdev 覆盖，实际行为
+> 留待首机验证。这不影响产物内容。
+
 ### 4.5 内核产物（CI，不本地编译）
 
 **不用重跑编译。** 内核仓的 `liuqin.yml` 与集成仓的 `build.yml` 跑的是
