@@ -59,6 +59,22 @@ wlan_board=$pool/wlan-qca6490/vendor/firmware_mnt/image/qca6490/bd_m81.elf
 	die 'WLAN board data is not an ELF'
 say "wlan board data: $(sha256sum "$wlan_board" | cut -d' ' -f1)"
 wlan_dir=$pool/wlan-qca6490/upstream/WCN6855/hw2.0
+if [ -d "$wlan_dir" ] && ls "$wlan_dir"/*.zst >/dev/null 2>&1; then
+	say 'wlan pool: using the prepared upstream WCN6855 zst set'
+else
+	# Self-install fallback: derive the zst set from the HSP2 tuple instead of
+	# requiring a separate upstream linux-firmware extraction.  The tuple's
+	# board-2.bin is the bdencoder-packed board revision, which is what the
+	# hardware actually asks for; the runtime files match the ROM payloads.
+	if [ ! -d "$tuple_dir/hw2.0" ]; then
+		die "no upstream WCN6855 zst set and no HSP2 tuple to derive from: $wlan_dir / $tuple_dir"
+	fi
+	mkdir -p "$wlan_dir"
+	for name in amss.bin m3.bin regdb.bin board-2.bin; do
+		zstd -q -19 -f -o "$wlan_dir/$name.zst" "$tuple_dir/hw2.0/$name"
+	done
+	say "wlan pool: derived the WCN6855 zst set from $tuple_dir/hw2.0"
+fi
 wlan_sha256="\
 d94af8648a0347903b68809b4100ea816e76afb6ead967c8b353c6521500f285  amss.bin.zst
 ba583c3550d15871dbbbe1349dab64bac5badced5b6bf122aa7263f8d7df76d4  board-2.bin.zst
