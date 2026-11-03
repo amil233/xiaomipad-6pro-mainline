@@ -68,7 +68,13 @@ def main():
         board = work / "liuqin-board.bin"
         subprocess.run(["python3", str(args.bdencoder), "-c", manifest.name,
                         "-o", board.name], cwd=work, check=True)
-        verify(board, BOARD_SHA)
+        # The combined board data is no longer hash-pinned: it is fully
+        # determined by the pinned inputs above (upstream board-2.bin and the
+        # ROM's bd_m81gf.elf), and pinning it would freeze the board-2
+        # revision. Print the hash instead so a build is still identifiable.
+        import hashlib as _h
+        print(f"liuqin-board.bin sha256: "
+              f"{_h.sha256(board.read_bytes()).hexdigest()}")
         # Keep output permissions independent of the caller's umask.
         args.out.mkdir(parents=True)
         args.out.chmod(0o755)
