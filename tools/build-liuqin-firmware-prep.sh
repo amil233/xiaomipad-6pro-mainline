@@ -83,13 +83,19 @@ c4b298869269bc55ca73d71beeb756b72a9b19e710cea2af0401accbafa2d3c7  regdb.bin.zst"
 (cd "$wlan_dir" && printf '%s\n' "$wlan_sha256" | sha256sum -c --quiet -) ||
 	say 'note: upstream WCN6855 firmware differs from the historical pin'
 
-# Regulatory database (upstream, signed).
+# Regulatory database (upstream, signed).  Optional: our kernel carries the
+# signed database and its keys built-in (CONFIG_CFG80211_USE_KERNEL_REGDB_KEYS),
+# so a userland copy is informational only.  Install it when present.
 reg_dir=$pool/regulatory/upstream
-reg_sha256="\
+if [ -d "$reg_dir" ]; then
+	reg_sha256="\
 92eec693a0a9ec460be6bb3ff9e22b259b2f906eddd2984dd90654b5ecfa0f18  regulatory.db
 4242d15defb0608b917a2c3cd0dbea21c026a4acc905093e8947dd494c2e26b1  regulatory.db.p7s"
-(cd "$reg_dir" && printf '%s\n' "$reg_sha256" | sha256sum -c --quiet -) ||
-	say 'note: regulatory database differs from the historical pin'
+	(cd "$reg_dir" && printf '%s\n' "$reg_sha256" | sha256sum -c --quiet -) ||
+		say 'note: regulatory database differs from the historical pin'
+else
+	say 'note: no regulatory database in the pool; the kernel carries its own signed copy'
+fi
 
 # Adreno 730 (vendor_a.img): zap stays device-keyed under qcom/sm8475/liuqin;
 # sqe/gmu go to the loader's updates/ override tree (no dpkg path collision).
@@ -156,8 +162,9 @@ printf '%s\n' "$wlan_sha256" | while read -r _ name; do
 	install -m 0644 "$wlan_dir/$name" "$fw/ath11k/WCN6855/hw2.0/$name"
 	ln -s "../hw2.0/$name" "$fw/ath11k/WCN6855/hw2.1/$name"
 done
-printf '%s\n' "$reg_sha256" | while read -r _ name; do
-	install -m 0644 "$reg_dir/$name" "$fw/$name"
+# regulatory.db lands in the tree only when the pool provided it.
+for reg_file in regulatory.db regulatory.db.p7s; do
+	[ -f "$reg_dir/$reg_file" ] && install -m 0644 "$reg_dir/$reg_file" "$fw/$reg_file"
 done
 install -m 0644 "$gpu_dir/a730_zap.mbn" "$fw/qcom/sm8475/liuqin/a730_zap.mbn"
 install -m 0644 "$gpu_dir/a730_sqe.fw" "$gpu_dir/gmu_gen70000.bin" "$fw/updates/qcom/"
