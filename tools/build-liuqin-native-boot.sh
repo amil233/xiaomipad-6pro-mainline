@@ -14,7 +14,15 @@ wlan_tuple=${WLAN_HSP2_TUPLE:?"set WLAN_HSP2_TUPLE to the prepared WLAN tuple"}
 stock_overlay_dir=${STOCK_OVERLAY_DIR:?"set STOCK_OVERLAY_DIR to the extracted stock DTBO entries"}
 stock_base_dir=${STOCK_BASE_DIR:?"set STOCK_BASE_DIR to the extracted stock vendor_boot DTBs"}
 mk_dir=${MKBOOTIMG_DIR:-"$project_root/tools/local/aosp-mkbootimg"}
-slot_cc=${SLOT_SUCCESS_GCC:-aarch64-linux-gnu-gcc}
+slot_cc=${SLOT_SUCCESS_GCC:-}
+# An arm64-native builder has no cross toolchain; the host gcc emits aarch64.
+if [ -z "$slot_cc" ]; then
+	if [ "$(uname -m)" = aarch64 ] && command -v gcc >/dev/null 2>&1; then
+		slot_cc=gcc
+	else
+		slot_cc=aarch64-linux-gnu-gcc
+	fi
+fi
 dtc=${DTC:-$kernel_out/scripts/dtc/dtc}
 fdtoverlay=${FDTOVERLAY:-$kernel_out/scripts/dtc/fdtoverlay}
 image=${KERNEL_IMAGE:-$kernel_out/arch/arm64/boot/Image}

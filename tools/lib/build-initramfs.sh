@@ -83,6 +83,12 @@ dsp_firmware_count=68
 dsp_firmware_set_sha256=7f9b43d3815b6592f541e0b870357010488980bc040b925e93bbf12d01282908
 slot_success_source="$project_root/device/boot/liuqin-mark-slot-successful.c"
 slot_success_gcc=$(command -v "${SLOT_SUCCESS_GCC:-aarch64-linux-gnu-gcc}" || true)
+# An arm64-native builder has no cross toolchain: the host gcc already emits
+# aarch64.  Fall back to it rather than failing the build.
+if [ -z "$slot_success_gcc" ] && [ "$(uname -m)" = aarch64 ]; then
+	slot_success_gcc=$(command -v gcc || true)
+	[ -n "$slot_success_gcc" ] && echo "note: slot-success helper using the native host gcc ($slot_success_gcc)" >&2
+fi
 charger_mode_source="$project_root/device/charger-mode/liuqin-charger-mode"
 charger_key_source="$project_root/device/charger-mode/liuqin-charger-mode-power-key.c"
 charger_exit_source="$project_root/device/charger-mode/liuqin-charger-mode-exit.c"
