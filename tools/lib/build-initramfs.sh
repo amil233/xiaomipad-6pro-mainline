@@ -513,13 +513,31 @@ for hw_revision in hw2.0 hw2.1; do
 		"$staging/lib/firmware/ath11k/WCN6855/$hw_revision/board.bin"
 	chmod 0644 "$staging/lib/firmware/ath11k/WCN6855/$hw_revision/board.bin"
 done
+# Self-install fallback: the pool's upstream WCN6855 zst set is optional; when
+# absent, derive it from the HSP2 tuple exactly like build-liuqin-firmware-prep.sh
+# does (same payloads, bdencoder-packed board-2 for this board revision).
+wlan_zst_tmp=$staging/.wlan-zst
+mkdir -p "$wlan_zst_tmp"
+if [ -d "$wlan_firmware_dir" ] && ls "$wlan_firmware_dir"/*.zst >/dev/null 2>&1; then
+	wlan_zst_source=$wlan_firmware_dir
+else
+	for wlan_tuple_name in amss.bin m3.bin regdb.bin board-2.bin; do
+		zstd -q -19 -f -o "$wlan_zst_tmp/$wlan_tuple_name.zst" \
+			"$wlan_hsp2_tuple/hw2.0/$wlan_tuple_name" 2>/dev/null || {
+			echo "error: WLAN stage-1 firmware unavailable: neither $wlan_firmware_dir nor the HSP2 tuple supplies $wlan_tuple_name" >&2
+			exit 1
+		}
+	done
+	wlan_zst_source=$wlan_zst_tmp
+fi
 printf '%s\n' "$wlan_firmware_sha256" | while read -r _ firmware_name; do
-	cp "$wlan_firmware_dir/$firmware_name" \
+	cp "$wlan_zst_source/$firmware_name" \
 		"$staging/lib/firmware/ath11k/WCN6855/hw2.0/$firmware_name"
 	chmod 0644 "$staging/lib/firmware/ath11k/WCN6855/hw2.0/$firmware_name"
 	ln -s "../hw2.0/$firmware_name" \
 		"$staging/lib/firmware/ath11k/WCN6855/hw2.1/$firmware_name"
 done
+rm -rf "$wlan_zst_tmp"
 
 if [ "$root_profile" = gnome ] || [ "$root_profile" = native ]; then
 	for wlan_revision in hw2.0 hw2.1; do
@@ -534,10 +552,16 @@ fi
 
 # cfg80211 is built in and requests its signed regulatory database while still
 # in stage 1. The kernel configuration requires the matching PKCS#7 signature,
-# so keep the pair together and pin both bytes.
+# so keep the pair together when the pool ships them.  Our kernel carries the
+# signed database and its keys built in (CONFIG_CFG80211_USE_KERNEL_REGDB_KEYS),
+# so the userland pair is optional; skip it rather than fail the build.
 printf '%s\n' "$regulatory_firmware_sha256" | while read -r _ firmware_name; do
-	cp "$regulatory_firmware_dir/$firmware_name" "$staging/lib/firmware/$firmware_name"
-	chmod 0644 "$staging/lib/firmware/$firmware_name"
+	if [ -f "$regulatory_firmware_dir/$firmware_name" ]; then
+		cp "$regulatory_firmware_dir/$firmware_name" "$staging/lib/firmware/$firmware_name"
+		chmod 0644 "$staging/lib/firmware/$firmware_name"
+	else
+		echo "note: regulatory $firmware_name is absent; the kernel carries its own signed copy" >&2
+	fi
 done
 
 # DRM/GPU and all three PAS remoteprocs probe before /init can switch_root.
