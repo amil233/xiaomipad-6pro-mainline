@@ -128,9 +128,13 @@ def cache_store(cache: dict, name: str, fp: dict, artifact: Path) -> None:
 
 def rebuild_sensors(out_dir: Path) -> Path:
     tar = out_dir / 'artifacts/sensor-stack.tar'
-    env = dict(os.environ, UPDATE_APT='1', OUT_DIR=str(out_dir))
-    subprocess.run(['sudo', '-n', 'sh', 'tools/build-liuqin-sensors-stack.sh'],
-                   cwd=PROJECT, env=env, check=True)
+    # sudo's default env_reset drops the caller environment entirely, so the
+    # variables are routed through the command line instead: UPDATE_APT
+    # refreshes the chroot's package indexes (the extracted root ships none)
+    # and OUT_DIR lands the artifacts in this run's work directory.
+    subprocess.run(['sudo', '-n', 'env', 'UPDATE_APT=1', f'OUT_DIR={out_dir}',
+                    'sh', 'tools/build-liuqin-sensors-stack.sh'],
+                   cwd=PROJECT, check=True)
     return tar
 
 

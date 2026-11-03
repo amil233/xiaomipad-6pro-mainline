@@ -147,31 +147,17 @@ python3 tools/extract-stock-base-dtbs.py <V14包>/images/vendor_boot.img \
 才能挂载。`metadata.img`/`userdata.img`/`cust.img`/`boot.img`/
 `recovery.img`/`vbmeta.img`/`persist.img` 都不需要。）
 
-**关卡**：固件池缺项或哈希不符会在 `prepare-image-inputs.py`（§4.4）
-与构建脚本里 `die`，不会上机失败。ROM 内容钉扎（sensor config 清单、
-`sns_reg_config`、VPU 哈希）当前默认是 OS2 值——**你解包算出 V14 哈希后
-告诉我，我把默认钉值换掉**；在此之前可以临时用环境变量覆盖跑通：
+**关卡**：固件池缺项或结构性错误会在 `prepare-image-inputs.py`（§4.4）
+与构建脚本里 `die`，不会上机失败。ROM/固件的**内容哈希已全部按本机
+V14.0.9.0 实测值设为默认，并且只作信息打印**（自用安装不追求发布级
+字节复现，按解包实际内容走即可）；仍会硬 `die` 的是结构性防错：
+文件/目录存在、WLAN 板号文件的 ELF 魔数、DSP 恰好 68 个文件、
+固件树恰好 197 个文件且不含 per-device 校准、我们自己补丁的 SHA、
+生成的 `sns_reg_version` 一致性。
 
-```sh
-EXPECTED_CONFIG_COUNT=<V14实际值> \
-EXPECTED_CONFIG_MANIFEST_SHA256=<V14实际值> \
-EXPECTED_SNS_REG_SHA256=<V14实际值> VPU_SHA256=<V14实际值> \
-  sudo python3 tools/prepare-image-inputs.py run
-```
-
-> 需要算的哈希（在 arm64 机器上）：
-> ```sh
-> cd <vendor>/etc/sensors
-> find . -maxdepth 1 -type f -printf '%P\0' | LC_ALL=C sort -z | xargs -0 sha256sum > /tmp/m
-> wc -l < /tmp/m            # → EXPECTED_CONFIG_COUNT
-> sha256sum /tmp/m          # → EXPECTED_CONFIG_MANIFEST_SHA256
-> sha256sum sns_reg_config  # → EXPECTED_SNS_REG_SHA256（并核对 '^property=' 行数 = 2）
-> sha256sum <vendor>/firmware/vpu20_4v.mbn  # → VPU_SHA256
-> ```
-> 固件池其余项（触摸/GPU/WLAN 板号/蓝牙/DSP）脚本是**逐文件明文哈希**，
-> 摆进去后遇到不匹配会把文件名和期望哈希直接打出来，按报错换值即可。
-
-**关卡**：固件池缺项或哈希不符会在 `prepare-image-inputs.py`（§4.4）
+> 传感器栈在 chroot 里 `apt-get update` 拉取构建依赖（提取出的 rootfs
+> 不带 apt 索引），**arm64 机器需要联网**。这一步由
+> `prepare-image-inputs.py` 自动经 sudo 传 `UPDATE_APT=1`，无需手工指定。
 ### 4.3 杂项 fetch
 
 ```sh
