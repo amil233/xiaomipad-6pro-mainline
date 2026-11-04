@@ -562,7 +562,28 @@ def main(argv=None):
                     'the tablet already carries a split layout; pass --keep-home to reinstall the'
                     ' system and keep linux_home. Changing the split requires restoring the stock'
                     ' partition table and installing again —— 已有分区布局不支持原地调整尺寸')
-            print('Reinstalling on the existing split layout; linux_home is left untouched.')
+            # --keep-home asks the RAM installer to preserve the existing
+            # LIUQIN_HOME filesystem.  A split layout that an earlier run left
+            # behind after the partition write but before formatting carries
+            # no such filesystem; keeping would refuse.  Detect that case and
+            # install fresh instead (formatting the empty home).
+            probe = ('sh -c %s' % shlex.quote(
+                'for info in /sys/class/block/sd*/uevent; do'
+                ' grep -q "^PARTNAME=linux_home$" "$info" || continue;'
+                ' node=${info%/uevent}; dev=/dev/${node##*/};'
+                ' if command -v e2label >/dev/null 2>&1; then'
+                ' [ "$(e2label "$dev" 2>/dev/null)" = LIUQIN_HOME ] && echo formatted;'
+                ' else'
+                ' read -r magic < <(dd if="$dev" bs=1 skip=1080 count=2 2>/dev/null | od -An -tx1);'
+                ' [ "$magic" = "53 ef" ] && echo formatted;'
+                ' fi; done'))
+            if remote(probe).decode().strip() != 'formatted':
+                print('Reinstalling on the existing split layout: linux_home carries no'
+                      ' LIUQIN_HOME filesystem (an earlier run stopped after the partition'
+                      ' write), so it will be formatted fresh.', flush=True)
+                args.keep_home = False
+            else:
+                print('Reinstalling on the existing split layout; linux_home is left untouched.')
         else:
             layout.check_stock_device(disk)
             region = disk.usable_end - disk.by_name(layout.USERDATA_NAME).start
