@@ -59,6 +59,21 @@ INPUTS = {
 }
 
 
+def kernel_release_string(kernel: Path) -> str:
+    """The kernel release string, from the build tree or the packaged module set.
+
+    CI artifacts do not carry include/config/kernel.release; the release is
+    packaged with the prepared modules instead (kernel-modules/kernel.release)."""
+    primary = kernel / 'include/config/kernel.release'
+    if primary.is_file():
+        return primary.read_text().strip()
+    packaged = kernel.parent / 'kernel-modules' / 'kernel.release'
+    if packaged.is_file():
+        return packaged.read_text().strip()
+    raise SystemExit('kernel release string is unavailable: neither '
+                     f'{primary} nor {packaged} exists')
+
+
 def main():
     project = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -300,7 +315,7 @@ def main():
                         'kernel_commit': lock['commit'],
                         'project_commit': subprocess.check_output(['git', '-C', str(project), 'rev-parse', 'HEAD'], env=env, text=True).strip(),
                         'project_dirty': bool(subprocess.check_output(['git', '-C', str(project), 'status', '--porcelain'], env=env)),
-                        'kernel_release': (kernel / 'include/config/kernel.release').read_text().strip(),
+                        'kernel_release': kernel_release_string(kernel),
                         'features': {'displayport': True,
                                      'native_fingerprint': bool(supplied.get('FINGERPRINT_BUNDLE')),
                                      'kernelsu_return_module': ksu_modules[0].name},
