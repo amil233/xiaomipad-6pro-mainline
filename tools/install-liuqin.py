@@ -718,12 +718,16 @@ def confirm_plan(expected, actual):
 
     Only the sizes the operator chose are compared.  linux_home is the
     remainder by definition, so its size legitimately follows the capacity of
-    the tablet in front of us rather than the preview's reference geometry.
+    the tablet in front of us rather than the preview's reference geometry;
+    the same holds for a deleted partition's size (the tail region the tablet
+    happens to expose), since deleting does not depend on how large it is.
     """
     if [item.name for item in expected.entries] != [item.name for item in actual.entries]:
         raise RuntimeError('the computed layout has a different shape from the confirmed one')
     for one, two in zip(expected.entries, actual.entries):
-        if one.action != two.action or (one.name != layout.HOME_NAME and one.size != two.size):
+        if one.action != two.action or (
+                one.name != layout.HOME_NAME and one.action != 'delete'
+                and one.size != two.size):
             raise RuntimeError(
                 'the tablet\'s partition table does not produce the layout that was confirmed '
                 f'({one.name}: {one.action} {one.size} confirmed, {two.action} {two.size} '
