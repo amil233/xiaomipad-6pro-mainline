@@ -1,6 +1,7 @@
 # 音频（扬声器 TDM）状态与驱动改动
 
-**状态（2026-11-07）**：外放已出声。验证方式：
+**状态（2026-11-07）**：外放已出声，`speaker-test -c 4` 与 GNOME 桌面播放
+都已验证。底层测试命令：
 
 ```sh
 speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1
@@ -121,10 +122,10 @@ DAI 和 component 两个 sysclk（cs35l41 里 clk_id 0 就是 `CLKID_SCLK`），
 
 ## 4. 已知限制与待办
 
-- **只接受一种 PCM 元组**：48 kHz / 4 声道 / `S24_LE`。桌面（PipeWire）默认
-  以 2 声道打开 sink，会被守卫拒绝（prepare `-EINVAL`）。目前用
-  `speaker-test -c 4` 验证；要让普通桌面播放也出声，需要二选一：
-  1. 用户态把该 sink 配成 4 声道（WirePlumber/ALSA profile）；
+- **守卫只接受一种 PCM 元组**：48 kHz / 4 声道 / `S24_LE`。实测 GNOME 桌面
+  （PipeWire）能协商出该守卫接受的元组并正常出声；但若有应用强制 2ch 或
+  `S16_LE`，prepare 仍会返回 `-EINVAL`（数据通路本身没问题）。届时二选一：
+  1. 用户态把该 sink 固定成 4 声道（WirePlumber/ALSA profile）；
   2. 内核/DSP 侧做 2→4 上混（PCM 模块的 channel map 或 TDM sink 的映射）。
 - **槽位与物理喇叭的对应**：当前按链路顺序 TL/TR/BR/BL → slot 0/1/2/3。
   若实际听感左右/上下颠倒，改 `sc8280xp.c` 里下发 `BIT(i)` 的对应表即可。
