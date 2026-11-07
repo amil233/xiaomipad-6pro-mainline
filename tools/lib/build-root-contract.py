@@ -128,8 +128,9 @@ NATIVE_PINNED_PATHS = (
     "/usr/local/sbin/liuqin-gnome-usb-rescue",
     "/usr/local/sbin/liuqin-snap-root-admission",
     "/usr/local/sbin/liuqin-wlan-mac",
-    "/usr/share/liuqin/kernel-modules.manifest",
-    "/usr/share/liuqin/kernel.release",
+    # kernel.release and kernel-modules.manifest are deliberately NOT pinned:
+    # they belong to the kernel package and change on every kernel upgrade, so
+    # pinning them would make stage 1 reject a correct root after a deb update.
     "/usr/share/liuqin/power/gschemas.compiled",
     "/usr/share/liuqin/power/io.github.liuqin.power.gschema.xml",
     "/usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/sns_reg_version",

@@ -39,6 +39,8 @@
 | 4 | 相机 | 需要 camcc GDSC 修复（`66f4fbf82d26`，已在 7.3 树上）+ 去掉 `/etc/modprobe.d/liuqin-camcc.conf`；未验证，暂不优先 |
 | 5 | 音频边角 | 当前守卫只接受 48k/4ch/24-bit；桌面已能协商出可用元组，强制 2ch/S16 的应用仍会被拒。槽位与物理喇叭对应可按听感微调 |
 | 6 | 升级 v7.4 | 见 §5 的"必须保留的下游偏离" |
+| 7 | 内核 deb 升级与 native-root 合同 | 已修：合同曾钉住 `kernel.release`/`kernel-modules.manifest`，装新内核 deb 后启动被 fail-closed 拒绝（2026-11-07 实测）。`build-root-contract.py` 的 native 列表已不再钉这两个文件，现有设备用重新生成的合同重建了 initramfs |
+
 
 ## 4. 构建 / 刷机工作流（2026-11-07 起）
 
