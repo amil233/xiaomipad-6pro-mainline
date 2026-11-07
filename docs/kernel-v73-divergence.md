@@ -45,6 +45,12 @@
 - `sound/soc/codecs/tfa9872.c`（新增）：功放
 - `sound/soc/qcom/qdsp6/`（audioreach.c/.h、q6apm.c、q6apm-dai.c、
   topology.c）+ `sound/soc/qcom/common.c`：TDM 支持
+- **外放 TDM 链路（2026-11-07 出声）**：`sc8280xp.c` 三处改动（BE fixup
+  跳过 TDM 后端、DSP_A + 每颗功放一个 slot、codec PLL 参考）
+  + `cs35l41.c` 的 `.set_tdm_slot`。其中 **fixup 跳过与 PLL 编程是升级时
+  必须保留的下游偏离**：上游 v7.4 仍把 BE 强制成 2ch/S16；PLL 那段在 7.3
+  合并中被上游重构静默丢弃过一次（同类盲区：ubwc 的 `qcom,cape`）。
+  细节与复测方法见 `docs/AUDIO.zh-CN.md`。
 
 ## 5. 相机（6 文件，447+/64-）
 
