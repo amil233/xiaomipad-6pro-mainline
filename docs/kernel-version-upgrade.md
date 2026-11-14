@@ -1595,3 +1595,34 @@ CODEC 耳机插孔变体依赖的 `qcom_snd_headset_jack_setup()`（7f8dd07370f8
 
 行为上对 liuqin/cupid 等价（同样的调用、同样的顺序），只是来源从代码
 常量变成板级数据。待 CI + 上机验证外放、耳机与麦克风。
+
+### bonded DSI PLL 修复的上游状态（watch item，2026-11-14）
+
+我们的 `db08160915e3`（重新应用 `93c97bc8d85d`）**仍在树内**：
+`dsi_pll_enable_pll_bias()` 里是无条件 `pll_enable_cnt++`，
+`dsi_7nm_phy_enable()/disable()` 里不再写 `pll_enable_cnt = 1/0`，
+`phy->pll_data` 已删除且全树无残留。
+
+上游状态：`v7.4-rc2` 与当前 master（rc3+）**仍是回退态**
+（`44784327815b` Revert "drm/msm: dsi: fix PLL init in bonded mode"），
+`dsi_7nm_phy_enable()` 仍写 `pll_enable_cnt = 1`、仍走 `phy->pll_data`；
+`v7.3..v7.4-rc2` 的 `drivers/gpu/drm/msm/dsi/phy/` 只有一次 treewide
+`devm_kzalloc_obj` 转换，**没有新的 bonded 修复**。回退理由是原修复
+会破坏非 bonded 的时钟分频编程（Neil Armstrong 被指派做"更好的修复"，
+尚未落地）。
+
+`git merge-tree HEAD v7.4-rc2` 预览显示：合并结果**自动保留**我们的修复
+（无 guard、无 `pll_data`），但属于自动合并，升级时必须人工复查。
+
+检查命令（下次 merge 前跑）：
+
+```
+git log v7.3..v7.4 --oneline --grep=bonded -- drivers/gpu/drm/msm/dsi/
+git show v7.4:drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c | \
+    grep -n "pll_enable_cnt\|pll_data"
+```
+
+判据：若上游出现新的 bonded 修复（`pll_enable_cnt` 语义变化、或
+`dsi_7nm_phy_enable` 不再强制 `= 1`），改用上游实现并删除本地
+re-apply；否则保留。我们设备是 `qcom,dual-dsi-mode` +
+`qcom,sync-dual-dsi`（bonded），没有该修复会黑屏。
