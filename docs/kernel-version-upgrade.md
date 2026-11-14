@@ -1473,3 +1473,84 @@ warning），新增节点/属性已在 dtb 中核对。待 CI 编译 + `fastboot
 USB3（qmp-combo / ucsi）、蓝牙（hci_qca / geni serial）。
 
 推送：`git -C linux-sm8450-liuqin push GitHub liuqin-7.3`
+
+---
+
+## 三方对比审计：liuqin-7.3 / 主线 / 上游 liuqin-6.17（2026-11-14）
+
+### 三者定位
+
+- **Linux 主线**（基线 tag `v7.3`，前瞻 `v7.4-rc2`）：最终上游。自建补丁的最低
+  要求是不破坏"将来能干净升级"，理想是能按主线设计表达（必要时上游化）。
+- **upstream/liuqin-6.17**（`origin/liuqin-6.17` = v0.6.1，`release/v0.6.2`）：
+  liuqin 外设的事实来源（vendor 驱动、DTS、实测勘误）。代码基线停在 6.17，
+  部分补丁是带 LLM 辅助的快速修复；目标是"设备能跑"，不追主线 API。
+- **我们的 liuqin-7.3**：6.17 设备补丁集 + 主线 v7.0–v7.3 merge + 适配/实测
+  修复。债务来源：6.17 越肩代码、主线 API 漂移、主线子系统自身重构。
+
+### 量化
+
+- 我们的树 vs `v7.3`：**175 个文件**（108 modified + 67 new）。new 文件里 66 个
+  是 6.17 设备驱动/DTS/文档，1 个（`panel-novatek-nt36532.c`）与 v7.4 主线撞名。
+- 作者自 v0.6.0 以来 45 个内核提交：24 个已于上一轮移植（CI run 43569861361
+  ✅）、19 个早已随主线 merge 进树、2 个（GPU 终止失败策略）暂缓。
+- 文件级核对作者分支：除主线 API 适配（`of_gpio`→fwnode、`drm_panel_init`→
+  `devm_drm_panel_alloc`、`MSM_PIN_FUNCTION`→`MSM_GPIO_PIN_FUNCTION`）与我们
+  自己的 Tianma 面板扩展外，**没有遗漏的作者改动**；liuqin.dts 里他独有的
+  `&usb_1_dwc3` 7 行已被主线 `sm8450.dtsi` 覆盖，不是丢失。
+- 主线 `v7.3..v7.4-rc2`：**20,770 个提交**；我们 108 个 modified 文件里 77 个
+  被上游动过。`git merge-tree` 实测：**真冲突 13 个文件**。
+
+### 本轮回移的主线修正（7 个提交，未推送）
+
+| 本地 | 上游 | 内容 |
+|---|---|---|
+| `a65d99480c80` | `128a0edde507` | a6xx ARC 次级 rail 按量化后的主 rail 匹配 |
+| `5ae8a67c8e89` | `eab0aff8965e` | a6xx dep votes 改用 GPU 设备（我们树上确实是 bug：传了 `gmu->dev`，查不到 OPP 表 ⇒ 所有 MX 依赖投票落到最低档） |
+| `843abc05bd23` | `eb34e2804ce4` | Lucid Ole PLL 已使能时跳过重配（**SM8475 专属显示花屏修复**） |
+| `3c9ba65ba09b` | `8464e2284fec` | dispcc `mdss_mdp_clk_src` 用 `no_init_park`（避免接管时闪屏） |
+| `1e204a486e5d` | `32d04280ddeb` | DPU 先关 slave encoder 再关 master（bonded DSI 灭屏后再亮黑屏的根因之一） |
+| `9875224f022c` | `ab91ba61871a` | DSI tx buffer 的 VM 引用泄漏 |
+| `bb7332c5bccd` | — | 删除 kernel 仓里误提交的 `repack/diff-70-710/*` |
+
+### 结构性差异（7.4 升级前必须决策）
+
+1. **面板驱动撞名**：v7.4 新增 `panel-novatek-nt36532.c`（CSOT PPC100HB1，
+   OnePlus Pad 2），与我们的 Xiaomi 版同名、同 Kconfig 符号，merge 是
+   **add/add 冲突 + 符号冲突**。建议把我们的改名为
+   `panel-xiaomi-nt36532.c` / `DRM_PANEL_XIAOMI_NT36532`，并评估把 Tianma
+   desc 移植进主线驱动（主线框架已支持 dual-DSI + DSC）。
+2. **QSEECOM 分叉**：主线走 `qcomtee`（对象模型 + TEE ioctl），我们是 vendor
+   `/dev/qseecom` + `qcom_scm` 440 行 app_load/listener（指纹/keymaster blob
+   需要）。不是重复代码而是 ABI 分叉，短期保留。
+3. **音频 TDM**：我们的 sc8280xp/cs35l41/q6apm TDM 把板级策略写进通用
+   machine driver；v7.4 上游加了 per-DAI board configuration 与 AIF TDM
+   DAI ID。7.4 时应把策略表达成 per-DAI 配置。
+4. **GPU 依赖投票**：上游 7.4 正在重做（secondary rail、dep 设备、clamp、
+   BX rail）。我们的 `qcom,opp-cx-level` 走 v1 perf-table 的 `acd` 字，是并行
+   方案；7.4 合并时要决定并入上游 dep-vote 模型还是保留 DT 属性。
+5. **DP/DSI**：主线 7.4 对 DP 做 stream-aware 大改（stream_id、p1/p2/p3），
+   PHY-before-AUX 补丁届时需重写；DSI bonded PLL 修复上游仍未恢复，我们的
+   重贴依旧需要，建议改成"仅 shared PLL/bonded 生效"以便未来上游化。
+6. **q6apm**：v7.4 的 `be2172758f2b`（remove 时清 `g_apm`）与
+   `ef7062864c05`（probe 完成前守卫回调）与我们刚移植的 `43ec60d3acfa`
+   重叠，7.4 时应改采上游实现。
+
+### 7.4 merge 实测冲突（13）
+
+`a6xx_gmu.c`、`panel/Kconfig`、`panel-novatek-nt36532.c`(add/add)、
+`misc/Kconfig`、`phy-qcom-qmp-combo.c`、`phy-qcom-qmp-pcie.c`、
+`qcom-pon.c`、`qcom_q6v5_pas.c`、`ucsi.c`、`ktz8866.c`、`cs35l41.c`、
+`q6apm.c`、`sc8280xp.c`。
+
+其余 77 个被上游动过的文件自动合并，但按既往教训仍需人工复查
+（机器匹配表条目、被上游重构的结构体旧表、v7.3→v7.4 的 revert 扫描）。
+
+### 建议顺序
+
+- P0：推送本轮 7 个回移 → CI → 上机（重点：开机/接管闪屏、灭屏再亮、
+  GPU 高负载稳定性）。
+- P1（7.4 前）：面板改名/迁移、TDM per-DAI 化、a6xx CX 模型对齐、
+  PHY-before-AUX 条件化。
+- P2（长期）：QSEECOM 接口设计、camss SM8475（上游仍无）、
+  pinctrl-sm8475（上游仍缺 `MSM_GPIO_PIN_FUNCTION`）。
