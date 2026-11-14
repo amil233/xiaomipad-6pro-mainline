@@ -1554,3 +1554,44 @@ USB3（qmp-combo / ucsi）、蓝牙（hci_qca / geni serial）。
   PHY-before-AUX 条件化。
 - P2（长期）：QSEECOM 接口设计、camss SM8475（上游仍无）、
   pinctrl-sm8475（上游仍缺 `MSM_GPIO_PIN_FUNCTION`）。
+
+### 面板驱动与 v7.4 主线的差距（评估，2026-11-14）
+
+v7.4-rc2 主线新增 `drivers/gpu/drm/panel/panel-novatek-nt36532.c`
+（431 行，仅支持 `csot,ppc100hb1-1`，OnePlus Pad 2 的 CSOT 面板）。它与
+我们的同名驱动（1281 行，pipa CSOT / pipa Tianma / yudi 三块面板）是
+**两个不同的驱动**，merge 时是 add/add 冲突 + `CONFIG_DRM_PANEL_NOVATEK_NT36532`
+符号冲突。
+
+| 项目 | 主线 v7.4 驱动 | 我们的驱动 |
+|---|---|---|
+| 面板 | CSOT PPC100HB1 一块 | pipa CSOT、pipa Tianma、yudi |
+| 面板选择 | 每 compatible 一块 | same compatible + cmdline 模块名 |
+| 供电 | 仅 `vddio` | `vddio`/`dvddbuck`/`dvddldo` |
+| 复位 | 固定 10/5/15 ms | 每面板一个 reset 回调（CSOT 12/12/12/12，Tianma 10/3/3/15） |
+| DSC | v1.2，750x20，flag `ALL_SLICES_IN_PKT` | v1.1，450x20，`dsc_slice_per_pkt = 2` |
+| 模式 | 3000x2120@120 | 1800x2880@120（+60/120 覆盖、burst 开关） |
+| 其他 | `devm_drm_panel_add`、DSC helper | 额外 diag debugfs、desc_sel 模块参数 |
+
+天马部分本身只占：init 序列 302 行（214 条 DCS）、desc 约 25 行、reset 13 行。
+把天马并入主线驱动的**新增工作量约 380-420 行**，另需四处基础设施扩展：
+每面板供电表、reset 回调、`dsc_slice_per_pkt`（主线用 mode flag，我们 7.3 的
+dsi_host 只读显式字段）、面板选择方式。预计 1 天代码 + 2-4 次上机迭代。
+
+结论：可行，且是长期正确形态；但它不是"补一个 desc"，需要改驱动骨架。
+7.4 merge 时以主线文件为底、重加三块 panel_info 即可，无需现在改名
+（改名会动 `CONFIG_DRM_PANEL_NOVATEK_NT36532` 及集成仓 config 锁）。
+
+### TDM 策略已改为 v7.4 的 per-DAI 形式（`17abc027f75f`）
+
+按 `ea6e98472c65` 引入 `struct sc8280xp_dai_data` 与
+`SC8280XP_DAI_DATA()`，把原先对所有 TDM 后端无条件执行的 liuqin/cupid
+策略（DSP_A 帧格式、每颗功放一个 slot、codec DAI + component sysclk）
+收敛为 `sm8450_priv_data` 上 `TERTIARY_TDM_RX_0` 的一条 per-DAI 配置；
+并扩展三个板级字段：`codec_dai_fmt` 覆盖、`codec_tdm_slot_each`、
+`codec_component_sysclk`。上游的 `mclk_rate`、jack 路径一并保留；上游
+CODEC 耳机插孔变体依赖的 `qcom_snd_headset_jack_setup()`（7f8dd07370f8）
+不在 7.3 树内，故未引入。
+
+行为上对 liuqin/cupid 等价（同样的调用、同样的顺序），只是来源从代码
+常量变成板级数据。待 CI + 上机验证外放、耳机与麦克风。
