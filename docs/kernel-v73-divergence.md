@@ -1,9 +1,10 @@
 # 内核树相对上游 v7.3 的偏离统计（stage 2 基线）
 
-**基准**：上游 tag `v7.3`（`c03c1a14507d`）vs 本仓 `liuqin-7.3` @ `db08160915e3`
-（= 点亮 tip）。
+**基准**：上游 tag `v7.3`（`c03c1a14507d`）vs 本仓 `liuqin-7.3` @ `17abc027f75f`
+（2026-11-14 点亮 tip；在 `db08160915e3` 之上又叠加了上游 v0.6.1/v0.6.2
+移植、v7.4-rc2 回移与 TDM per-DAI 改造）。
 
-**总览**：159 个文件（新增 67 / 修改 92 / 删除 0），+62,913 / −199 行。
+**总览**：173 个文件（新增 63 / 修改 110 / 删除 0），+58,396 / −301 行。
 来源三分：① yzddmr6 厂商树的板级外设驱动；② 我们的点亮修复与改进；
 ③ 构建/CI/文档。**无删除文件**——所有偏离都是叠加性质，升级时不存在
 "上游删了我们靠它"以外的隐性丢失风险（该风险体现在"上游改/ revert"侧，
@@ -45,12 +46,17 @@
 - `sound/soc/codecs/tfa9872.c`（新增）：功放
 - `sound/soc/qcom/qdsp6/`（audioreach.c/.h、q6apm.c、q6apm-dai.c、
   topology.c）+ `sound/soc/qcom/common.c`：TDM 支持
-- **外放 TDM 链路（2026-11-07 出声）**：`sc8280xp.c` 三处改动（BE fixup
-  跳过 TDM 后端、DSP_A + 每颗功放一个 slot、codec PLL 参考）
-  + `cs35l41.c` 的 `.set_tdm_slot`。其中 **fixup 跳过与 PLL 编程是升级时
-  必须保留的下游偏离**：上游 v7.4 仍把 BE 强制成 2ch/S16；PLL 那段在 7.3
-  合并中被上游重构静默丢弃过一次（同类盲区：ubwc 的 `qcom,cape`）。
-  细节与复测方法见 `docs/AUDIO.zh-CN.md`。
+- **外放 TDM 链路（2026-11-07 出声，2026-11-14 改为 per-DAI）**：
+  `sc8280xp.c` 原有三处改动（BE fixup 跳过 TDM 后端、DSP_A + 每颗功放
+  一个 slot、codec PLL 参考）在 `17abc027f75f` 中收敛为 **v7.4 的
+  per-DAI 板级配置**（对齐上游 `ea6e98472c65`）：`struct
+  sc8280xp_dai_data` + `SC8280XP_DAI_DATA()`，liuqin/cupid 的
+  `TERTIARY_TDM_RX_0` 一条配置表达 DSP_A、逐 codec slot 与 component
+  sysclk；`cs35l41.c` 的 `.set_tdm_slot` 保留。**升级时注意**：上游
+  7.4 的 per-DAI 结构会与我们的三个扩展字段相邻，别丢
+  `codec_dai_fmt`/`codec_tdm_slot_each`/`codec_component_sysclk`；
+  7.3 合并时 PLL 那段曾被上游重构静默丢弃过一次（同类盲区：ubwc 的
+  `qcom,cape`）。细节与复测方法见 `docs/AUDIO.zh-CN.md`。
 
 ## 5. 相机（6 文件，447+/64-）
 
@@ -109,9 +115,23 @@
   （修改）、板级 dts ×4（liuqin/cupid/diting/pong/yudi）、`Makefile`、
   `sm8450.config`
 - `.github/workflows/liuqin.yml`、`.gitignore`（`!.github`）、
-  `MAINTAINERS`、`README.liuqin.md`、`repack/diff-70-710/` 留档
+  `MAINTAINERS`、`README.liuqin.md`
 - `Documentation/devicetree/bindings/` ×10（vendor-prefixes、qcom.yaml
   等，配套新驱动）
+
+## 12. 从 v7.4-rc2 回移的修复（2026-11-14，共 6 个）
+
+这些提交让本树在这些文件上**比 v7.3 更新**；7.4 正式版合并时若上游已有
+等价实现，应以“是否仍缺该修复”为准决定保留或丢弃：
+
+- `a6xx_gmu.c`：`128a0ed`（次级 rail 按量化后主 rail 匹配）、
+  `eab0aff`（dep votes 改用 GPU 设备，修 MX 投票恒为最低档）
+- `clk-alpha-pll.c`：`eb34e28`（Lucid Ole PLL 已使能时跳过重配，SM8475 花屏）
+- `dispcc-sm8450.c`：`8464e22`（`mdss_mdp_clk_src` 用 `no_init_park`）
+- `dpu_encoder.c`：`32d0428`（bonded DSI 先关 slave encoder）
+- `dsi_host.c`：`ab91ba6`（tx buffer VM 引用泄漏）
+
+另删除了此前误提交的 `repack/diff-70-710/*` 四个分析留档。
 
 ---
 

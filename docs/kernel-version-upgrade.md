@@ -1626,3 +1626,30 @@ git show v7.4:drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c | \
 `dsi_7nm_phy_enable` 不再强制 `= 1`），改用上游实现并删除本地
 re-apply；否则保留。我们设备是 `qcom,dual-dsi-mode` +
 `qcom,sync-dual-dsi`（bonded），没有该修复会黑屏。
+
+---
+
+## 现状收尾（2026-11-14）
+
+- **内核**：`liuqin-7.3` tip `17abc027f75f`（`7.3.0-g17abc027f75f`），
+  在 `52866ba809f1` 之上 32 个提交；CI run **43575273444 ✅**，
+  artifact `ci/liuqin-kernel-17abc027f75f…/` 按契约核对全过。
+- **点亮**：`repack/17abc-boot/boot-liuqin-firstboot.img` 于 2026-11-14
+  上机点亮（50,061,312 B，sha256 `9a715024…6fed67`；ramdisk 是 11-07
+  重建的 30.9 MiB 版本，sha256 `1690e9ec…`）。对照镜像
+  `repack/17abc-boot-prodrd/`（同内核 + 产品 ramdisk `a04d2b25…`）；
+  回滚镜像 `repack/730fix-boot/`（`db08160915e3`）。
+- **模块**：`out/liuqin-debs/liuqin-kernel_0.1_arm64.deb`
+  （sha256 `1ac2bfe6…f9159`，756 模块）已安装，`uname -r` 正确、
+  `iptables` 恢复正常；旧版 deb 已删除（原 52866 模块树）。
+- **用户态决策**：上游 v0.6.1/v0.6.2 的 Release 改进已逐条归类
+  （见 `STATUS.zh-CN.md`）：性能相关的 CPU capacity/BWMON、GPU OPP、
+  显示唤醒投票均已在 7.3 内核中；充电策略服务、传感器退出修复、
+  GNOME 键盘 guard 等属于 `liuqin-device-support`/`liuqin-sensors`
+  的用户态改动，**本轮不合并**。`liuqin-firmware` 与这两个 release 无关。
+- **7.4**：等正式版。`merge-tree` 预演 13 个冲突文件（列表见上节），
+  面板驱动 add/add 与 Kconfig 符号冲突需在合并时以主线文件为底重加
+  pipa/Tianma desc；TDM 已提前改成上游 per-DAI 形式。
+- **工作区**：2026-11-14 做过一次清理（旧 CI artifact、旧 boot 镜像、
+  临时装配目录、分析中间产物），保留清单见工作区 `README.md`、
+  `repack/README.md`。
