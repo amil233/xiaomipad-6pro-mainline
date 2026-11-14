@@ -1399,3 +1399,77 @@ CI run 41409689334 首次即通过；artifact
 （= 7.3.1，40 个提交）已全量审阅：全部为 signal/coredump/io_uring/keys/
 tracing 等通用子系统修复，**无显示/msm/qcom/IOMMU/clk/DTS 相关内容**，
 无需 backport。
+
+---
+
+## 上游 v0.6.1 / v0.6.2 补丁移植到 v7.3（2026-11-14）
+
+上游作者的两个小版本更新已 fetch：
+
+- `linux-sm8450-liuqin` 的 `origin/liuqin-6.17`（PR #14，v0.6.1，
+  `c1061313feee`）：33 个内核提交；
+- `linux-sm8450-liuqin` 的 `origin/release/v0.6.2`（`8ec7416f90f6`，
+  从 v0.6.1 的 `594134933699` 分出）：11 个内核提交；
+- 集成仓 `origin/main`（PR #30，v0.6.1）与 `origin/release/v0.6.2` 的
+  其余改动属于安装器/桌面/固件，与内核 7.3 无关，本轮不动。
+
+45 个内核提交里 **19 个是 mainline backport，已随 v7.0–v7.3 merge 进入
+本树**（逐条 `git cherry-pick -n` 验证为 no-op，新增行为零），不重复移植。
+
+**实际移植 24 个**，直接提交在 `liuqin-7.3`（`52866ba809f1` →
+`5d3caf2ab062`，24 个提交，fast-forward）：
+
+| 本地提交 | 上游提交 | 内容 |
+|---|---|---|
+| `56fb49c1d1c6` | `abb46b534539` | liuqin 四个充电热敏通道（VADC） |
+| `3dc7e75b3c61` | `1cd8848c870a` | sm8475 CPU capacity / dynamic-power |
+| `ccab660df0ce` | `309060c799a7` | sm8475 CPU + LLCC BWMON |
+| `5b72f3b5a906` | `966d59198cf6` | battmgr 锂电 cooling-level 请求 |
+| `0cf4e326b00c` | `737325522cd5` | battmgr 补 `<linux/of.h>` |
+| `d4ab00e3b200` | `d927fe0e0532` | battmgr 识别 ABL 交接的 liuqin 身份 |
+| `d86a171f56fe` | `4320cc40084a` | battmgr 通知不再当唤醒源 |
+| `74506232d652` | `d54edba9153c` | GPU OPP 的 CX corner（`qcom,opp-cx-level`） |
+| `33aeaf1732ee` | `40d6ee58b96e` | Cape 显示 / SE / GPU 工作点投票 |
+| `9065c7b59f55` | `8ec7416f90f6` | DPU resume 前恢复 core clock OPP 投票 |
+| `c4c910086888` | `b9e43fbe6b23` | GMU boot 前屏蔽 HFI 中断 |
+| `24f62d1f6ca3` | `cb8be68ec106` | HFI IRQ 只清 CM3 fault 位 |
+| `6b304164cfc5` | `cbfdce9aec69` | lpass macro 时钟顺序（PM clock） |
+| `46080559b6ba` | `ecc36e1df9a9` | q6apm 采集图从 PCM trigger 启动 |
+| `3da0c738a625` | `43ec60d3acfa` | q6apm readiness 查询与移除串行化 |
+| `b68cc10bb2dc` | `fedb35fd3a6a` | wcd938x RX 中断无本地 regmap |
+| `5496f3c6a29a` | `10bddb4202c8` | qmp-combo `usb_power_on` 拉起 USB PCS |
+| `a8f24dc80182` | `9f9cd5ac3bc1` | ucsi_glink 注册失败不置位 |
+| `c98d4e907890` | `f43a4aa7fa89` | ucsi_unregister 后清 connector 指针 |
+| `71cce78cbe31` | `e4a305e11437` | hci_qca 断电时复位 IBS 状态 |
+| `2734f996942e` | `594134933699` | geni serial 系统 suspend 期间屏蔽 IRQ |
+| `82e5092e3ff9` | `5bbdbea6a307` | glink 暂存端点就绪前的消息 |
+| `de40c854f2f5` | `9bc411d03020` | DSI 时钟失败传播 + runtime PM 配平 |
+| `5d3caf2ab062` | `9e9c3fd0b769` | nt36523 删除读硬件的诊断属性 |
+
+**与 6.17 版本的适配点**（7.3 代码已重构，不能原样套用）：
+
+- `wcd938x-sdw`：7.3 把共享中断回调挪进 `wcd-common.c`，补丁落在那里；
+- `q6apm` 采集：7.3 有 push/pull 模式，`q6apm_read()` 队列只在非
+  push/pull 模式执行；
+- `geni serial`：保留 7.3 的 `pm_runtime_force_suspend()`，并在所有失败
+  路径恢复 IRQ；
+- `ucsi_glink`：只取生产修复，不带 KUnit 测试与 Kconfig；
+- `nt36523`：7.3 已用 fwnode 取代 `of_gpio.h`，只删 `<linux/debugfs.h>`；
+- `hci_qca`：7.3 把 `qca_power_shutdown()` 改名为 `qca_power_off()`；
+- `q6apm` readiness：保留 7.3 的 `__free(kfree)` 与既有 remove 清理。
+
+**未移植**：
+
+- `018982b5e1ac` + `fdf3c8b8b912`（GPU 终止失败策略，6 文件约 150 行）：
+  依赖 6.17 的 recovery 布局，7.3 的 `msm_gpu.c`/`a6xx_gpu.c` 已不同
+  （无 `gpu->wedged`），需单独重做，本轮不动；
+- iris `a90359262dac` 一类：已在 v7.3，且本树 v7.2 起已退役 sm8450
+  iris 平台数据。
+
+**验证状态**：本机不编译。DTS 用 `cpp + dtc` 离线编译通过（仅既有
+warning），新增节点/属性已在 dtb 中核对。待 CI 编译 + `fastboot boot`
+验证。重点回归：显示（`40d6ee5`/`8ec7416`/`9bc411d`，尤其熄屏再亮）、
+音频（lpass 时钟顺序、采集、耳机中断）、充电（`thermal_level_requested`）、
+USB3（qmp-combo / ucsi）、蓝牙（hci_qca / geni serial）。
+
+推送：`git -C linux-sm8450-liuqin push GitHub liuqin-7.3`
