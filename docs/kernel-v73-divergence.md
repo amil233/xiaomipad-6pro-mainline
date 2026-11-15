@@ -5,6 +5,7 @@
 移植、v7.4-rc2 回移与 TDM per-DAI 改造）。
 
 **总览**：173 个文件（新增 63 / 修改 110 / 删除 0），+58,396 / −301 行。
+（`liuqin-7.3-v070` 上又新增/修改 12 个文件，见文末"v0.7.0 移植增量"。）
 来源三分：① yzddmr6 厂商树的板级外设驱动；② 我们的点亮修复与改进；
 ③ 构建/CI/文档。**无删除文件**——所有偏离都是叠加性质，升级时不存在
 "上游删了我们靠它"以外的隐性丢失风险（该风险体现在"上游改/ revert"侧，
@@ -268,3 +269,29 @@ qcom a730_sqe+gmu / novatek 触控 / regulatory.db 共 217 个文件），
 这就是 built-in 驱动在根文件系统挂载前拿到固件的机制。
 **stage 2 的 squashfs 流程必须沿用这个模式**（固件进 initramfs 或
 确保 rootfs 挂载早于 probe）。
+
+---
+
+## v0.7.0 移植增量（`liuqin-7.3-v070`，2026-11-15）
+
+基线 `17abc027f75f`，tip `9773628af36f`，5 个提交 / 12 个文件：
+
+| 文件 | 性质 | 是否必须随 7.4 保留 |
+|---|---|---|
+| `sound/soc/qcom/qdsp6/q6dsp-lpass-clocks.c` | 上游未修 bug 的修复（drvdata 设置顺序） | **是**，直到上游修好；主线 7.4-rc2/master 仍是旧序 |
+| `drivers/power/supply/qcom_battmgr.c` | 上游 v0.7.0 整链移植 + 我们的唤醒策略适配 | **是**（liuqin 连接器热敏必需） |
+| `drivers/soc/qcom/pmic_glink.c` | 端口源状态 API | **是**（battmgr 依赖） |
+| `include/linux/soc/qcom/pmic_glink.h` | 同上；与上游 v0.7.0 **逐字节一致** | **是** |
+| `drivers/usb/typec/ucsi/ucsi_glink.c` | 端口源状态喂入 + remove 清零 | **是** |
+| `Documentation/.../qcom,pmic-glink.yaml` | `io-channels`/`io-channel-names` | **是** |
+| `arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dts` | `channel@347` + pmic-glink io-channels | **是**（板级） |
+| `include/drm/drm_panel.h` | 新增 `active_crtc` | **否**，上游若采用同名方案则改用上游 |
+| `drivers/gpu/drm/bridge/panel.c` | 设置/清空 `active_crtc` | **否**，同上 |
+| `drivers/input/touchscreen/nt36523/nt36xxx.c` | follower 改 enabled/disabling + vblank 等待（与上游 v0.7.0 除 `of_gpio` 适配外逐字节一致） | **是**（板级驱动本就是我们的） |
+| `drivers/misc/fastrpc.c` | `TASK_FREEZABLE`（主线未收） | 待真机验证后定 |
+| `drivers/gpu/drm/msm/msm_gem_submit.c` | `kvzalloc`（主线未收） | 待上游收；无行为回归 |
+
+**升级注意**：`drm_panel::active_crtc` 是**我们对主线 API 的扩展**（主线
+7.4-rc2/master 都没有该字段）。若上游将来引入等价机制（或面板 follower
+被重构），必须改用上游实现，否则 7.4→7.5 合并会在 `drm_panel.h` 与
+`bridge/panel.c` 上反复冲突。

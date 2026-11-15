@@ -1653,3 +1653,145 @@ re-apply；否则保留。我们设备是 `qcom,dual-dsi-mode` +
 - **工作区**：2026-11-14 做过一次清理（旧 CI artifact、旧 boot 镜像、
   临时装配目录、分析中间产物），保留清单见工作区 `README.md`、
   `repack/README.md`。
+
+---
+
+## 上游 v0.7.0 移植（2026-11-15）：liuqin-7.3 三方对比
+
+上游作者 2026-11-14 发布 **v0.7.0**（kernel `v0.7.0` =
+`cb82c745e46d`，`origin/liuqin-6.17` = `f1b07c582942`）。本次对
+**13 个内核提交**逐条做了三方对比（我们的 `liuqin-7.3` / Linux 主线
+`v7.4-rc2`+`master` / 上游 `liuqin-6.17` v0.7.0），只把对 7.3 内核
+真正有价值且能自证正确的部分合并进新分支 `liuqin-7.3-v070`。
+
+### 已合入（5 个提交，`17abc027f75f` 之上）
+
+| 提交 | 内容 | 为什么值得合并 |
+|---|---|---|
+| `553e9f02bac6` | `q6dsp-lpass-clocks`: 在注册第一个 clock **之前** `dev_set_drvdata()` | 上游报告的真实 NULL 解引用（`clk_vote_q6dsp_block+0x24`，`cc->desc` 地址 `0x350`）。我们树里 `dev_set_drvdata()` 同样在最后（181 行），**同一潜在崩溃**：LPASS LPI pinctrl 经 `pm_clk` 恢复时会 prepare clock。我们已启用 `PINCTRL_SM8450_LPASS_LPI=y` + `lpass_tlmm`，正好命中该窗口。主线 `v7.4-rc2`/`master` **仍是旧顺序**，属上游未修的 bug。 |
+| `44bc4522df22` | battmgr 充电口热敏整链（6 个上游提交合并）+ pmic_glink 端口源状态 API + ucsi 钩子 + yaml + DTS | 见下节。 |
+| `fa7a5cf0e111` | nt36523 面板 follower 改为 `enabled`/`disabling` 回调 + 等 vblank 再下载固件 + `WQ_FREEZABLE` | 见下节。 |
+| `4650887b7766` | fastrpc 用户态等待改 `TASK_INTERRUPTIBLE \| TASK_FREEZABLE` | 传感器守护进程在 suspend 期间等的 DSP listener 调用会被 freezer 打断成 `-ERESTARTSYS`，重试会**重复下发** RPC。v7.4-rc2/master 仍是旧写法，属 liuqin-only 候选，需真机 suspend/resume 验证。 |
+| `9773628af36f` | `msm_gem_submit`: `kzalloc` → `kvzalloc` | 大 submit（Mesa piglit 约 32k BO → ~1 MiB、order-9）在内存碎片下直接 `-ENOMEM`。主线仍未收，属健壮性修复，未碎片化时是 no-op。 |
+
+### battmgr 充电口热敏（`44bc4522df22`）细节
+
+上游为它写了 6 个提交（`01a5324ac9cd` 串行化通知设置、`8511ab111c70`
+NTC 转发、`44c72b967ea6` s2idle 唤醒、`79ad9ad28f38` 上电沿采样、
+`ac3d75c00557` 解耦 probe 与 ADC、`3fe3a2068602` 接受整数 ADC 读数），
+它们只有成套才有意义，故合成一个提交：
+
+- **`pmic_glink` 新增端口源状态**：`pmic_glink_client_watch_source_ports()` /
+  `pmic_glink_set_port_source()`，`source_ports` 位图在 service down 时清零，
+  注册时向迟到的 client 重放一次。头文件 `include/linux/soc/qcom/pmic_glink.h`
+  与上游 v0.7.0 **逐字节一致**。
+- **`ucsi_glink`** 用 UCSI 的 `CONNECTED` + `PWR_DIR == SOURCE` 喂端口状态，
+  remove 时清零所有端口。
+- **battmgr** 不再在 probe 里 `devm_iio_channel_get()`：改为由采样 worker
+  在**上电时**用 `iio_channel_get()` 取，`-EPROBE_DEFER` 时保留告警并重试，
+  真正缺失只关闭温度转发，不再让整个电池 supply 探测失败。
+- **ADC7 返回 `IIO_VAL_INT`（1）**：上游在 v0.7.0 开发中途先写过 `if (ret)`，
+  把每个有效样本都当失败跳过、每次都打一条虚假告警，固件因此收不到温度；
+  `3fe3a2068602` 修成 `if (ret < 0)`。我们移植的是修好的最终形态。
+  （我们的 7.3 树与上游 v0.6.2 **都没有**任何连接器温度代码，这条链路整体
+  是 v0.7.0 新增的，所以此处不存在"替换旧实现"的问题。）
+- 采样只在端口是电源时进行（1 Hz），拔掉后停止；热测试注入值若自己导致
+  离线沿，会恢复最后一次真实读数；退出时先 drain worker 再 `iio_channel_release()`。
+- **唤醒策略**：电池/USB/无线 supply 继续 `no_wakeup_source = true`（保持
+  我们 `d86a171f56fe` 的省电策略），只有**外部供电边沿**用
+  `pm_wakeup_hard_event()` 结束 s2idle。
+- DTS：`pmic-glink` 加 `io-channels`/`io-channel-names`，`&pmk8350_vadc`
+  加 `channel@347`（`PM8350B_ADC7_AMUX_THM4_100K_PU`，100k 上拉、200us 建立）。
+  yaml 在 `additionalProperties: false` 的约束下补了这两个属性。
+
+**已验证**：用工作区 `dtc` 真实预处理 + 编译（cpp exit 0 / dtc exit 0），
+编译出的 DTB 里 `/pmic-glink` 的 `io-channel-names = "connector-temp"`、
+`io-channels = <0x166 0x347>`，且 ADC 侧 `conn_therm` 字符串存在 —— 即
+0x347 确实由 `PM8350B_SID(3)<<8 | 0x47` 得到，与既有 `channel@34d` 同构。
+
+**相对上游的适配**：
+- 上游把 `devm_work_autocancel()` 换成 `devm_add_action_or_reset(stop_workers)`；
+  我们树里 `enable_work` 原用 `devm_work_autocancel()`，一并换成统一的
+  `stop_workers`，让 online/connector 两个 work 在**托管 GLINK client 释放
+  之前**被 drain（`devres` 逆序，client 先 alloc 后 action，故 action 先跑）。
+- `check_online()` 里把 `X1E80100` 并入 `SC8280XP` 分支（上游只判
+  `SC8280XP`，会让 X1E80100 走 USB/WLS 属性查询而非整体 status 查询）；
+  对本机（SM8475）无行为影响。
+- `devm-helpers.h` 与 `devm_work_autocancel()` 不再需要，已按上游做法删除。
+
+### 面板 follower 校准（`fa7a5cf0e111`）细节
+
+liuqin 的触摸与显示共用一颗 TDDI 裸片。**面板 `prepare` 阶段就可能开始
+固件下载和 ReK，而视频时序引擎此时还没启动**，故上游把 follower 从
+`panel_prepared`/`panel_unpreparing` 移到 `panel_enabled`/`panel_disabling`
+（即面板 + 背光都开之后），并新增 `drm_panel::active_crtc`：
+
+- `drivers/gpu/drm/bridge/panel.c` 在 `atomic_enable` 记下 `crtc`、
+  在 `atomic_disable` 清空（在 `drm_panel_disable()` 之后清，保证
+  `panel_disabling` 里还能用）。
+- `nvt_ts_resume()` 在 follower 路径上先 `nvt_wait_for_scanout()`：取
+  `drm_crtc_vblank_get()`，等一帧 vblank（100 ms 超时）。MSM 的首次硬件
+  kickoff 在 bridge enable 之后，所以等 vblank 比猜延时可靠；等不到就
+  让触摸保持静默而不是硬下固件。
+- `event_wq` 加 `WQ_FREEZABLE`：系统睡眠时冻结 resume 队列，避免在中途
+  下发 SPI。
+- `probe` 里把 `queue_resume` 的读取与 `queue_work` 收进同一把
+  `lifecycle_lock`（上游顺手修的一个窗口）。
+
+依赖 **`af0cf6f9db8f`（`drm/panel: Allow powering on panel follower after
+panel is enabled`）**，该提交**早已随 v7.0–v7.3 merge 进入本树**
+（`2eb22214c132`），所以 `panel_enabled`/`panel_disabling` 回调与
+`drm_panel_enable()` 的 follower 循环本就在 —— 本次只需补 `active_crtc`。
+
+**为什么对我们重要**：这正是"长时间熄屏后屏幕键盘唤不出"一类
+触摸/面板时序问题的根因方向（面板已 enabled 但触摸在 prepare 窗口里
+抢 SPI / 抢 TDDI）。之前 7.3 树里 follower 仍挂在 `prepared` 上。
+
+### 已评估但**未**合入
+
+| 上游提交 | 结论 |
+|---|---|
+| `ceba4ccedbe6` a6xx GMU FW init 超时 10ms→100ms | **本树已有**（`ba970587a0e1` 随 v7.3 merge 进入，`a6xx_gmu.c:329` 已是 `100000`）。 |
+| `af0cf6f9db8f` panel follower enable/disable 回调 | **本树已有**（`2eb22214c132`）。 |
+| `f18bbcc84540` liuqin DTS 关掉 QCE | **对我们无效**：`CONFIG_CRYPTO_DEV_QCE` 在 `drivers/crypto/Kconfig` 里 `depends on (BROKEN && ARCH_QCOM)`，我们的 defconfig + 所有 fragment 都没有它，CI 产物的 `.config` 里**完全不存在任何 QCE 符号**。节点没绑定驱动，就没有它说的 ALWAYS DDR 投票。等上游把它从 BROKEN 里救出来再谈。 |
+| `3fe3a2068602` / `ac3d75c00557` / `79ad9ad28f38` / `8511ab111c70` / `44c72b967ea6` / `01a5324ac9cd` | 已成套合入（见上）。 |
+
+### 需要上机验证的项（按风险排序）
+
+1. **面板 follower 改到 enabled 阶段**：最直接影响触摸。要验证
+   **冷启动触摸可用**、**熄屏再亮后触摸可用**（原来会抢在 prepare 窗口）、
+   **长时间熄屏后能否唤醒**。
+2. **连接器温度**：插充电器后读
+   `/sys/devices/.../pmic_glink.power-supply/sm8475_raw/raw_xm_connector_temp`
+   （`...` 为 auxiliary 设备的平台路径，可用
+   `find /sys/devices -name 'pmic_glink.power-supply'` 定位），应有合理读数。
+   `sm8475_raw/` 与 `xiaomi/` 两组属性都挂在 **battmgr 的 auxiliary device**
+   上，不在 `/sys/class/power_supply/` 下（这是既有的
+   `qcom_battmgr_raw_group`/`qcom_battmgr_xiaomi_group` 布局，本次沿用）。
+   同目录的 `connector_hot_test` 只在端口上电时可用，否则返回 `-ENOTCONN`。
+3. **`connector temperature channel unavailable`**：若启动日志出现这行，
+   说明 `io-channel-names` 没匹配上（DTS/驱动不同步）。
+4. **充电唤醒策略**：插拔充电器应能唤醒 s2idle，普通电量通知不应唤醒
+   （保持 `d86a171f56fe` 的行为）。
+5. **fastrpc**：传感器守护进程跨 suspend/resume 后是否仍正常（上游自己
+   也标注"需要真机 suspend 测试"）。
+
+### 推送
+
+分支 `liuqin-7.3-v070`，5 个提交，基线 `17abc027f75f`：
+
+```
+git -C linux-sm8450-liuqin push GitHub liuqin-7.3-v070
+```
+
+CI 触发需要在 `.github/workflows/liuqin.yml` 的 `branches:` 列表里加
+`liuqin-7.3-v070`（**本次未改 workflow**，保持与以往"先建分支、验证后
+再决定是否并入 `liuqin-7.3`"的做法一致）。
+
+验证通过后可快进合并：
+
+```
+git -C linux-sm8450-liuqin switch liuqin-7.3
+git -C linux-sm8450-liuqin merge --ff-only liuqin-7.3-v070
+git -C linux-sm8450-liuqin push GitHub liuqin-7.3
+```

@@ -1,8 +1,8 @@
-# 当前整体状态（2026-11-14）
+# 当前整体状态（2026-11-15）
 
 本文是项目状态的快照：**已经在跑什么、还坏着什么、怎么构建/刷机、下一步做什么**。
 历史细节见 `kernel-version-upgrade.md`（逐级升级记录 + 上游 v0.6.1/v0.6.2
-移植 + 三方对比审计）、`kernel-v73-divergence.md`（相对上游 v7.3 的偏离清单）、
+移植 + 三方对比审计 + **上游 v0.7.0 移植**）、`kernel-v73-divergence.md`（相对上游 v7.3 的偏离清单）、
 `AUDIO.zh-CN.md`（外放 TDM 链路）、`display-panel-checklist.md`（显示取证）。
 `AGENTS.md` 是 7.0 显示点亮阶段的历史交接，**以本文为准**。
 
@@ -13,6 +13,7 @@
 | 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`），SM8475 |
 | 系统 | Ubuntu 26.04 arm64 桌面（GNOME），分区布局 linux-only（root `LIUQIN_ROOT` + home `LIUQIN_HOME`） |
 | 内核 | `liuqin-7.3`，tip `17abc027f75f`（`7.3.0-g17abc027f75f`），已推送、CI 已构建、**已上机点亮**（2026-11-14） |
+| 待验证候选 | `liuqin-7.3-v070`（`9773628af36f`，**本地未推送、未编译、未上机**）：上游 v0.7.0 的 5 个移植提交，见 §7 |
 | 点亮基线 | `db08160915e3`（v7.3 点亮内核）；`17abc027f75f` 在其上叠加 32 个提交 |
 | 刷机主机 | 树莓派（只跑 fastboot + 保存备份/镜像） |
 | 构建主机 | 云端开发机（2 核/11G，**只做源码、装配、打包，不编译内核**） |
@@ -54,12 +55,13 @@
 | # | 问题 | 现状 / 下一步 |
 |---|---|---|
 | 1 | 关机后插电自动开机 | ABL `off-mode-charge:1`。先取证 `/proc/cmdline` 是否有 `androidboot.mode=charger`；可试 `fastboot oem off-mode-charge 0`，不支持则只能接受 |
-| 2 | 长时间熄屏后屏幕键盘唤不出 | 需区分"触控失效"还是"GNOME OSK 状态"；见 `triage-2026-10.md` 后续补记。本轮已补 DPU 恢复投票与 slave encoder 顺序，待观察 |
+| 2 | 长时间熄屏后屏幕键盘唤不出 | 需区分"触控失效"还是"GNOME OSK 状态"；见 `triage-2026-10.md` 后续补记。已补 DPU 恢复投票与 slave encoder 顺序。**2026-11-15 另发现真实缺陷方向**：7.3 树的 nt36523 follower 仍挂在 `panel_prepared`，会在面板 prepare 窗口抢 TDDI 下载固件；`liuqin-7.3-v070` 已改到 `panel_enabled` 并加 vblank 等待，待上机验证 |
 | 3 | 亮度重启后重置 | `ktz8866-backlight` 是模块，查 `systemd-backlight@` 是否在设备注册前跑；必要时加恢复服务 |
 | 4 | 相机 | 需要 camcc GDSC 修复（`66f4fbf82d26`，已在 7.3 树上）+ 去掉 `/etc/modprobe.d/liuqin-camcc.conf`；未验证，暂不优先 |
 | 5 | 音频边角 | 当前守卫只接受 48k/4ch/24-bit；桌面已能协商出可用元组，强制 2ch/S16 的应用仍会被拒。槽位与物理喇叭对应可按听感微调 |
 | 6 | 升级 v7.4 | 等 7.4 正式版；已做 `merge-tree` 预演：**13 个文件真冲突**，清单见 `kernel-version-upgrade.md` 三方审计一节 |
 | 7 | 内核 deb 升级与 native-root 合同 | 已修：合同不再钉 `kernel.release`/`kernel-modules.manifest`（2026-11-07） |
+| 9 | 连接器温度上报 | 7.3 树（以及 v0.6.2）**完全没有**这条链路，是 v0.7.0 新增的。`liuqin-7.3-v070` 已移植整链（pmic_glink 端口源状态 + battmgr 在 worker 里取 ADC + 接受 `IIO_VAL_INT`）。注意上游在 v0.7.0 开发中途先引入过 `if (ret)` 的错判（把每个有效样本当失败跳过、固件收不到温度），`3fe3a2068602` 已修，我们移植的是修好的最终形态。待上机读 `raw_xm_connector_temp` 验证 |
 | 8 | GPU 终止失败策略 | v0.6.1 的 `018982b5e1ac` + `fdf3c8b8b912` 未移植（依赖 6.17 recovery 布局），如果遇到 GPU 恢复失败卡死再单独立项 |
 
 ## 4. 构建 / 刷机工作流（2026-11-14 现状）
@@ -118,3 +120,29 @@
 | `known-wrong-changes.md` | 已证伪的改动与判读陷阱，改显示前先读 |
 | `triage-2026-10.md` | 早期外设/启动问题分诊 |
 | `FLASHING.zh-CN.md` / `BUILD.zh-CN.md` | 刷机 / 构建说明（编写时的流程） |
+
+## 7. 待验证候选：`liuqin-7.3-v070`（2026-11-15）
+
+上游作者 v0.7.0（2026-11-14）的内核提交已做三方对比，取其中 5 项进新分支
+**`liuqin-7.3-v070`**（本地，基线 `17abc027f75f`，tip `9773628af36f`）。
+完整理由、逐条对比和上机判据见 `kernel-version-upgrade.md`
+"上游 v0.7.0 移植"一节。
+
+| 提交 | 一句话 |
+|---|---|
+| `553e9f02bac6` | `q6dsp-lpass-clocks` 在注册 clock 前设 drvdata —— 修上游报告的真实 NULL 解引用，我们树里是同一潜在崩溃 |
+| `44bc4522df22` | 充电口热敏整链（pmic_glink 端口源状态 + battmgr 采样 + 接受整数 ADC + DTS/yaml）；**旧代码从未把温度送到固件** |
+| `fa7a5cf0e111` | nt36523 follower 改到 `panel_enabled`/`panel_disabling` + 等 vblank 再下固件 + `WQ_FREEZABLE` |
+| `4650887b7766` | fastrpc 用 `TASK_FREEZABLE` 保住跨 suspend 的 DSP 调用（liuqin-only 候选，主线未收） |
+| `9773628af36f` | `msm_gem_submit` 大 submit 回退 `kvzalloc`（主线未收，健壮性） |
+
+**未合入**：a6xx GMU 超时与 panel follower 回调（本树已有）、
+QCE DTS 关闭（`CONFIG_CRYPTO_DEV_QCE` 因 `depends on BROKEN` 在我们配置里
+根本不存在，节点无驱动绑定）。
+
+**状态**：未推送、未跑 CI、未上机。本机按纪律不编译，验证走
+CI（需先把 `liuqin-7.3-v070` 加进 `.github/workflows/liuqin.yml` 的
+`branches:`）。
+
+**上机第一优先**：面板 follower 时序改动直接影响触摸 ——
+冷启动、熄屏再亮、长时间熄屏后唤醒三项都要过。
