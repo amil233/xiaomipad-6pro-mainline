@@ -13,7 +13,7 @@
 | 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`），SM8475 |
 | 系统 | Ubuntu 26.04 arm64 桌面（GNOME），分区布局 linux-only（root `LIUQIN_ROOT` + home `LIUQIN_HOME`） |
 | 内核 | `liuqin-7.3`，tip `17abc027f75f`（`7.3.0-g17abc027f75f`），已推送、CI 已构建、**已上机点亮**（2026-11-14） |
-| 待验证候选 | `liuqin-7.3-v070`（`9773628af36f`，**本地未推送、未编译、未上机**）：上游 v0.7.0 的 5 个移植提交，见 §7 |
+| 待验证候选 | `liuqin-7.3-v070`（`d0e404edf30c`，**本地未推送、未编译、未上机**）：上游 v0.7.0 的 6 个移植提交，见 §7 |
 | 点亮基线 | `db08160915e3`（v7.3 点亮内核）；`17abc027f75f` 在其上叠加 32 个提交 |
 | 刷机主机 | 树莓派（只跑 fastboot + 保存备份/镜像） |
 | 构建主机 | 云端开发机（2 核/11G，**只做源码、装配、打包，不编译内核**） |
@@ -123,8 +123,8 @@
 
 ## 7. 待验证候选：`liuqin-7.3-v070`（2026-11-15）
 
-上游作者 v0.7.0（2026-11-14）的内核提交已做三方对比，取其中 5 项进新分支
-**`liuqin-7.3-v070`**（本地，基线 `17abc027f75f`，tip `9773628af36f`）。
+上游作者 v0.7.0（2026-11-14）的内核提交已做三方对比，取其中 6 项进新分支
+**`liuqin-7.3-v070`**（本地，基线 `17abc027f75f`，tip `d0e404edf30c`）。
 完整理由、逐条对比和上机判据见 `kernel-version-upgrade.md`
 "上游 v0.7.0 移植"一节。
 
@@ -135,14 +135,21 @@
 | `fa7a5cf0e111` | nt36523 follower 改到 `panel_enabled`/`panel_disabling` + 等 vblank 再下固件 + `WQ_FREEZABLE` |
 | `4650887b7766` | fastrpc 用 `TASK_FREEZABLE` 保住跨 suspend 的 DSP 调用（liuqin-only 候选，主线未收） |
 | `9773628af36f` | `msm_gem_submit` 大 submit 回退 `kvzalloc`（主线未收，健壮性） |
+| `d0e404edf30c` | liuqin DTS 显式关掉 QCE（本树本就绑定不了，即没有常驻投票；写进 DT 是为了将来去掉 `BROKEN` 时仍成立） |
 
-**未合入**：a6xx GMU 超时与 panel follower 回调（本树已有）、
-QCE DTS 关闭（`CONFIG_CRYPTO_DEV_QCE` 因 `depends on BROKEN` 在我们配置里
-根本不存在，节点无驱动绑定）。
+**未合入**：只有 2 项 —— a6xx GMU 超时与 panel follower 回调，两者本树早已
+有（`ba970587a0e1`、`2eb22214c132`）。
 
 **状态**：未推送、未跑 CI、未上机。本机按纪律不编译，验证走
 CI（需先把 `liuqin-7.3-v070` 加进 `.github/workflows/liuqin.yml` 的
 `branches:`）。
+
+**已做的离线验证**：DTS 用工作区 `dtc` 真实 cpp+dtc 通过（exit 0，告警数
+与改动前同为 28，全部是 SoC dtsi 既有的 duplicate unit-address）；
+编译出的 DTB 里 `/pmic-glink` 的 `io-channel-names`/`io-channels`、
+ADC 的 `conn_therm`、`crypto` 的 `status="disabled"` 均已确认；yaml 在
+`additionalProperties: false` 下属性齐全；battmgr 的 8 个 connector 函数中
+7 个与上游 v0.7.0 逐字节一致（第 8 个是有意补的 X1E80100 分支）。
 
 **上机第一优先**：面板 follower 时序改动直接影响触摸 ——
 冷启动、熄屏再亮、长时间熄屏后唤醒三项都要过。

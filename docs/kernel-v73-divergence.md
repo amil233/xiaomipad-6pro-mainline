@@ -274,7 +274,7 @@ qcom a730_sqe+gmu / novatek 触控 / regulatory.db 共 217 个文件），
 
 ## v0.7.0 移植增量（`liuqin-7.3-v070`，2026-11-15）
 
-基线 `17abc027f75f`，tip `9773628af36f`，5 个提交 / 12 个文件：
+基线 `17abc027f75f`，tip `d0e404edf30c`，6 个提交 / 13 个文件：
 
 | 文件 | 性质 | 是否必须随 7.4 保留 |
 |---|---|---|
@@ -284,7 +284,7 @@ qcom a730_sqe+gmu / novatek 触控 / regulatory.db 共 217 个文件），
 | `include/linux/soc/qcom/pmic_glink.h` | 同上；与上游 v0.7.0 **逐字节一致** | **是** |
 | `drivers/usb/typec/ucsi/ucsi_glink.c` | 端口源状态喂入 + remove 清零 | **是** |
 | `Documentation/.../qcom,pmic-glink.yaml` | `io-channels`/`io-channel-names` | **是** |
-| `arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dts` | `channel@347` + pmic-glink io-channels | **是**（板级） |
+| `arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dts` | `channel@347` + pmic-glink io-channels + `&crypto{disabled}` | **是**（板级） |
 | `include/drm/drm_panel.h` | 新增 `active_crtc` | **否**，上游若采用同名方案则改用上游 |
 | `drivers/gpu/drm/bridge/panel.c` | 设置/清空 `active_crtc` | **否**，同上 |
 | `drivers/input/touchscreen/nt36523/nt36xxx.c` | follower 改 enabled/disabling + vblank 等待（与上游 v0.7.0 除 `of_gpio` 适配外逐字节一致） | **是**（板级驱动本就是我们的） |

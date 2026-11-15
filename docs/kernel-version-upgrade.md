@@ -1664,7 +1664,7 @@ re-apply；否则保留。我们设备是 `qcom,dual-dsi-mode` +
 `v7.4-rc2`+`master` / 上游 `liuqin-6.17` v0.7.0），只把对 7.3 内核
 真正有价值且能自证正确的部分合并进新分支 `liuqin-7.3-v070`。
 
-### 已合入（5 个提交，`17abc027f75f` 之上）
+### 已合入（6 个提交，`17abc027f75f` 之上）
 
 | 提交 | 内容 | 为什么值得合并 |
 |---|---|---|
@@ -1673,6 +1673,7 @@ re-apply；否则保留。我们设备是 `qcom,dual-dsi-mode` +
 | `fa7a5cf0e111` | nt36523 面板 follower 改为 `enabled`/`disabling` 回调 + 等 vblank 再下载固件 + `WQ_FREEZABLE` | 见下节。 |
 | `4650887b7766` | fastrpc 用户态等待改 `TASK_INTERRUPTIBLE \| TASK_FREEZABLE` | 传感器守护进程在 suspend 期间等的 DSP listener 调用会被 freezer 打断成 `-ERESTARTSYS`，重试会**重复下发** RPC。v7.4-rc2/master 仍是旧写法，属 liuqin-only 候选，需真机 suspend/resume 验证。 |
 | `9773628af36f` | `msm_gem_submit`: `kzalloc` → `kvzalloc` | 大 submit（Mesa piglit 约 32k BO → ~1 MiB、order-9）在内存碎片下直接 `-ENOMEM`。主线仍未收，属健壮性修复，未碎片化时是 no-op。 |
+| `d0e404edf30c` | liuqin DTS 显式 `disabled` 掉 QCE | **性质与上游说的不同**：`CONFIG_CRYPTO_DEV_QCE` 因 `depends on (BROKEN && ARCH_QCOM)` 不在我们 defconfig/任何 fragment 里，CI 产物 `.config` 无任何 QCE 符号，唯一匹配 `qcom,qce` 的就是被挡住的 `drivers/crypto/qce/core.c`。没有驱动 → 没有 `icc_get()` → 没有 consumer → **没有投票**，上游声称的 ALWAYS DDR 投票在本树并不发生。仍合入是为了把"不投票"写成 DT 里的显式意图，防止将来去掉 BROKEN 时静默引入常驻投票。UFS inline crypto（`qcom,ice`）是独立节点，不受影响；dtc 通过、无新增告警。 |
 
 ### battmgr 充电口热敏（`44bc4522df22`）细节
 
@@ -1753,7 +1754,6 @@ panel is enabled`）**，该提交**早已随 v7.0–v7.3 merge 进入本树**
 |---|---|
 | `ceba4ccedbe6` a6xx GMU FW init 超时 10ms→100ms | **本树已有**（`ba970587a0e1` 随 v7.3 merge 进入，`a6xx_gmu.c:329` 已是 `100000`）。 |
 | `af0cf6f9db8f` panel follower enable/disable 回调 | **本树已有**（`2eb22214c132`）。 |
-| `f18bbcc84540` liuqin DTS 关掉 QCE | **对我们无效**：`CONFIG_CRYPTO_DEV_QCE` 在 `drivers/crypto/Kconfig` 里 `depends on (BROKEN && ARCH_QCOM)`，我们的 defconfig + 所有 fragment 都没有它，CI 产物的 `.config` 里**完全不存在任何 QCE 符号**。节点没绑定驱动，就没有它说的 ALWAYS DDR 投票。等上游把它从 BROKEN 里救出来再谈。 |
 | `3fe3a2068602` / `ac3d75c00557` / `79ad9ad28f38` / `8511ab111c70` / `44c72b967ea6` / `01a5324ac9cd` | 已成套合入（见上）。 |
 
 ### 需要上机验证的项（按风险排序）
@@ -1778,7 +1778,7 @@ panel is enabled`）**，该提交**早已随 v7.0–v7.3 merge 进入本树**
 
 ### 推送
 
-分支 `liuqin-7.3-v070`，5 个提交，基线 `17abc027f75f`：
+分支 `liuqin-7.3-v070`，6 个提交，基线 `17abc027f75f`：
 
 ```
 git -C linux-sm8450-liuqin push GitHub liuqin-7.3-v070
