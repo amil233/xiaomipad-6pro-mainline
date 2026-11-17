@@ -1,5 +1,10 @@
 # liuqin 天马面板：驱动问题复核与修复计划
 
+> **归档文档，不再维护。** 具体值（提交号、镜像哈希、分区槽、ROM 版本）
+> 均为**写作当时**的现场记录，可能已被后续工作推翻；当前事实只认
+> [`../STATUS.zh-CN.md`](../STATUS.zh-CN.md) 与 `docs/` 下的现行文档。
+> 保留它只有一个理由：失败记录与取证过程不能删。
+
 > 输入：工作区 `AGENTS.md`（§6–§8 交接点）、`xiaomipad-6pro-mainline/AGENTS.md`、
 > `docs/display-driver-plan.md`、`docs/display-blackout-plan.md`、
 > `display-drivers-archive/` 两份互斥驱动（`old-nt36532-210577a`、

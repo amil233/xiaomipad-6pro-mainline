@@ -7,6 +7,16 @@ Xiaomi Pad 6 Pro（liuqin），使平板成为一台单系统 ARM PC：
 [构建总览](BUILD.zh-CN.md) ｜ [安装步骤](INSTALL-TESTING.zh-CN.md) ｜
 [刷机须知](FLASHING.zh-CN.md)
 
+
+> **⚠️ 槽位与锁值已与实机不符，读前须知。**
+> 本文写作时假定"单系统把 Ubuntu 写 B 槽并 `--set-active=b`"，且产品锁是
+> `db08160915e3`。**实机现在从 A 槽直接启动**，内核 tip 是
+> `c03e1015c71d`（见 [`STATUS.zh-CN.md`](STATUS.zh-CN.md)）。
+> 安装器代码 `tools/install-liuqin.py:36` 仍是 `LINUX_ONLY_UBUNTU_SLOT='b'`，
+> 即"手册与实机都还没对齐"，属登记在案的缺口（STATUS §5 #11）。
+> 下面的命令只在槽位被修正后才可以直接照抄；分区/固件/打包部分仍然有效。
+
+
 ---
 
 ## 0. 定位与分工
@@ -24,27 +34,29 @@ Xiaomi Pad 6 Pro（liuqin），使平板成为一台单系统 ARM PC：
   在 arm64 宿主上原生执行，不需要 qemu/binfmt；管线已为此放宽
   （`build-liuqin-native-root.sh` 在 `uname -m`=aarch64 时跳过 binfmt 检查；
   `build-liuqin-debs.sh` 的编译器回退 `gcc` 并断言目标架构）。
-- **单系统边界**：`--layout linux-only`。安装器只动 B 槽与尾部分区，
+- **单系统边界**：`--layout linux-only`。安装器只动**启动槽**与尾部分区，
   不需要 ROM 目录、不恢复 Android 固件分区、不写 `super`/`metadata`。
+  （代码里那个槽当前写的是 `b`，**实机在 A 槽**，见文首横幅。）
 
 ## 1. 现状与前置事实
 
 | 项 | 值 | 证据 |
 |---|---|---|
-| 点亮内核 | `liuqin-7.3` @ `db08160915e3`（`7.3.0-gdb08160915e3`） | `docs/kernel-version-upgrade.md` §13；CI run 41409689334 |
-| **产品锁** | `kernel/source.json` 已推进到 `liuqin-7.3 @ db08160915e3`（本手册配套提交 `3a56981`） | 锁值与 CI `build-info.json` 一致；`config_sha256` 与 10 个分片哈希不变 |
+| 点亮内核 | 写作时 `db08160915e3`；**当前 `liuqin-7.3` @ `c03e1015c71d`** | `docs/STATUS.zh-CN.md`；CI artifact `ci/liuqin-kernel-c03e1015…` |
+| **产品锁** | `kernel/source.json` **当前仍是 `liuqin-7.3 @ db08160915e3`**，落后于运行内核 `c03e1015c71d`（换内核前必须同步推进，否则 `build-liuqin-image.py` 直接报错） | 锁值与 CI `build-info.json` 一致；`config_sha256` 与 10 个分片哈希不变 |
 | 基础系统 | Ubuntu Desktop 26.04 LTS arm64（`c2afd538…` / 4161089536 B） | `tools/build-liuqin-ubuntu-desktop-rootfs.sh` 钉扎 |
 | ROM 输入 | **全部用 V14.0.9.0.TMYCNXM**（设备实际在装的 ROM，点亮全程在用）；ROM 内容哈希钉扎默认仍是 OS2 值，V14 提取后覆盖 | 见 §2-3 说明 |
-| 单系统布局 | 删 userdata，尾部建 `linux_root`(36)+`linux_home`(37)，boot 镜像写 `boot_b`，`--set-active b` | `tools/lib/liuqin_layout.py:340-360`；`install-liuqin.py:36` |
+| 单系统布局 | 删 userdata，尾部建 `linux_root`(36)+`linux_home`(37)，boot 镜像写 `boot_b`，`--set-active b`（**与实机 A 槽直启不符**） | `tools/lib/liuqin_layout.py:340-360`；`install-liuqin.py:36` |
 | 设备门槛 | 出厂分区表、4096 逻辑扇区、userdata 为最后一个分区、Bootloader 解锁、电量 ≥30% | `FLASHING.zh-CN.md`；`liuqin_layout.py:274` |
 
 > **存储空间**：你已确认机器内部存储远大于本流程需要（内核构建树 + 双桌面树
 > + rootfs 归档约需 60 GB 量级），此项不设关卡。
 
 **一个硬约束（不可绕过）**：`build-liuqin-image.py` 校验 kernel artifact 的
-`build-info.json.commit` 必须等于 `kernel/source.json` 锁值。锁已推进到
-`db08160915e3`，CI artifact 自报同一 commit，所以**此关已通**。若之后换内核
-版本（例如 v7.4），锁必须同步推进，否则组装直接 `parser.error`。
+`build-info.json.commit` 必须等于 `kernel/source.json` 锁值。锁当前写的是
+`db08160915e3`（**已落后于运行内核 `c03e1015c71d`**），而 `ci/` 里有
+`c03e1015…` 这套 artifact ——所以**用当前内核组装前必须先把锁推进到
+`c03e1015c71d`**，否则 `parser.error`。以后换内核（例如 v7.4）同理。
 
 ## 2. ROM 输入：两个来源，各管一侧
 
@@ -198,10 +210,10 @@ python3 tools/prepare-image-inputs.py run     # 传感器栈/设置程序经 sud
 本仓库 10/10 分片哈希已核对一致）。
 
 所以**直接复用内核仓 CI 已产出的 artifact**（run 41409689334 的
-`liuqin-kernel-db08160915e3…`，即工作区 `ci/` 里那份）：
+当前为 `liuqin-kernel-c03e1015…`，即工作区 `ci/` 里那份）：
 
 ```
-ci/liuqin-kernel-db08160915e3…/
+ci/liuqin-kernel-<sha>/（当前为 `c03e1015…`）
 ├── kernel/          Image、dtb、.config、build-info.json、SHA256SUMS
 └── kernel-modules/  modules.tar、modules.manifest、kernel.release、kernel.commit
 ```
@@ -221,7 +233,7 @@ ci/liuqin-kernel-db08160915e3…/
 ```sh
 sudo python3 tools/build-liuqin-image.py \
   --inputs out/image-inputs.local.json \
-  --kernel-out <ci/liuqin-kernel-db08160915e3…/kernel 目录的绝对路径> \
+  --kernel-out <ci/liuqin-kernel-<sha>/（当前为 `c03e1015…`）kernel 目录的绝对路径> \
   --stage all
 ```
 
@@ -277,8 +289,8 @@ sudo python3 tools/install-liuqin.py \
 删 userdata、建 `linux_root`(ext4, 36)+`linux_home`(37) →
 主机 HTTP 下载 rootfs.tar.gz 并校验 → 解包到 `linux_root`、
 从 **persist 分区**（只读挂载）抽取本机校准与地址（WLAN MAC、
-蓝牙地址、cs35l41 校准、传感器 registry）→ 写 `boot_b`（零填充到整分区）、
-`fastboot --set-active=b` → 重启。
+蓝牙地址、cs35l41 校准、传感器 registry）→ 写启动槽（代码里是 `boot_b`，
+实机用 `boot_a`；零填充到整分区）、`fastboot --set-active=<槽>` → 重启。
 
 不写 `persist`、不重锁 Bootloader、不碰 `super`/`metadata`/A 槽分区。
 

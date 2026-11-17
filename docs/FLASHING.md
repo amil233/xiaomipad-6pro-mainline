@@ -32,6 +32,13 @@ target partition by PARTNAME. Unknown or mismatching device, slot or session
 identity must stop installation. Checks reduce risk but do not guarantee
 recovery or replace real installation testing.
 
+
+> **⚠️ The "Dual Boot" section below does not apply to this device.**
+> This tablet runs a **single Ubuntu system booting from slot A**, with no Android
+> and no switch store. That A/B rotation scheme comes from the reference project
+> and is not used here. See [`STATUS.zh-CN.md`](STATUS.zh-CN.md) §0.
+
+
 ## Data and Recovery
 
 The Linux-only layout gives Ubuntu the space of the Android userdata partition.

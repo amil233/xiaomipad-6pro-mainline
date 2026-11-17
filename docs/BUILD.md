@@ -13,7 +13,8 @@ workspace/
 ```
 
 The kernel checkout must match the commit in `kernel/source.json`. The repository
-is based on `sm8450-mainline/linux`; the device branch is `liuqin-7.0`.
+is based on `sm8450-mainline/linux`; the device branch is **`liuqin-7.3`**
+(the current tip is `c03e1015c71d`, see `docs/STATUS.zh-CN.md`).
 The build script verifies the commit and generated configuration before compiling.
 
 On Ubuntu 24.04, install the kernel build dependencies:

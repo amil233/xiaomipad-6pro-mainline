@@ -12,10 +12,19 @@
 v0.6.0 已在同一台 256 GB 机型以 `--layout dual --keep-home --no-backup` 完成完整安装、首次设置和用户功能确认；A/B 启动镜像回读一致，原 `/home` 保留。此前已验证原厂固件修复后的 Android 首次启动及调试 Android 下 KernelSU 脚本往返；普通 Android 下的 KernelSU 自动加载与 WebUI 按钮仍未单独验收。
 单系统布局与双系统共用同一布局引擎，但尚未在真机上安装。两者均应按有人在场的实验流程对待。
 
+
+> **⚠️ 槽位描述与实机不符，读前须知。**
+> 本文描述的安装器默认把 Ubuntu 写 **B 槽**（`--layout linux-only`），
+> 而**这台设备现在从 A 槽直接启动**，内核 `liuqin-7.3 @ c03e1015c71d`。
+> 安装器代码（`tools/install-liuqin.py:36`）与本文都还没改过来，属已登记的
+> 缺口（[`STATUS.zh-CN.md`](STATUS.zh-CN.md) §5 #11）。分区布局、数据清除、
+> 恢复流程仍然有效；**"从哪个槽启动"一节不要照抄**。
+
+
 ## 分区布局
 
 安装器提供两种布局，由同一套布局引擎生成。`dual` 布局下两个系统都从 A 槽启动；
-`linux-only` 布局把 Ubuntu 安装到 B 槽、不触碰 A 槽，使通过 `--android-size` 保留的应急 Android 仍可启动。
+`linux-only` 布局（代码里）把 Ubuntu 安装到 B 槽、不触碰 A 槽，使通过 `--android-size` 保留的应急 Android 仍可启动。**实机是从 A 槽直接启动**，这条描述对应的是安装器代码而不是当前设备。
 
 | 布局 | Android | Ubuntu 系统 | Ubuntu 用户目录 |
 | --- | --- | --- | --- |
@@ -40,7 +49,7 @@ v0.6.0 已在同一台 256 GB 机型以 `--layout dual --keep-home --no-backup` 
 ### 两种布局各自写入什么
 
 `linux-only` 写入分区表、`linux_root`、`linux_home` 与 `boot_b`，
-不触碰 `super`、`metadata` 以及任何 A 槽分区。
+不触碰 `super`、`metadata` 以及任何 A 槽分区。（**实机在 A 槽**，见文首横幅。）
 
 `dual` 另外清零 `userdata` 与 `metadata` 的前 16 MiB，使 Android 首次开机重新格式化这两个分区，
 而不是读到过期的文件级加密密钥；并用用户提供的 ROM 目录恢复 A 槽的原厂 Android 分区。
@@ -153,7 +162,7 @@ python3 install.py --bundle . --serial DEVICE_SERIAL \
 写入把 `LABEL=LIUQIN_HOME` 挂载到 `/home` 的 `/etc/fstab` 条目。
 双系统布局下还会把 Ubuntu 与 Android 的 boot 镜像逐一核对校验值和头部后，放入 `linux_root` 上的切换存储区。
 根文件系统安装成功且卸载后，才写入本项目的 boot 镜像（双系统布局写入 `boot_a` 与 `boot_b`，
-单系统布局写入 `boot_b`），通过 Fastboot 选定启动槽（双系统为 A 槽，单系统为 B 槽）并重启。
+单系统布局写入 `boot_b`），通过 Fastboot 选定启动槽（代码中双系统为 A 槽，单系统为 B 槽）并重启。**本机实际是 A 槽直启，单系统也不在 B 槽。**
 不会写入 persist，也不会重新锁定 Bootloader。备份必须放在安装包目录以外，并保持私密。
 
 分区表写入后，`sgdisk` 会校验新表，安装器随即重新读取并与计划逐项比对；

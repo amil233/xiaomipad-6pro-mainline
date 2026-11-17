@@ -17,6 +17,11 @@ speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1
 | `ce85b3f7efc2` | `ASoC: qcom: sc8280xp: frame TDM codecs with DSP_A and one slot per amp` |
 | `52866ba809f1` | `ASoC: qcom: sc8280xp: program the codec PLL reference on TDM links` |
 
+> 前三处（`c8778035ea23`/`79ed40f4ed38`/`ce85b3f7efc2`）的板级策略后来在
+> `17abc027f75f` 里**收敛成 v7.4 的 per-DAI 形式**（对齐上游 `ea6e98472c65`），
+> 语义等价、表达方式不同；`cs35l41.c` 的 `.set_tdm_slot` 保留。四个提交都在
+> `c03e1015c71d` 树内。下文按收敛后的形态描述。
+
 ## 1. 数据通路
 
 ```
@@ -27,7 +32,7 @@ ALSA FE (q6apm-dai, PCM 2..8ch)
   → I2C 上的四颗 CS35L41（TL/TR/BR/BL），每颗用 ASPRX1 取一个 slot
 ```
 
-- DTS 里的 speaker 链路：[`sm8475-xiaomi-liuqin.dts`](../arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dts)
+- DTS 里的 speaker 链路：`linux-sm8450-liuqin` 的 `arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dts`
   的 `speaker-playback-dai-link`，`dai-tdm-slot-num = <4>`、`-width = <32>`、
   `-rx-mask = <1 1 1 1>`。
 - 厂商线格式来自 `backend_conf.xml` / cape resource manager：48 kHz、4 声道、

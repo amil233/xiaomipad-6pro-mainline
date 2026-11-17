@@ -19,6 +19,12 @@ System authentication/session signals and the user's confirmation agree.
 The v0.6.0 complete installation bundle includes these components and has passed
 full installation, initial setup and user acceptance on the test unit.
 
+> **Current state of this device.** The record above is from the reference
+> project's v0.6.0 era. This tablet now runs `liuqin-7.3 @ c03e1015c71d` with
+> the v0.6.0 userspace (see [`STATUS.zh-CN.md`](STATUS.zh-CN.md) §2), and the
+> fingerprint stack has **not** been retested on the 7.3 kernel. Check the
+> kernel and module hashes under Requirements before assuming it works.
+
 ## Requirements
 
 v0.6.0 automatically supports the first local account created by initial setup

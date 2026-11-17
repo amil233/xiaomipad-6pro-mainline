@@ -1,5 +1,10 @@
 # liuqin 天马面板：全量问题清单与打勾排除法
 
+> **归档文档，不再维护。** 具体值（提交号、镜像哈希、分区槽、ROM 版本）
+> 均为**写作当时**的现场记录，可能已被后续工作推翻；当前事实只认
+> [`../STATUS.zh-CN.md`](../STATUS.zh-CN.md) 与 `docs/` 下的现行文档。
+> 保留它只有一个理由：失败记录与取证过程不能删。
+
 > 目的：把"黑屏有背光"拆成**可以逐条判真伪的问题**，一条一次打勾，不跳层。
 > 依据：`xiaomipad-6pro-mainline/out/vendor-display/`（原厂 V14 快照，root）、
 > `display-drivers-archive/` 两份驱动、`docs/display-driver-plan.md`、

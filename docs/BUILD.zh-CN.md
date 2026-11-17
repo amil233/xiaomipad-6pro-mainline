@@ -13,7 +13,8 @@ workspace/
 ```
 
 内核 checkout 必须对应 `kernel/source.json` 中的提交。内核仓库基于
-`sm8450-mainline/linux`，设备分支为 `liuqin-7.0`。
+`sm8450-mainline/linux`，设备分支为 **`liuqin-7.3`**（当前 tip
+`c03e1015c71d`，见 `docs/STATUS.zh-CN.md`）。
 构建脚本会在编译前核对源码提交和最终配置。
 
 Ubuntu 24.04 主机依赖：

@@ -1,5 +1,9 @@
 # AGENTS.md —— liuqin 天马面板主线点亮：现状与交接
 
+> **归档文档，不再维护。** 这是仓库内旧的 `AGENTS.md`，记录 7.0 显示点亮阶段。
+> 其中的槽位、分支（`liuqin-7.0`）、"下一步"全部作废；当前纪律见工作区
+> 根目录的 `AGENTS.md`，当前事实见 [`../STATUS.zh-CN.md`](../STATUS.zh-CN.md)。
+
 > **注意（2026-11-07）**：本文记录的是 7.0 显示点亮阶段的历史结论，已经过时。
 > 当前整体状态见 `docs/STATUS.zh-CN.md`，音频（外放 TDM）见
 > `docs/AUDIO.zh-CN.md`，v7.3 偏离清单见 `docs/kernel-v73-divergence.md`。

@@ -14,12 +14,23 @@ exchanging the boot image in `boot_a` (see
 layout engine but has not been installed on hardware. Treat both as attended
 experiments.
 
+
+> **⚠️ The slot description does not match this device.**
+> The installer described here puts Ubuntu on **slot B** in `--layout linux-only`,
+> while this tablet **boots from slot A** with kernel `liuqin-7.3 @ c03e1015c71d`.
+> Neither the installer (`tools/install-liuqin.py:36`) nor this document has been
+> updated yet; it is a registered gap (see [`STATUS.zh-CN.md`](STATUS.zh-CN.md) §5 #11).
+> The partition layout, data-erasure and recovery sections still apply; do **not**
+> copy the "which slot boots" section.
+
+
 ## Installation Layouts
 
 The installer offers two layouts, both laid out by the same engine. In the
 `dual` layout both systems boot from slot A. The `linux-only` layout places
 Ubuntu in slot B and leaves slot A untouched, so that an emergency Android kept
-with `--android-size` remains bootable.
+with `--android-size` remains bootable. **This tablet actually boots from slot A**;
+the sentence above describes the installer code, not the current device.
 
 | Layout | Android | Ubuntu system | Ubuntu home |
 | --- | --- | --- | --- |

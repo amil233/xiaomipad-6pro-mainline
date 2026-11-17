@@ -2,6 +2,16 @@
 
 Run Ubuntu 26.04 on the Xiaomi Pad 6 Pro, with the GNOME desktop and a device-adapted kernel based on upstream Linux. [中文](README.zh-CN.md)
 
+
+> **This is the release note of the reference project (`liuqin-6.17test`) at v0.6.0,
+> kept as the starting point of this tree's userspace.**
+> This repository continues from its `release/v0.6.0`: the kernel is mainline **7.3**
+> (`liuqin-7.3 @ c03e1015c71d`), the tablet **boots from slot A**, there is no Android,
+> and `device/` differs from v0.6.0 in only two configuration files.
+> "Latest Release" below refers to that project's release at that tag, **not to this
+> device's current state**; see [docs/STATUS.zh-CN.md](docs/STATUS.zh-CN.md).
+> The hardware support table is still maintained from on-device tests and applies.
+
 ## Latest Release and Recent Updates
 
 **[v0.6.0](https://github.com/yzddmr6/xiaomipad-6pro-mainline/releases/tag/v0.6.0)** is now a full release. Native fingerprint support, DP output and dual-boot fixes are included in one installation bundle. Installation, initial setup and user acceptance passed on the known 256 GB test unit.
@@ -27,7 +37,7 @@ Progress updates, usage tips and AI discussions (primarily in Chinese) are publi
 This project is only for the **Xiaomi Pad 6 Pro (liuqin, SM8475)**. Other Xiaomi Pad models are not compatible.
 
 - **Data loss**: unlocking the bootloader and performing an initial installation erase user data. Back up your files first.
-- **Storage and layout**: installation has been tested on one known **256 GB partition layout**, not every 256 GB device. Other capacities and modified partition layouts are unverified and unsupported. The installer repartitions the tail of the disk. In the dual-boot layout both systems boot from slot A; the Linux-only layout places Ubuntu in slot B. Do not bypass the checks.
+- **Storage and layout**: installation has been tested on one known **256 GB partition layout**, not every 256 GB device. Other capacities and modified partition layouts are unverified and unsupported. The installer repartitions the tail of the disk. In the dual-boot layout both systems boot from slot A; the Linux-only layout places Ubuntu in slot B in the installer — **this tablet is Linux-only yet boots from slot A**, which the installer code does not yet reflect (see [STATUS](docs/STATUS.zh-CN.md) §5 #11). Do not bypass the checks.
 - **Validation scope**: installation and initial setup, rotation, touch, the magnetic keyboard (including its touchpad), speakers, single-microphone recording, USB OTG host mode (wired mouse), native fingerprint login and DP output have device-test evidence. See the table below for each feature's scope; not every combination is retested with every release. Android recovery still requires separate device validation.
 - **Installation layout**: the installer offers a Linux-only layout and a dual-boot layout that keeps stock Android. Both systems use slot A and switching writes the other system's image into `boot_a`. The known 256 GB unit has passed slot-A Ubuntu startup, Android's first boot after restoring stock firmware, and a return to Ubuntu through the KernelSU module script under a debug Android boot. The Manager WebUI button, automatic KernelSU activation under an ordinary Android boot, and the Linux-only layout remain unverified. See the [installation steps](docs/INSTALL-TESTING.md).
 - **Recovery preparation**: obtain the matching stock firmware and read the [data and recovery instructions](docs/FLASHING.md#data-and-recovery) before installing.
@@ -142,7 +152,7 @@ The accounts listed above are also available for usage discussions.
 | [linux-sm8450-liuqin](https://github.com/yzddmr6/linux-sm8450-liuqin) | Complete Linux kernel source and device adaptation commits |
 
 [kernel/source.json](kernel/source.json) records the kernel revision used by the build.
-The device branch is `liuqin-7.0`. Contributions to drivers, tools and documentation are welcome;
+The device branch is `liuqin-7.3`. Contributions to drivers, tools and documentation are welcome;
 see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acknowledgments and Licensing
