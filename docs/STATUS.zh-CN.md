@@ -47,8 +47,11 @@
   基线对照 `repack/17abc-boot/`（`17abc027f75f`，同样点亮、电量正常），
   产品 ramdisk 对照 `repack/17abc-boot-prodrd/`。
 - **模块 deb**：`out/liuqin-debs/liuqin-kernel_0.1_arm64.deb`
-  （sha256 `1ac2bfe6…f6859159`，756 个模块，release `7.3.0-g17abc027f75f`）
-  已安装；`iptables` 等此前"缺少对应版本模块"的报错消失。
+  （sha256 `a0354248…30b52`，756 个 `.ko`，release `7.3.0-gc03e1015c71d`）
+  对应 `repack/c03e10-boot/`，待安装。已核对：769 个模块文件与 CI artifact
+  的 `modules.tar` **逐字节相同**，`vmlinuz`/`dtb`/`initrd.img` 与 artifact
+  及 30.9 MiB initramfs 逐字节相同，`kernel.release` 与 manifest 一致。
+  纯文件包（无维护脚本、无 Depends），版本仍为 0.1，可直接覆盖旧版。
 - **设备本地包**：`liuqin-firmware`、`liuqin-device-support`、`liuqin-sensors`
   仍是 0.1 并被 `apt-mark hold`。上游 v0.6.1/v0.6.2 的**用户态**改动
   （充电策略服务、传感器 RPC/退出修复、GNOME 键盘 guard 等）**没有合并**，
