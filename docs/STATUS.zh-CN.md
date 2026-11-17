@@ -1,10 +1,14 @@
-# 当前整体状态（2026-11-17，含一次回退）
+# 当前整体状态（2026-11-17）
 
-本文是项目状态的快照：**已经在跑什么、还坏着什么、怎么构建/刷机、下一步做什么**。
-历史细节见 `kernel-version-upgrade.md`（逐级升级记录 + 上游 v0.6.1/v0.6.2
-移植 + 三方对比审计 + **上游 v0.7.0 / v0.8.0 移植**）、`kernel-v73-divergence.md`（相对上游 v7.3 的偏离清单）、
-`AUDIO.zh-CN.md`（外放 TDM 链路）、`display-panel-checklist.md`（显示取证）。
-`AGENTS.md` 是 7.0 显示点亮阶段的历史交接，**以本文为准**。
+**电量已恢复正常**，设备在跑 Ubuntu 26.04 + 本工作区自建 7.3 内核，无安卓系统。
+
+本文是状态快照：**在跑什么、坏着什么、怎么构建/刷机、下一步做什么**。
+历史细节见 `kernel-version-upgrade.md`（逐级升级、三方对比、以及两次已作废的
+参考树移植记录）、`kernel-v73-divergence.md`（相对主线 v7.3 的偏离）、
+`AUDIO.zh-CN.md`（外放 TDM）、`display-panel-checklist.md`（显示取证）。
+
+> **上游只有 Linux 主线**（工作区 `linux/`）。`liuqin-6.17test` 是作者在 6.17
+> 上的参考分支，**不是上游**——详见工作区 `AGENTS.md` §1。
 
 ## 1. 设备与环境
 
@@ -12,9 +16,9 @@
 |---|---|
 | 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`），SM8475 |
 | 系统 | Ubuntu 26.04 arm64 桌面（GNOME），分区布局 linux-only（root `LIUQIN_ROOT` + home `LIUQIN_HOME`） |
-| 内核 | `liuqin-7.3`，tip `3c91c26423b1`，**本地未推送、未跑 CI**；**当前唯一已上机点亮且电量正常的是 `17abc027f75f`**（`repack/17abc-boot/`） |
-| 待验证 | 见 §9（v0.8.0 那批已回退到只剩 2 项） |
-| 点亮基线 | `db08160915e3`（v7.3 点亮内核）；`17abc027f75f` 在其上叠加 32 个提交 |
+| 内核 | `liuqin-7.3`，tip `c03e1015c71d`（已推送、CI 已构建） |
+| 当前镜像 | `repack/c03e10-boot/`（`c03e1015c71d`，**已上机点亮、电量正常**）= `17abc027f75f` + 三个与充电无关的修复 |
+| 点亮基线 | `17abc027f75f`（`repack/17abc-boot/`，同样点亮、电量正常，最佳对照） |
 | 刷机主机 | 树莓派（只跑 fastboot + 保存备份/镜像） |
 | 构建主机 | 云端开发机（2 核/11G，**只做源码、装配、打包，不编译内核**） |
 
@@ -38,9 +42,10 @@
     Lucid Ole PLL、dispcc mdp_clk_src、DPU slave encoder、DSI tx VM 泄漏）；
   - **TDM 策略改为 v7.4 的 per-DAI 形式**（`17abc027f75f`）；
   - 清理 kernel 仓里误提交的 `repack/diff-70-710/*`。
-- **镜像**：`repack/17abc-boot/boot-liuqin-firstboot.img`
-  （50,061,312 B，sha256 `9a715024…6fed67`）**已上机点亮**；对照镜像
-  `repack/17abc-boot-prodrd/`（同内核 + 产品 ramdisk）。
+- **镜像**：`repack/c03e10-boot/`（`c03e1015c71d`，50,065,408 B，
+  sha256 `8977f56a…dc288`）**已上机点亮、电量正常**，为当前镜像；
+  基线对照 `repack/17abc-boot/`（`17abc027f75f`，同样点亮、电量正常），
+  产品 ramdisk 对照 `repack/17abc-boot-prodrd/`。
 - **模块 deb**：`out/liuqin-debs/liuqin-kernel_0.1_arm64.deb`
   （sha256 `1ac2bfe6…f6859159`，756 个模块，release `7.3.0-g17abc027f75f`）
   已安装；`iptables` 等此前"缺少对应版本模块"的报错消失。
@@ -123,120 +128,74 @@
 | `triage-2026-10.md` | 早期外设/启动问题分诊 |
 | `FLASHING.zh-CN.md` / `BUILD.zh-CN.md` | 刷机 / 构建说明（编写时的流程） |
 
-## 7. 已并入 `liuqin-7.3`：v0.7.0 移植（2026-11-15）
+## 7. 历史：v0.7.0 / v0.8.0 两批移植（均已作废）
 
-上游作者 v0.7.0（2026-11-14）的内核提交已做三方对比，取其中 6 项。
-这些提交**已由用户快进合并进 `liuqin-7.3`**（原 `liuqin-7.3-v070` 分支
-已不需要）。
-完整理由、逐条对比和上机判据见 `kernel-version-upgrade.md`
-"上游 v0.7.0 移植"一节。
+2026-11-15 与 11-17 曾两次从 `liuqin-6.17test`（作者在 **6.17** 内核上的
+参考分支，**不是我们的上游**）移植补丁，**共 16 个提交，全部已回退**。
 
-| 提交 | 一句话 |
+**作废理由**（已核实，详见工作区 `AGENTS.md` §1）：
+
+- 17abc 的 **XM（小米私有）协议本来就完整**（139 处引用，含鉴权与快充）；
+- 主线的电池 ABI 与 17abc **逐字节相同** ⇒ 电池部分本就等于主线加 XM 增量；
+- 那批改动的前提来自作者的 `OS2.0.6.0` ROM（属性号、换算系数、固件行为），
+  本机是 `V14.0.9.0`，**不成立**；
+- 代价：`1fdb432ed06b` 重写电池属性表后**电量显示报 unknown**，回退 v0.8.0
+  后仍 unknown（还有 `CHARGE_COUNTER` ×1000 与 `devm_device_init_wakeup`
+  两处残留）。
+
+最终只保留三个与充电无关、各自独立的修复，见工作区 `AGENTS.md` §2。
+
+原始移植记录保留在 `kernel-version-upgrade.md` 的"作废记录"一节，仅供追溯。
+
+---
+
+## 8. 工作区清理（2026-11-17）与当前状态
+
+**电量已恢复正常**：`repack/c03e10-boot/`（`c03e1015c71d`）上机确认。
+它是 `17abc027f75f` 的基线 + 三个与充电无关的修复（`q6apm` hw_ptr、
+`q6dsp-lpass-clocks` drvdata 顺序、DTS 关 QCE）。
+
+### 那 16 个提交全部作废
+
+起因是把 `liuqin-6.17test`（作者在 **6.17** 内核上的参考分支，**不是我们的
+上游**）的 `release/v0.8.0` 充电补丁整批移植。已核实两点：
+
+- 17abc 的 **XM（小米私有）协议本来就完整**（139 处引用，含鉴权与快充属性）；
+- 主线的电池 ABI 与 17abc **逐字节相同** ⇒ 17abc 的电池部分本就等于主线加
+  XM 增量。
+
+所以那批改动既非必要、前提又不成立（属性号/换算系数来自作者的
+`OS2.0.6.0` ROM，本机是 `V14.0.9.0`）。教训已写入工作区 `AGENTS.md` §1。
+
+### 清理明细（28G → 27G，释放约 1.7G）
+
+删除了：
+
+- `repack/9acfdc-boot/`、`repack/3c91c2-boot/`（两张电量 unknown 的镜像，
+  源码已脱离分支，README 曾标 ⛔）；
+- `ci/liuqin-kernel-9acfdc*`、`ci/liuqin-kernel-3c91c2*`（对应 artifact）；
+- `repack/.scratch/`（`d710.dts`/`d720.dts` 历史遗留快照）；
+- `vendor-liuqin-oss/`、`caf-display/`、`display-drivers-archive/`（三份
+  历史参考树，当前代码与工具**零引用**；本页与 display 系列历史文档里仍有
+  文字引用，属于取证记录，路径失效不影响结论）；
+- 工作区根目录我留下的临时文件（`cur_battmgr.c`、`tgt.c`、`ml_battmgr.c`、
+  `fix.patch`、`.dt/`、`.probe/` 等）。
+
+**保留**：
+
+| 项 | 原因 |
 |---|---|
-| `553e9f02bac6` | `q6dsp-lpass-clocks` 在注册 clock 前设 drvdata —— 修上游报告的真实 NULL 解引用，我们树里是同一潜在崩溃 |
-| `44bc4522df22` | 充电口热敏整链（pmic_glink 端口源状态 + battmgr 采样 + 接受整数 ADC + DTS/yaml）；**旧代码从未把温度送到固件** |
-| `fa7a5cf0e111` | nt36523 follower 改到 `panel_enabled`/`panel_disabling` + 等 vblank 再下固件 + `WQ_FREEZABLE` |
-| `4650887b7766` | fastrpc 用 `TASK_FREEZABLE` 保住跨 suspend 的 DSP 调用（liuqin-only 候选，主线未收） |
-| `9773628af36f` | `msm_gem_submit` 大 submit 回退 `kvzalloc`（主线未收，健壮性） |
-| `d0e404edf30c` | liuqin DTS 显式关掉 QCE（本树本就绑定不了，即没有常驻投票；写进 DT 是为了将来去掉 `BROKEN` 时仍成立） |
+| `liuqin_images_V14.0.9.0...`（7.2G） | 用户决定保留。装配 boot 所需的 analysis 数据（47M）已独立在 `tools/local/roms/`，脚本从不读这个目录；另 `tools/lib/liuqin-rom-images.json` 是安装器校验 ROM 身份的清单 |
+| `ci/liuqin-kernel-{17abc,c03e10}*` | 都对应仍在分支上的提交，各 302M |
+| `repack/17abc-boot/`、`c03e10-boot/`、`730fix-boot/`、`17abc-boot-prodrd/` | 点亮 / 当前 / 回滚 / 对照 |
+| `native.contract`、`native.hashes` | 已装根文件系统的校验快照，供 `tests/persistent-root.sh` 使用 |
+| `repack/` 里的取证脚本 | `verify-*`、`compare-*`、`split-*` 等，部分文档仍在引用 |
 
-**未合入**：只有 2 项 —— a6xx GMU 超时与 panel follower 回调，两者本树早已
-有（`ba970587a0e1`、`2eb22214c132`）。
+### 待验证候选（未进树）
 
-**状态**：已并入 `liuqin-7.3`，但**尚未推送、未跑 CI、未上机**。
+以下三个补丁**没有**合入，需要时再单独评估：
 
-**已做的离线验证**：DTS 用工作区 `dtc` 真实 cpp+dtc 通过（exit 0，告警数
-与改动前同为 28，全部是 SoC dtsi 既有的 duplicate unit-address）；
-编译出的 DTB 里 `/pmic-glink` 的 `io-channel-names`/`io-channels`、
-ADC 的 `conn_therm`、`crypto` 的 `status="disabled"` 均已确认；yaml 在
-`additionalProperties: false` 下属性齐全；battmgr 的 8 个 connector 函数中
-7 个与上游 v0.7.0 逐字节一致（第 8 个是有意补的 X1E80100 分支）。
-
-**上机第一优先**：面板 follower 时序改动直接影响触摸 ——
-冷启动、熄屏再亮、长时间熄屏后唤醒三项都要过。
-
-## 8. 已作废：v0.8.0 那批的原始移植记录（2026-11-17）
-
-> **本节已作废**，处置结果见 §9。保留仅为追溯当时判断。
-
-在 §7 的 6 个提交之上又叠加 **7 个提交**（`liuqin-7.3` tip
-`9acfdc025415`）。完整三方对比、逐条证据与判据见
-`kernel-version-upgrade.md` "上游 v0.8.0 + 主线 v7.4-rc3 移植"一节。
-
-| 提交 | 一句话 |
-|---|---|
-| `1fdb432ed06b` | 修 SM8475 电池遥测单位：`unit` 恒为 `mWh` ⇒ `CHARGE_*` 全 `-ENODATA`、`CHARGE_COUNTER` 小 1000 倍 |
-| `fe80b53cfea9` | QC 头 `usb_type` 报成 DCP（原来读失败 + uevent 丢字段） |
-| `1a703f8ed117` | `q6apm` 随 fragment 队列重置 hw pointer（主线 v7.4-rc3 的孪生修复） |
-| `bbf9046d618d` | M81 燃料计按固件触发器刷新（**额外加了不支持的闩锁**） |
-| `542dfc1102b9` | 发布厂商充电状态变化（原来 0x50 被静默丢弃） |
-| `515776925234` | 有线充电时保持唤醒 |
-| `9acfdc025415` | 电脑端口（SDP）取 500 mA —— **针对已记录的"接电脑口掉电"** |
-
-### 明确**没有**合入的
-
-- **XM 属性重编号 42/43/44 → 44/45/46**：上游依据的是它的
-  `OS2.0.6.0`（HyperOS 2）ROM；本机是 `V14.0.9.0`（Android 13），
-  厂商 dmesg 自证加载的是 `qti_battery_charger.ko`（不是
-  `..._main_m81.ko`），且 uevent 里**没有** `BLANK_STATUS` /
-  `SCREEN_CCTOG` —— 即我们仍是旧枚举顺序，42/43/44 对我们是正确的。
-  照搬会读到无关属性。**刷到 HyperOS 2 后再评估。**
-- **主线 v7.4-rc3 的其余部分**：`rc2→rc3` 779 个提交里落在我们相关
-  子系统的只有 2 个（一个 X1E80100、一个 legacy `q6asm`），
-  `arch/arm64/boot/dts/qcom` 与 `drivers/gpu/drm/msm` **零改动**。
-  7.4 合并准备不必因 rc3 变更。
-
-### 上机验证优先级
-
-1. **接电脑 USB 口充电**（`9acfdc025415`）—— 本轮唯一直接针对已记录
-   缺陷的改动，看 `input_current_limit` 是否 500000、是否不再掉电。
-2. **燃料计**（`bbf9046d618d`）—— dmesg 若出现
-   `fuel-gauge trigger 86 unsupported` 说明属性 id 不适用（已闩锁，无害）。
-3. **有线充电保持唤醒**（`515776925234`）—— 插墙充不熄屏；接电脑口仍可睡。
-4. **电池单位**（`1fdb432ed06b`）、**QC 适配器**（`fe80b53cfea9`）、
-   **音频重 prepare**（`1a703f8ed117`）。
-
-**推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-7.3`
-（CI 已监听 `liuqin-7.3`，无需改 workflow）。
-
-
-## 9. v0.8.0 那批的处置（2026-11-17）：回退到只剩 2 项可自证
-
-**前提更正**：`liuqin-6.17test`（原 remote `origin`）**不是上游**，是作者在
-**6.17** 内核上继续适配同一设备的参考树。我们唯一的上游是 Linux 主线
-（工作区 `linux/`）。详见工作区 `AGENTS.md` §5.0 与
-`kernel-version-upgrade.md` 的"作废记录"。
-
-拿参考树当权威的代价：`1fdb432ed06b` 照抄它重写的电池属性表，**电量显示
-报 unknown**。已全部改正。
-
-### 保留（2 项，均能在本树自证）
-
-| 提交 | 内容 | 为什么站得住 |
-|---|---|---|
-| `82f021a286de` | 电池 ABI 整体恢复为 `17abc027f75f` 的形态，只留 `CHARGE_COUNTER` 的 mAh→uAh 换算 | **我们自己的树外 bug**：逐属性读取路径直接存 Xiaomi 的 mAh。换算系数有参考树 KUnit 背书（`4688 mAh → 4688000 uAh`）且代码路径对得上 |
-| `fe80b53cfea9` | QC 充电器 `usb_type` 报成 DCP | **本树可查**：`power_supply_sysfs.c` 对类枚举外的值告警并返回 `-EINVAL`，而树外代码用 0x80–0x84 |
-
-验证：`sm8350_bat_props`、`sm8350_bat_psy_desc`、`battmgr->unit` 处理
-与 `17abc027f75f` **逐字节相同**；`qcom_battmgr_bat_get_property()` 相对它
-**只差 `CHARGE_COUNTER` 那一行**。
-
-### 回退（4 项，无法在本树自证）
-
-`3c91c26423b1` 一并回退，理由都是"前提来自参考树的 ROM/用户态，本机未验证"：
-
-| 提交 | 原内容 | 为什么回退 |
-|---|---|---|
-| `bbf9046d618d` | M81 燃料计按 `XM_THERMAL_TEMP=86` 刷新 | 属性号是参考树在**它的 ROM** 上验证的。若本机不支持，只会在共享 completion 上超时 1 秒并**持有 `b->lock`**，把每个电池请求卡 1 秒 |
-| `542dfc1102b9` | 厂商 `KOBJ_CHANGE`（notification 0x50） | 靠"原厂这么 defer 通知"推断，无本树证据 |
-| `515776925234` | 有线充电保持唤醒 | 同上，靠参考树/原厂行为推断 |
-| `9acfdc025415` | SDP 取 500 mA | 有本机"接电脑口掉电"记录可对照，**但同样未验证**；且它依赖上面几条的上下文 |
-
-### 现状与下一步
-
-- **可刷镜像**：`repack/17abc-boot/`（`17abc027f75f`，已点亮、电量正常）。
-- `repack/9acfdc-boot/` 已标 **⛔ 作废**，README 首段有说明，不要刷。
-- 修正后的 `3c91c26423b1` **尚未推送、未编译**。推送后重出 CI，
-  装配新镜像验证电量恢复。
-- 回退的 4 项若仍想要，必须逐条**先在本机取证**（dmesg 有 `XM_THERMAL_TEMP`
-  可用、原厂固件确有该通知等），再重新提交。
+- 连接器热敏整链（v0.7.0 批次，含 `connector_worker`/`online_response`/
+  DTS `channel@347`）：曾随作废的那批一起上机，无法与 v0.8.0 分离归因；
+- `fastrpc` `TASK_FREEZABLE`、`msm_gem_submit` `kvzalloc`：主线未收，
+  需真机验证收益。
