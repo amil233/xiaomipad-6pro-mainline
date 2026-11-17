@@ -1,8 +1,8 @@
-# 当前整体状态（2026-11-15）
+# 当前整体状态（2026-11-17）
 
 本文是项目状态的快照：**已经在跑什么、还坏着什么、怎么构建/刷机、下一步做什么**。
 历史细节见 `kernel-version-upgrade.md`（逐级升级记录 + 上游 v0.6.1/v0.6.2
-移植 + 三方对比审计 + **上游 v0.7.0 移植**）、`kernel-v73-divergence.md`（相对上游 v7.3 的偏离清单）、
+移植 + 三方对比审计 + **上游 v0.7.0 / v0.8.0 移植**）、`kernel-v73-divergence.md`（相对上游 v7.3 的偏离清单）、
 `AUDIO.zh-CN.md`（外放 TDM 链路）、`display-panel-checklist.md`（显示取证）。
 `AGENTS.md` 是 7.0 显示点亮阶段的历史交接，**以本文为准**。
 
@@ -12,8 +12,8 @@
 |---|---|
 | 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`），SM8475 |
 | 系统 | Ubuntu 26.04 arm64 桌面（GNOME），分区布局 linux-only（root `LIUQIN_ROOT` + home `LIUQIN_HOME`） |
-| 内核 | `liuqin-7.3`，tip `17abc027f75f`（`7.3.0-g17abc027f75f`），已推送、CI 已构建、**已上机点亮**（2026-11-14） |
-| 待验证候选 | `liuqin-7.3-v070`（`d0e404edf30c`，**本地未推送、未编译、未上机**）：上游 v0.7.0 的 6 个移植提交，见 §7 |
+| 内核 | `liuqin-7.3`，tip `9acfdc025415`（`7.3.0-g9acfdc025415`），**本地未推送、未跑 CI**；上一张已上机点亮的仍是 `17abc027f75f`（2026-11-14） |
+| 累计待验证 | `d0e404edf30c`..`9acfdc025415` 共 7 个提交（上游 v0.8.0 + 主线 v7.4-rc3），见 §8 |
 | 点亮基线 | `db08160915e3`（v7.3 点亮内核）；`17abc027f75f` 在其上叠加 32 个提交 |
 | 刷机主机 | 树莓派（只跑 fastboot + 保存备份/镜像） |
 | 构建主机 | 云端开发机（2 核/11G，**只做源码、装配、打包，不编译内核**） |
@@ -61,8 +61,10 @@
 | 5 | 音频边角 | 当前守卫只接受 48k/4ch/24-bit；桌面已能协商出可用元组，强制 2ch/S16 的应用仍会被拒。槽位与物理喇叭对应可按听感微调 |
 | 6 | 升级 v7.4 | 等 7.4 正式版；已做 `merge-tree` 预演：**13 个文件真冲突**，清单见 `kernel-version-upgrade.md` 三方审计一节 |
 | 7 | 内核 deb 升级与 native-root 合同 | 已修：合同不再钉 `kernel.release`/`kernel-modules.manifest`（2026-11-07） |
-| 9 | 连接器温度上报 | 7.3 树（以及 v0.6.2）**完全没有**这条链路，是 v0.7.0 新增的。`liuqin-7.3-v070` 已移植整链（pmic_glink 端口源状态 + battmgr 在 worker 里取 ADC + 接受 `IIO_VAL_INT`）。注意上游在 v0.7.0 开发中途先引入过 `if (ret)` 的错判（把每个有效样本当失败跳过、固件收不到温度），`3fe3a2068602` 已修，我们移植的是修好的最终形态。待上机读 `raw_xm_connector_temp` 验证 |
-| 8 | GPU 终止失败策略 | v0.6.1 的 `018982b5e1ac` + `fdf3c8b8b912` 未移植（依赖 6.17 recovery 布局），如果遇到 GPU 恢复失败卡死再单独立项 |
+| 8 | 接电脑 USB 口时掉电 | 已定位到**内核侧的一半**：`input_current_limit` 在 SDP 上是 100000（100 mA），原厂靠 USB 栈枚举后 `usb_psy_set_icl()` 抬到 500 mA，而我们没跑 USB gadget ⇒ 永不发生。`9acfdc025415` 从内核补 500 mA 并可写。**待上机复验**是否从掉电转为缓慢充电 |
+| 9 | 电池电量/充电计数值不可用或差 1000 倍 | SM8475 从不发 `BAT_INFO` ⇒ `unit` 恒为 `mWh` ⇒ `CHARGE_*` 全 `-ENODATA`、`CHARGE_COUNTER` 按 mAh 当 uAh 报。`1fdb432ed06b` 已修，待上机看量级 |
+| 10 | GPU 终止失败策略 | v0.6.1 的 `018982b5e1ac` + `fdf3c8b8b912` 未移植（依赖 6.17 recovery 布局），如果遇到 GPU 恢复失败卡死再单独立项 |
+| 11 | 连接器温度上报 | 7.3 树（以及 v0.6.2）**完全没有**这条链路，是 v0.7.0 新增的。`liuqin-7.3-v070` 已移植整链（pmic_glink 端口源状态 + battmgr 在 worker 里取 ADC + 接受 `IIO_VAL_INT`）。注意上游在 v0.7.0 开发中途先引入过 `if (ret)` 的错判（把每个有效样本当失败跳过、固件收不到温度），`3fe3a2068602` 已修，我们移植的是修好的最终形态。待上机读 `raw_xm_connector_temp` 验证 |
 
 ## 4. 构建 / 刷机工作流（2026-11-14 现状）
 
@@ -121,10 +123,11 @@
 | `triage-2026-10.md` | 早期外设/启动问题分诊 |
 | `FLASHING.zh-CN.md` / `BUILD.zh-CN.md` | 刷机 / 构建说明（编写时的流程） |
 
-## 7. 待验证候选：`liuqin-7.3-v070`（2026-11-15）
+## 7. 已并入 `liuqin-7.3`：v0.7.0 移植（2026-11-15）
 
-上游作者 v0.7.0（2026-11-14）的内核提交已做三方对比，取其中 6 项进新分支
-**`liuqin-7.3-v070`**（本地，基线 `17abc027f75f`，tip `d0e404edf30c`）。
+上游作者 v0.7.0（2026-11-14）的内核提交已做三方对比，取其中 6 项。
+这些提交**已由用户快进合并进 `liuqin-7.3`**（原 `liuqin-7.3-v070` 分支
+已不需要）。
 完整理由、逐条对比和上机判据见 `kernel-version-upgrade.md`
 "上游 v0.7.0 移植"一节。
 
@@ -140,9 +143,7 @@
 **未合入**：只有 2 项 —— a6xx GMU 超时与 panel follower 回调，两者本树早已
 有（`ba970587a0e1`、`2eb22214c132`）。
 
-**状态**：未推送、未跑 CI、未上机。本机按纪律不编译，验证走
-CI（需先把 `liuqin-7.3-v070` 加进 `.github/workflows/liuqin.yml` 的
-`branches:`）。
+**状态**：已并入 `liuqin-7.3`，但**尚未推送、未跑 CI、未上机**。
 
 **已做的离线验证**：DTS 用工作区 `dtc` 真实 cpp+dtc 通过（exit 0，告警数
 与改动前同为 28，全部是 SoC dtsi 既有的 duplicate unit-address）；
@@ -153,3 +154,45 @@ ADC 的 `conn_therm`、`crypto` 的 `status="disabled"` 均已确认；yaml 在
 
 **上机第一优先**：面板 follower 时序改动直接影响触摸 ——
 冷启动、熄屏再亮、长时间熄屏后唤醒三项都要过。
+
+## 8. 待验证：上游 v0.8.0 + 主线 v7.4-rc3（2026-11-17）
+
+在 §7 的 6 个提交之上又叠加 **7 个提交**（`liuqin-7.3` tip
+`9acfdc025415`）。完整三方对比、逐条证据与判据见
+`kernel-version-upgrade.md` "上游 v0.8.0 + 主线 v7.4-rc3 移植"一节。
+
+| 提交 | 一句话 |
+|---|---|
+| `1fdb432ed06b` | 修 SM8475 电池遥测单位：`unit` 恒为 `mWh` ⇒ `CHARGE_*` 全 `-ENODATA`、`CHARGE_COUNTER` 小 1000 倍 |
+| `fe80b53cfea9` | QC 头 `usb_type` 报成 DCP（原来读失败 + uevent 丢字段） |
+| `1a703f8ed117` | `q6apm` 随 fragment 队列重置 hw pointer（主线 v7.4-rc3 的孪生修复） |
+| `bbf9046d618d` | M81 燃料计按固件触发器刷新（**额外加了不支持的闩锁**） |
+| `542dfc1102b9` | 发布厂商充电状态变化（原来 0x50 被静默丢弃） |
+| `515776925234` | 有线充电时保持唤醒 |
+| `9acfdc025415` | 电脑端口（SDP）取 500 mA —— **针对已记录的"接电脑口掉电"** |
+
+### 明确**没有**合入的
+
+- **XM 属性重编号 42/43/44 → 44/45/46**：上游依据的是它的
+  `OS2.0.6.0`（HyperOS 2）ROM；本机是 `V14.0.9.0`（Android 13），
+  厂商 dmesg 自证加载的是 `qti_battery_charger.ko`（不是
+  `..._main_m81.ko`），且 uevent 里**没有** `BLANK_STATUS` /
+  `SCREEN_CCTOG` —— 即我们仍是旧枚举顺序，42/43/44 对我们是正确的。
+  照搬会读到无关属性。**刷到 HyperOS 2 后再评估。**
+- **主线 v7.4-rc3 的其余部分**：`rc2→rc3` 779 个提交里落在我们相关
+  子系统的只有 2 个（一个 X1E80100、一个 legacy `q6asm`），
+  `arch/arm64/boot/dts/qcom` 与 `drivers/gpu/drm/msm` **零改动**。
+  7.4 合并准备不必因 rc3 变更。
+
+### 上机验证优先级
+
+1. **接电脑 USB 口充电**（`9acfdc025415`）—— 本轮唯一直接针对已记录
+   缺陷的改动，看 `input_current_limit` 是否 500000、是否不再掉电。
+2. **燃料计**（`bbf9046d618d`）—— dmesg 若出现
+   `fuel-gauge trigger 86 unsupported` 说明属性 id 不适用（已闩锁，无害）。
+3. **有线充电保持唤醒**（`515776925234`）—— 插墙充不熄屏；接电脑口仍可睡。
+4. **电池单位**（`1fdb432ed06b`）、**QC 适配器**（`fe80b53cfea9`）、
+   **音频重 prepare**（`1a703f8ed117`）。
+
+**推送**：`git -C linux-sm8450-liuqin push GitHub liuqin-7.3`
+（CI 已监听 `liuqin-7.3`，无需改 workflow）。

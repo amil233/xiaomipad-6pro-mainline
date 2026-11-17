@@ -1673,7 +1673,7 @@ re-apply；否则保留。我们设备是 `qcom,dual-dsi-mode` +
 | `fa7a5cf0e111` | nt36523 面板 follower 改为 `enabled`/`disabling` 回调 + 等 vblank 再下载固件 + `WQ_FREEZABLE` | 见下节。 |
 | `4650887b7766` | fastrpc 用户态等待改 `TASK_INTERRUPTIBLE \| TASK_FREEZABLE` | 传感器守护进程在 suspend 期间等的 DSP listener 调用会被 freezer 打断成 `-ERESTARTSYS`，重试会**重复下发** RPC。v7.4-rc2/master 仍是旧写法，属 liuqin-only 候选，需真机 suspend/resume 验证。 |
 | `9773628af36f` | `msm_gem_submit`: `kzalloc` → `kvzalloc` | 大 submit（Mesa piglit 约 32k BO → ~1 MiB、order-9）在内存碎片下直接 `-ENOMEM`。主线仍未收，属健壮性修复，未碎片化时是 no-op。 |
-| `d0e404edf30c` | liuqin DTS 显式 `disabled` 掉 QCE | **性质与上游说的不同**：`CONFIG_CRYPTO_DEV_QCE` 因 `depends on (BROKEN && ARCH_QCOM)` 不在我们 defconfig/任何 fragment 里，CI 产物 `.config` 无任何 QCE 符号，唯一匹配 `qcom,qce` 的就是被挡住的 `drivers/crypto/qce/core.c`。没有驱动 → 没有 `icc_get()` → 没有 consumer → **没有投票**，上游声称的 ALWAYS DDR 投票在本树并不发生。仍合入是为了把"不投票"写成 DT 里的显式意图，防止将来去掉 BROKEN 时静默引入常驻投票。UFS inline crypto（`qcom,ice`）是独立节点，不受影响；dtc 通过、无新增告警。 |
+| `d0e404edf30c` | liuqin DTS 显式 `disabled` 掉 QCE | **性质与上游说的不同**：`CONFIG_CRYPTO_DEV_QCE` 因 `depends on (BROKEN && ARCH_QCOM)` 不在我们 defconfig/任何 fragment 里，CI 产物 `.config` 无任何 QCE 符号，唯一匹配 `qcom,qce` 的就是被挡住的 `drivers/crypto/qce/core.c`。没有驱动 → 没有 `icc_get()` → 没有 consumer → **没有投票**，上游声称的 ALWAYS DDR 投票在本树并不发生。仍合入是为了把"不投票"写成 DT 里的显式意图，防止将来去掉 BROKEN 时静默引入常驻投票。UFS inline crypto（`qcom,ice`）是独立节点，不受影响；dtc 通过、无新增告警。**2026-11-17 复核**：厂商 dmesg 显示原厂确实加载了 `qce50` 模块（硬件存在、原厂在用），而我们内核里没有该驱动 —— 与"我们没有投票"的结论一致。|
 
 ### battmgr 充电口热敏（`44bc4522df22`）细节
 
@@ -1795,3 +1795,128 @@ git -C linux-sm8450-liuqin switch liuqin-7.3
 git -C linux-sm8450-liuqin merge --ff-only liuqin-7.3-v070
 git -C linux-sm8450-liuqin push GitHub liuqin-7.3
 ```
+
+---
+
+## 上游 v0.8.0 + 主线 v7.4-rc3 移植（2026-11-17）
+
+上游 2026-11-16 发布 **v0.8.0**（kernel `origin/liuqin-6.17` =
+`ed0dad5d20d0`），主线更新到 **v7.4-rc3**（`aebb72744764`）。两边都做了
+三方对比。**本轮只收有本机证据支撑的改动**，因为我们的 ROM 与上游的
+证据来源不同（见下）。
+
+### 主线 v7.4-rc3：对本机几乎为空
+
+`v7.4-rc2..v7.4-rc3` 共 779 个提交，但落在我们所有相关子系统的（
+`drivers/gpu/drm/msm`、`drivers/clk/qcom`、`drivers/phy/qualcomm`、
+`drivers/power/supply`、`drivers/soc/qcom`、`drivers/usb/typec`、
+`drivers/interconnect/qcom`、`arch/arm64/boot/dts/qcom`、`sound/soc/qcom`）
+**只有 2 个**：
+
+| 提交 | 是否相关 |
+|---|---|
+| `54e89fab723d` ASoC: qcom: q6asm: Reset PCM positions when preparing a stream | **不适用**：我们跑 AudioReach（`q6apm`），不是 legacy `q6asm`。但它的**同类 bug 在 `q6apm` 上同样存在**，见下。 |
+| `704251f9dad3` ASoC: qcom: x1e80100: recreate the headset jack on card rebind | 不适用（X1E80100） |
+
+`arch/arm64/boot/dts/qcom` 在 rc2→rc3 **零改动**，`drivers/gpu/drm/msm`
+零改动。**结论：rc3 不需要为它单独做 7.4 合并准备**，等正式版。
+
+### 已合入（7 个提交）
+
+| 提交 | 内容 | 证据 |
+|---|---|---|
+| `1fdb432ed06b` | 修正 SM8475 电池遥测单位 | **本树可自证**：SM8475 走逐属性读取，从不发 `BAT_INFO`，`battmgr->unit` 永远是默认 `mWh`。于是 ① `CHARGE_COUNTER` 把 mAh 当 uAh 报（小 1000 倍）② `CHARGE_FULL_DESIGN/FULL/EMPTY/NOW` 全被 `unit != mAh` 挡成 `-ENODATA`。 |
+| `fe80b53cfea9` | QC 充电器 `usb_type` 报成 DCP | **本树可自证**：`power_supply_show_enum_with_available()`（`power_supply_sysfs.c:304`）对 `usb_types` 之外的值告警并返回 `-EINVAL`。SM8475 的 `USB_ADAP_TYPE` 用 0x80–0x84 表示 QTI 专用充电器，类里没有名字 ⇒ 读 `usb_type` 失败、uevent 丢 `POWER_SUPPLY_USB_TYPE`。 |
+| `1a703f8ed117` | `q6apm`: 随 fragment 队列一起重置 hw pointer | **主线 v7.4-rc3 的 `0337b8129cf6`**，与我们同源；rc3 只修了 `q6asm` 的孪生 bug。重 prepare（如 xrun 恢复）后位置报上一次的值。 |
+| `bbf9046d618d` | 通过固件触发器刷新 M81 燃料计 | 上游 v0.8.0 `f4d672bbdaff`。**额外加了防护**（见下）。 |
+| `542dfc1102b9` | 发布厂商充电状态变化（`KOBJ_CHANGE`） | 上游 v0.8.0 `ea7c0a1abd52`。我们原来把 notification 0x50 **静默丢弃**，`xiaomi` 属性组只能靠轮询。 |
+| `515776925234` | 有线充电时保持唤醒 | 上游 v0.8.0 `136081907242`。 |
+| `9acfdc025415` | 电脑端口（SDP）取 500 mA | 上游 v0.8.0 `e5dcff1232de`。**直接对应本机已记录的缺陷**（见下）。 |
+
+### 为什么**没有**合入 XM 属性重编号（`ea7c0a1abd52` 的另一半）
+
+上游把 `XM_QUICK_CHARGE_TYPE/APDO_MAX/POWER_MAX` 从 42/43/44 改成
+44/45/46，理由是**它的 ROM（`OS2.0.6.0.VMYCNXM`，HyperOS 2）**里的
+`qti_battery_charger_main_m81.ko` 在 `SOC_DECIMAL` 前插入了
+`blank_status` 和 `screen_cctog`。
+
+**我们不是那个 ROM**。本机是 `V14.0.9.0.TMYCNXM`（Android 13），
+厂商 dmesg（`out/vendor-display/dmesg.txt`）自证：
+
+- 加载的模块是 `qti_battery_charger.ko`，**不是** `..._main_m81.ko`；
+- uevent 里 `POWER_SUPPLY_SOC_DECIMAL` / `SOC_DECIMAL_RATE` 存在，
+  而 `BLANK_STATUS` / `SCREEN_CCTOG` **完全不存在**（grep 计数 0）。
+
+即我们的模块是**旧的枚举顺序**，42/43/44 对我们是**正确的**。照搬
+上游的 44/45/46 会让 `apdo_max`/`power_max` 读到无关属性。
+**→ 本项明确不合入。** 哪天刷到 HyperOS 2 再重新评估。
+
+### 上游未做、我们额外加的防护（`bbf9046d618d`）
+
+`XM_THERMAL_TEMP = 86` 这个属性 id 是上游在**它自己的 ROM** 上验证的，
+我们没验证过。若我们的固件不支持该属性：
+
+- `qcom_battmgr_xm_get()` 只会在共享 completion 上**超时 1 秒**
+  （`qcom_battmgr_request()` → `wait_for_completion_timeout(..., HZ)`）；
+- 这次读取**持有 `b->lock`**，所以每 10 秒会把所有其它电池请求卡住 1 秒；
+- 而 `dev_dbg` 在 `CONFIG_DYNAMIC_DEBUG` 未开时**编译掉**
+  （CI 产物确认 `# CONFIG_DYNAMIC_DEBUG is not set`），失败完全静默。
+
+所以加了 `refresh_unsupported` 闩锁：**第一次** `-ETIMEDOUT` 就
+`dev_warn` 并永久停掉刷新。最坏情况从"每 10 秒静默卡 1 秒"变成
+"一条警告"。
+
+### 与已记录缺陷的交叉验证
+
+`device/configs/liuqin-firstboot.config` 早就写着：
+
+> The tablet cannot charge from a host USB port while it is running: the
+> SDP ceiling is 500 mA (2.5 W) and idle draw exceeds it, so the battery
+> discharges with the charger attached.
+
+当时归因于 idle 调优。现在看，**"未枚举的 100 mA 预算"是另一半原因**：
+`input_current_limit` 在 SDP 上读 100000（=100 mA），原厂是在 USB 栈
+枚举后经 `usb_psy_set_icl()` 抬到 500 mA，而我们的产品**没有跑 USB
+gadget**，所以那个抬升永远不会发生。`9acfdc025415` 从内核侧补上。
+**这条需要上机复验**：接树莓派 USB 口时应从"掉电"变为"缓慢充电"。
+
+### 已验证（离线，本机不编译）
+
+- 每个新函数与 `origin/liuqin-6.17`（v0.8.0）**逐字节比对**：
+  12 个完全一致；差异只有 3 处，且都是我有意为之
+  （`refresh_worker` 的闩锁、`charge_wake` 的注释措辞、
+  `sm8475_usb_check_locked` 的 `int ret` 作用域）。
+- 整个 `qcom_battmgr.c` 花括号/圆括号配平；所有新增 `static` 函数都被引用；
+  所有新增 `#define` 都被使用；无"定义前使用"。
+- 锁序审计：`b->lock` 只在入口点取一次，`qcom_battmgr_request_property()`
+  **不**自取 `b->lock`（故 `usb_set_icl()` 里的 `guard(mutex)` 不重入）；
+  `charge_lock` 只保护 `charge_awake`，与 `client_lock` 无反向边。
+- devres 顺序：`stop_workers`(3198) 先于 GLINK client 释放，
+  `charge_wake_remove` 在其后 —— 与上游一致。
+- API 齐备：`wakeup_source_register/__pm_stay_awake/__pm_relax`
+  （含 `!CONFIG_PM_SLEEP` 存根）、`pm_sleep_ptr`、`DEFINE_SIMPLE_DEV_PM_OPS`、
+  `power_supply_desc.set_property/property_is_writeable` 签名、
+  `check_mul_overflow`、`MILLI`、`UINT_MAX`、`kobject_uevent`（经
+  `device.h`→`kobject.h`）、`lockdep_assert_held`。
+- `auxiliary_driver` 通过通用 `driver_register()` 注册，`drivers/base/power/main.c`
+  会走 `dev->driver->pm`，所以 `.driver.pm` 对 aux 驱动有效（上游同写法）。
+
+### 上机验证清单（按风险排序）
+
+1. **SDP 充电**（`9acfdc025415`）：接树莓派/电脑 USB 口，看
+   `/sys/class/power_supply/qcom-battmgr-usb/input_current_limit` 是否
+   500000，以及是否从"掉电"转为"缓慢充电"。这是本轮唯一直接针对
+   已记录缺陷的改动。
+2. **燃料计刷新**（`bbf9046d618d`）：dmesg 若出现
+   `fuel-gauge trigger 86 unsupported` 即属性 id 不适用（无害，已闩锁）；
+   若没有，观察放电时 `charge_counter`/`temp` 是否不再停更。
+3. **有线充电保持唤醒**（`515776925234`）：插墙充不熄屏应保持
+   （`qcom-battmgr-charge` 出现在 `/sys/power/wakeup` 相关统计）；
+   拔掉/接电脑口应恢复可睡眠。
+4. **电池单位**（`1fdb432ed06b`）：`charge_counter` 应约为
+   `charge_full` 的对应量级；原先它小 1000 倍。
+5. **QC 适配器**（`fe80b53cfea9`）：QC 头插入时
+   `usb_type` 应可读且为 `DCP`，dmesg 不再刷
+   "driver reporting unavailable enum value"。
+6. **音频**（`1a703f8ed117`）：`speaker-test -c 4` 做一次
+   `snd_pcm_drop()`+`prepare()` 循环（或 xrun 恢复）后仍正常。

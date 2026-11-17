@@ -274,7 +274,8 @@ qcom a730_sqe+gmu / novatek 触控 / regulatory.db 共 217 个文件），
 
 ## v0.7.0 移植增量（`liuqin-7.3-v070`，2026-11-15）
 
-基线 `17abc027f75f`，tip `d0e404edf30c`，6 个提交 / 13 个文件：
+基线 `17abc027f75f`，v0.7.0 阶段 tip `d0e404edf30c`（6 个提交 / 13 个文件）。
+2026-11-17 又叠加 v0.8.0 + 主线 v7.4-rc3 的 7 个提交（见本节末尾）。
 
 | 文件 | 性质 | 是否必须随 7.4 保留 |
 |---|---|---|
@@ -295,3 +296,26 @@ qcom a730_sqe+gmu / novatek 触控 / regulatory.db 共 217 个文件），
 7.4-rc2/master 都没有该字段）。若上游将来引入等价机制（或面板 follower
 被重构），必须改用上游实现，否则 7.4→7.5 合并会在 `drm_panel.h` 与
 `bridge/panel.c` 上反复冲突。
+
+### v0.8.0 + 主线 v7.4-rc3 增量（2026-11-17）
+
+`d0e404edf30c..9acfdc025415`，7 个提交，但只碰 **2 个文件**：
+
+| 文件 | 性质 | 是否必须随 7.4 保留 |
+|---|---|---|
+| `drivers/power/supply/qcom_battmgr.c` | 上游 v0.8.0 的 6 个提交（遥测单位、QC usb_type、燃料计刷新、厂商 uevent、有线充电唤醒、SDP 500 mA）+ 我们的两处适配 | **是**（含针对已记录缺陷的 SDP 修复） |
+| `sound/soc/qcom/qdsp6/q6apm.c` | 主线 v7.4-rc3 `0337b8129cf6`（1 行） | **是**，直到上游修好 |
+
+**注意**：`qcom_battmgr.c` 在本轮之后与上游 v0.8.0 的差异只剩
+**3 处**，且都是有意为之：
+
+1. `qcom_battmgr_sm8475_refresh_worker()` 多了 `refresh_unsupported` 闩锁
+   （属性 id 未在本机验证，超时会占着 `b->lock` 卡 1 秒，且 `dev_dbg`
+   在未开 `CONFIG_DYNAMIC_DEBUG` 时静默）；
+2. `qcom_battmgr_charge_wake()` 一句注释措辞；
+3. `qcom_battmgr_sm8475_usb_check_locked()` 的 `int ret` 作用域。
+
+**升级 7.4 时**：这个文件已经是"上游 v0.8.0 + 我们两处适配"的形态，
+merge 时以上游为底、重新套上闩锁即可，不要再手工重打其余部分。
+**未合入** XM 属性重编号（42/43/44），因为本机 ROM 是 Android 13 的旧
+枚举顺序（详见 upgrade doc）。
