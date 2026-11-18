@@ -6,8 +6,9 @@
 
 ## 1. 上游与分支
 
-- 唯一上游：工作区 `linux/`（Linux 主线）。7.3 基座从 `v7.3` tag 合并，
-  7.4 也从它来；`sm8450-mainline/linux` 只是内核仓的历史来源，不是上游。
+- 唯一上游：内核仓的 `linux` remote（`https://github.com/torvalds/linux.git`）。
+  7.3 基座从 `v7.3` tag 合并，7.4 也从它来；tag 已同步在内核仓，工作区不再
+  单独保留 `linux/` checkout。`sm8450-mainline/linux` 只是历史来源，不是上游。
 - 内核仓 `linux-sm8450-liuqin` 的设备分支：**`liuqin-7.3`**，
   当前 tip `c03e1015c71d`（`7.3.0-gc03e1015c71d`）。
 - 集成仓 `xiaomipad-6pro-mainline` 的本机工作分支：**`liuqin-7.3`**；

@@ -23,8 +23,9 @@
 
 ## 1. 与参考项目的关系（防止再混淆）
 
-**唯一上游是主线 Linux，即工作区 `linux/`。** 内核 7.3 基座从它的 `v7.3`
-tag 合并；`sm8450-mainline/linux` 只是内核仓的**历史来源**，不是上游。
+**唯一上游是主线 Linux，由内核仓 `linux-sm8450-liuqin` 的 `linux` remote
+（torvalds/linux）直接同步。** 7.3 基座从 `v7.3` tag 合并；工作区不再单独
+保留 `linux/` checkout。`sm8450-mainline/linux` 只是内核仓的**历史来源**，不是上游。
 
 `liuqin-6.17test`（yzddmr6）是**另一个项目**：6.17 内核、`OS2.0.6.0`
 （HyperOS 2）ROM、安装器把 Ubuntu 写 B 槽。我们只在 2026 年基于它的集成仓
@@ -161,7 +162,7 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 8 | 指纹降为 🧪 未验证；相机标未验证 |
 | 9 | `boot_b` 本机有安装时写入的副本，但**不从 B 启动** |
 | 10 | 触控统一写"Novatek `nt36523`（SPI）"；面板驱动文件是 `panel-novatek-nt36532.c` |
-| 11 | 上游 = 主线 `linux/`；`sm8450-mainline` 只是历史来源 |
+| 11 | 上游 = 内核仓 `linux` remote（torvalds/linux）；`sm8450-mainline` 只是历史来源；不再保留 `linux/` checkout |
 | 12 | 集成仓新工作放在 `liuqin-7.3` 分支；`main` 保留 v0.6.0 历史 |
 
 ## 9. 文档索引
