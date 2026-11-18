@@ -276,8 +276,8 @@ with tempfile.TemporaryDirectory(prefix='liuqin-layout-test-') as directory:
     (bundle / 'bundle.json').write_text(json.dumps({'device': 'liuqin', 'files': files}))
     base = [sys.executable, str(project / 'tools/install-liuqin.py'), '--bundle', str(bundle), '--check']
     preview = subprocess.run(base + ['--layout', 'linux-only'], capture_output=True, text=True)
-    check('--check --layout linux-only prints the plan without touching a device',
-          preview.returncode == 0 and 'linux_root' in preview.stdout and 'userdata' in preview.stdout,
+    check('--check --layout linux-only verifies the bundle without inventing a disk size',
+          preview.returncode == 0 and 'device' in preview.stdout and 'linux_root' not in preview.stdout,
           preview.stdout + preview.stderr)
     print(preview.stdout.strip())
     bad = subprocess.run(base + ['--layout', 'linux-only', '--android-size', '4G'], capture_output=True, text=True)

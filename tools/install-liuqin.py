@@ -214,21 +214,6 @@ def parse_arguments(argv=None):
     return parser, parser.parse_args(argv)
 
 
-def reference_plan(parser, args):
-    """The plan as it applies to an untouched factory table, for the prompt.
-
-    The device's own table is read and re-planned before anything is written;
-    this preview exists so that the confirmation names real numbers.
-    """
-    disk = layout.reference_stock_disk()
-    region = disk.usable_end - disk.by_name(layout.USERDATA_NAME).start
-    try:
-        android, root = layout.resolve_sizes(args.layout, args.android_size, args.root_size, region)
-        return layout.plan_layout(disk, args.layout, android, root)
-    except layout.LayoutError as error:
-        parser.error(str(error))
-
-
 def validate_arguments(parser, args, preview=False):
     """Check the argument combinations.  ``preview`` covers the offline --check
     path, where no device and no stock ROM are involved."""
@@ -370,8 +355,8 @@ def main(argv=None):
         validate_arguments(parser, args, preview=True)
         print('Local bundle checksums verified; no device access')
         if args.layout:
-            print('Planned layout for an untouched factory partition table:')
-            print(reference_plan(parser, args).table())
+            print('Layout sizes are computed from the tablet\'s own userdata partition;'
+                  ' connect the device with --serial to preview them.')
         return
     validate_arguments(parser, args)
     if manifest['status'] != 'DEVICE_TESTED' and not args.allow_unverified:
@@ -387,7 +372,6 @@ def main(argv=None):
             args.backup = args.backup.resolve()
             if args.backup == bundle or bundle in args.backup.parents:
                 parser.error('private backups must be outside the served bundle directory')
-        planned = None if args.keep_home else reference_plan(parser, args)
         rom_table, rom_images = ({}, {})
         if args.layout == 'dual':
             rom_table, rom_images = verify_rom(parser, args.rom_dir, args.android_boot)
@@ -454,7 +438,15 @@ def main(argv=None):
             print('Reinstalling on the existing split layout: the partition sizes are kept as'
                   ' they are and linux_home is left untouched.')
         else:
-            print(planned.table())
+            if userdata_size is None:
+                parser.error('cannot determine the userdata partition size; refusing to guess'
+                             ' —— 无法读取 userdata 大小，停止安装')
+            android, root = layout.resolve_sizes(args.layout, args.android_size, args.root_size,
+                                                 userdata_size)
+            print('Planned split from this tablet\'s userdata partition:')
+            print(f'  userdata        {layout.human(userdata_size)}  (deleted)')
+            print(f'  linux_root      {layout.human(root)}')
+            print(f'  linux_home      {layout.human(userdata_size - root)}')
         if not args.yes:
             if not sys.stdin.isatty():
                 parser.error('data erasure needs an interactive confirmation; pass --yes to skip it'
