@@ -129,6 +129,10 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
   都能刷进这台设备；区别是 Android 基线、厂商 blob 版本（WLAN/BT/DSP/触摸/
   GPU/VPU）和传感器配置。参考项目用 OS2 是因为它的机器在 OS2；我们的 persist、
   校准和已装 rootfs 都是 V14，所以统一用 V14，不混用。
+- **对 Linux 来说，Android 版本本身不参与启动**：两套都是官方 liuqin 包，
+  整套 blob 与板级数据匹配时，V14/OS2 通常都能跑（参考项目在 OS2 上跑过 Linux，
+  我们在 V14 上跑）。但两套不是逐字节等价，整套互换要重验 Wi-Fi/BT/触控/
+  音频/GPU/传感器；**不要跨套逐文件混用**，也不要为了“更新”而换 OS2。
 - 2026-11-18 已从 V14 线刷包重提取并替换 `device/firmware/`：
   1. `images/super.img`（Android sparse）→ `simg2img` → `lpunpack.py -p vendor_a`；
   2. `vendor_a.img` 是 EROFS → `fsck.erofs --extract` 取 `/firmware`
