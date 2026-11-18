@@ -229,3 +229,52 @@
 - **P1**：面板驱动并入主线骨架、a6xx CX 模型对齐、PHY-before-AUX 条件化。
 - **P2（长期上游化）**：QSEECOM 接口设计、camss SM8475、
   pinctrl-sm8475（`MSM_GPIO_PIN_FUNCTION`）。
+
+---
+
+## 14. 参考项目 commit 级筛选（2026-11-18）
+
+目的：模仿"看主线、也看参考项目，只取与内核版本/ROM 无关的通用修复"的流程，
+不按分支合并、不按版本号跟进。
+
+**范围**：`liuqin-6.17test/liuqin-6.17` tip `ed0dad5d20d0`（v0.8.0），
+相对共同 6.17 基点 `c64b7fc85a8b` 的 **67 个非 merge 提交**。
+
+**筛法**：对每个提交 `git show | git apply --check [-R]`，再人工看代码：
+
+| 结果 | 数量 | 含义 |
+|---|---:|---|
+| reverse 可应用 | 17 | 7.3 树里已有等价实现（含已移植的 24 个中的一部分） |
+| forward 干净应用 | 2 | 代码上下文兼容，可直接取 |
+| 冲突/需重写 | 48 | 6.17 上下文或设备/ROM 专属，逐个判断 |
+
+**本轮进 `liuqin-7.3-backports`（不在 `liuqin-7.3`）**：
+
+1. `44be305f0718` `media: iris: Fix power-off ordering to disable power domain
+   after clocks` —— 直接来自**主线** `9cfae7726a9a`（已在 `v7.4-rc3`），
+   7.3 树上干净应用；关电顺序错误，通用媒体修复。
+2. `9a81b1a45c66` `drm/msm: fall back to vmalloc for large msm_gem_submits` ——
+   参考项目 `03b536ad4e2c`（Sam Day），未进 `v7.4-rc3`；按 7.3 的
+   `size_add()/array_size()` 重写，保留 `KMALLOC_MAX_SIZE` 上限，
+   所有释放路径改 `kvfree()`。
+
+**未取的代表性提交及理由**：
+
+- `qcom_battmgr` 的 QC/DCP、500 mA、电量计单位、NTC、s2idle 唤醒等
+  （约 20 个）：绑定 OS2 充电语义/本机固件值，属"参考项目的数字"，
+  继续按 `STATUS` §6 #8/#9 的纪律单独取证。
+- 连接器温度整链、面板 follower 改 `enabled`：v0.7.0 积压，已随
+  `liuqin-7.3-v070` 丢弃；`STATUS` #2 撤销后没有对应症状。
+- `misc: fastrpc: freeze userspace invocation waiters`：通用但需要真实
+  传感器守护进程做 suspend/resume 验证，先留在候选池。
+- `drm/msm: let legacy GEM close exit after terminal GPU failure`：虽可
+  干净应用，但引用了 7.3 树里不存在的 `priv->gpu->wedged`，直接取会编译
+  失败，需先补 GPU 挂死状态模型。
+- `phy: qcom: qmp-combo`、`serial: qcom-geni`、`soc: qcom: rpmh-rsc`：
+  对应修复 7.3 树里已经存在（reverse 检查确认），不再重复。
+- 相机 cleanups（缩进/注释/DTS tidy）：设备专属且纯整理，收益低于风险，
+  不进本轮。
+
+**验证边界**：本机禁止编译，只做了 `git apply --check`、`git diff --check`、
+`scripts/checkpatch.pl --strict`（0 errors / 0 warnings）与符号存在性检查。
+两个提交都要经过 CI 编译 + 真机冷启动才可进 `liuqin-7.3`。
