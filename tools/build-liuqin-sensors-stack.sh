@@ -68,8 +68,9 @@ case $out_dir in "$project_root"/out/* | /tmp/*) ;; *) die 'OUT_DIR must be belo
 case $source_cache:$out_dir in *'/../'*|*'/..:'*|*':..'*) die 'path traversal is not allowed' ;; esac
 
 # The hash is over a sorted, basename-only SHA256SUMS file, so it is stable
-# across checkout locations.  This pins the exact ROM input (default
-# OS2.0.6.0.VMYCNXM; override the pins above for another ROM release).
+# across checkout locations.  These pins are the legacy OS2-era values; the
+# V14.0.9.0.TMYCNXM re-extraction is still pending (see docs/STATUS.zh-CN.md
+# §7).  Override the pins above for another ROM release.
 registry_manifest=$(mktemp)
 trap 'rm -f "$registry_manifest"' EXIT
 (cd "$rom_sensors/config" &&

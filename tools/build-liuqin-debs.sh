@@ -267,31 +267,6 @@ PY
 		"$audio_probe_source" "$audio_probe_libasound" \
 		-o "$root/usr/local/libexec/liuqin-audio-hwparams-probe"
 	chmod 0755 "$root/usr/local/libexec/liuqin-audio-hwparams-probe"
-	# The dual-boot switcher runs as root through pkexec.  The desktop entry,
-	# the polkit action and the script have to name the same program and
-	# argument, or the entry silently asks for the generic pkexec action.
-	# The A/B slot helper is deliberately not shipped here any more: only the
-	# initramfs marks the running slot successful, and nothing in the running
-	# system may change which slot boots.
-	switcher=$root/usr/local/sbin/liuqin-switch
-	if [ ! -f "$switcher" ] || [ ! -x "$switcher" ]; then
-		die 'the overlay carries no liuqin-switch'
-	fi
-	sh -n "$switcher" || die 'liuqin-switch is not valid sh'
-	grep -qx 'Exec=pkexec /usr/local/sbin/liuqin-switch to-android' \
-		"$root/usr/local/share/applications/liuqin-reboot-to-android.desktop" ||
-		die 'the Reboot to Android entry no longer runs liuqin-switch to-android'
-	policy=$root/usr/share/polkit-1/actions/io.github.liuqin.switch.policy
-	for annotation in \
-		'<annotate key="org.freedesktop.policykit.exec.path">/usr/local/sbin/liuqin-switch</annotate>' \
-		'<annotate key="org.freedesktop.policykit.exec.argv1">to-android</annotate>'; do
-		grep -qF "$annotation" "$policy" ||
-			die 'the polkit action no longer matches pkexec liuqin-switch to-android'
-	done
-	for retired in usr/local/bin/liuqin-boot-android usr/local/libexec/liuqin-mark-slot-successful \
-		usr/local/share/applications/liuqin-boot-android.desktop; do
-		[ ! -e "$root/$retired" ] || die "the retired slot-switching path is back: /$retired"
-	done
 	command -v readelf >/dev/null || die 'readelf is required to verify generated executables'
 	[ "$(LC_ALL=C readelf -h "$root/usr/local/libexec/liuqin-power-keyd" |
 		sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')" = AArch64 ] ||

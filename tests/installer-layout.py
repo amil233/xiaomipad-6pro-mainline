@@ -275,15 +275,15 @@ with tempfile.TemporaryDirectory(prefix='liuqin-layout-test-') as directory:
         files[name] = hashlib.sha256(name.encode()).hexdigest()
     (bundle / 'bundle.json').write_text(json.dumps({'device': 'liuqin', 'files': files}))
     base = [sys.executable, str(project / 'tools/install-liuqin.py'), '--bundle', str(bundle), '--check']
-    preview = subprocess.run(base + ['--layout', 'dual'], capture_output=True, text=True)
-    check('--check --layout dual prints the plan without touching a device',
+    preview = subprocess.run(base + ['--layout', 'linux-only'], capture_output=True, text=True)
+    check('--check --layout linux-only prints the plan without touching a device',
           preview.returncode == 0 and 'linux_root' in preview.stdout and 'userdata' in preview.stdout,
           preview.stdout + preview.stderr)
     print(preview.stdout.strip())
-    bad = subprocess.run(base + ['--layout', 'dual', '--android-size', '4G'], capture_output=True, text=True)
-    check('--check rejects an out-of-range size and prints the feasible range',
-          bad.returncode != 0 and 'must be between' in bad.stderr, bad.stderr)
-    both = subprocess.run(base + ['--layout', 'dual', '--keep-home', '--root-size', '32G'],
+    bad = subprocess.run(base + ['--layout', 'linux-only', '--android-size', '4G'], capture_output=True, text=True)
+    check('--check refuses the removed Android options',
+          bad.returncode != 0, bad.stderr)
+    both = subprocess.run(base + ['--layout', 'linux-only', '--keep-home', '--root-size', '32G'],
                           capture_output=True, text=True)
     check('--keep-home and an explicit size together are refused',
           both.returncode != 0, both.stderr)

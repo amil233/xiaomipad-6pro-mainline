@@ -19,21 +19,12 @@ import threading
 import time
 import uuid
 
-# Slot assignment.  In the dual layout both systems boot from slot A: the
-# project boot image goes to boot_a, Android's boot image is kept in the switch
-# store on the Ubuntu root, and liuqin-switch rotates the two through boot_a.
-# The stock bootloader switches slots only through its own fastboot
-# --set-active, which swaps the type GUIDs of every _a/_b pair and the UFS boot
-# LUN together; nothing on the tablet can do that, so switching never changes
-# the slot.  boot_b receives the same project image as the bootloader's own
-# fallback when boot_a does not load.
-#
-# The Linux-only layout keeps its original assignment, Ubuntu in slot B, so
-# that an emergency Android kept with --android-size stays bootable from the
-# untouched slot A.  It has no switch store.
-DUAL_UBUNTU_SLOT = 'a'
-DUAL_FALLBACK_SLOT = 'b'
-LINUX_ONLY_UBUNTU_SLOT = 'b'
+# Slot assignment on the liuqin-7.3 branch: this device is a single-system
+# Ubuntu install that boots slot A.  The dual/Android path is disabled and its
+# assets are gone; only LINUX_ONLY_UBUNTU_SLOT is used.  boot_b is not written
+# on new installs (the current tablet keeps an old copy from its first install,
+# but it never boots from it).
+LINUX_ONLY_UBUNTU_SLOT = 'a'
 # The stock (or --android-boot) boot image is not flashed in the dual layout:
 # it is stored for liuqin-switch and served to the RAM installer under this name.
 ANDROID_BOOT_IMAGE = 'boot.img'
@@ -82,15 +73,17 @@ def zero_digest(length):
     return update_zeros(hashlib.sha256(), length).hexdigest()
 
 
-def boot_partition_bytes(table):
-    """The size of boot_a and boot_b.
+PINNED_BOOT_BYTES = 192 * 1024 * 1024
 
-    The stock boot.img of the pinned ROM fills its partition exactly (the
-    --android-boot override is held to the same length), so the pinned table
-    is the one source of this number; the partitions the bootloader reports
-    are compared with it before anything is written.
+
+def boot_partition_bytes():
+    """The size of the boot partition on this device (192 MiB).
+
+    The stock boot.img fills it exactly; the partition the bootloader reports
+    is compared with this number before anything is written.  This is the one
+    device constant, not a stock-ROM checksum table.
     """
-    return table['images'][ANDROID_BOOT_IMAGE]['bytes']
+    return PINNED_BOOT_BYTES
 
 
 def pad_boot_image(source, expected_sha256, size, directory):
@@ -196,9 +189,9 @@ def parse_arguments(argv=None):
     parser.add_argument('--no-backup', action='store_true',
                         help='Explicitly skip partition backups for an existing --keep-home reinstall')
     parser.add_argument('--erase-userdata', action='store_true')
-    parser.add_argument('--layout', choices=list(layout.MODES),
-                        help='linux-only: Ubuntu is the only system. '
-                             'dual: keep a stock Android alongside it; both boot from slot A')
+    parser.add_argument('--layout', choices=['linux-only'],
+                        help='linux-only: Ubuntu is the only system, booting slot A '
+                             '(dual/Android was removed on this branch)')
     parser.add_argument('--android-size', help='Android userdata size as NNG or NN%% '
                                                '(0 deletes the partition; default 96G dual, 0 linux-only)')
     parser.add_argument('--root-size', help='linux_root size as NNG or NN%% (default 32G); '
@@ -239,6 +232,11 @@ def reference_plan(parser, args):
 def validate_arguments(parser, args, preview=False):
     """Check the argument combinations.  ``preview`` covers the offline --check
     path, where no device and no stock ROM are involved."""
+    if args.layout == 'dual':
+        parser.error('Android dual-boot is not supported on this device'
+                     ' —— 本机是 A 槽单系统，双系统路径已移除')
+    if args.android_boot is not None or args.rom_dir is not None or args.android_size is not None:
+        parser.error('Android boot/ROM options were removed on the liuqin-7.3 branch')
     if args.no_backup and (args.backup or not args.keep_home or args.restore_partition_table):
         parser.error('--no-backup requires --keep-home and cannot be combined with --backup or restore')
     if args.keep_home and (args.android_size or args.root_size):
@@ -263,7 +261,7 @@ def validate_arguments(parser, args, preview=False):
     if preview:
         return
     if not args.layout:
-        parser.error('--layout linux-only|dual is required')
+        parser.error('--layout linux-only is required')
     if args.layout == 'dual' and not args.rom_dir:
         parser.error('--layout dual needs --rom-dir pointing at an extracted stock Fastboot ROM'
                      ' —— 双系统模式必须提供原厂 ROM 目录，本项目不分发原厂镜像')
@@ -435,7 +433,7 @@ def main(argv=None):
         # partition, so every partition it goes to must be the pinned size,
         # the image must fit it, and the padded image must go over USB in one
         # raw download rather than be re-sparsed by fastboot.
-        boot_bytes = boot_partition_bytes(load_rom_table(parser))
+        boot_bytes = boot_partition_bytes()
         for slot in boot_slots(args.layout):
             reported = partition_size('boot_' + slot)
             if reported != boot_bytes:
@@ -640,10 +638,7 @@ def main(argv=None):
 
 
 def boot_slots(mode):
-    """The slots whose boot partition receives the project boot image, the
-    booting slot first."""
-    if mode == 'dual':
-        return (DUAL_UBUNTU_SLOT, DUAL_FALLBACK_SLOT)
+    """The boot partition that receives the project image (slot A only)."""
     return (LINUX_ONLY_UBUNTU_SLOT,)
 
 

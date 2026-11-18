@@ -1,8 +1,8 @@
 {
   "repo": "https://github.com/amil233/linux-sm8450-liuqin.git",
   "branch": "liuqin-7.3",
-  "upstream_url": "https://github.com/sm8450-mainline/linux.git",
-  "upstream_base": "a19585977c11fa662435b607cb9ff4ac7133092e",
+  "upstream_url": "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git",
+  "upstream_base": "c03c1a14507dfaf8b856c2608f9ac216021fc222",
   "commit": "c03e1015c71d73ebc7ea9b323495e45fa6c00a0f",
   "config_sha256": "d81ff750ac6ec47a299d78cab9582fedb4b270747040bfd796ff2e71814ebecc",
   "config_fragments": [

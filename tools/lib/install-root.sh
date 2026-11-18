@@ -3,7 +3,7 @@
 # Device-side installer, intended only for the dedicated read-only RAM image.
 set -eu
 die() { printf 'liuqin-install: %s\n' "$*" >&2; exit 1; }
-usage='usage: install-root.sh BOOT_ID ROOTFS_URL SHA256 BYTES ERASE-LIUQIN-USERDATA ROOT_PARTNAME HOME_PARTNAME [ENABLE-USB-RESCUE] [KEEP-HOME] [SWITCH-STORE ubuntu URL SHA256 BYTES android URL SHA256 BYTES]'
+usage='usage: install-root.sh BOOT_ID ROOTFS_URL SHA256 BYTES ERASE-LIUQIN-USERDATA ROOT_PARTNAME HOME_PARTNAME [ENABLE-USB-RESCUE] [KEEP-HOME]'
 [ "$#" -ge 7 ] || die "$usage"
 [ "$5" = ERASE-LIUQIN-USERDATA ] || die 'explicit data-erasure acknowledgement required'
 root_name=$6
@@ -11,25 +11,10 @@ home_name=$7
 # The options follow the seven fixed arguments.  ENABLE-USB-RESCUE and
 # KEEP-HOME may each be given once, in either order (the host sends them in
 # the order of the usage line).  KEEP-HOME reinstalls the system and keeps the
-# existing LIUQIN_HOME filesystem.  The dual layout adds the switch store: the
-# Ubuntu and Android boot images that liuqin-switch rotates through boot_a,
-# fetched from the host like the root archive.  SWITCH-STORE and its eight
-# fields are always last.
+# existing LIUQIN_HOME filesystem.  The Android/dual-boot switch store was
+# removed on the liuqin-7.3 branch.
 rescue=
 keep_home=
-store=
-switch_store=${0%/*}/install-switch-store.sh
-store_ubuntu_url='' store_ubuntu_sha='' store_ubuntu_bytes=''
-store_android_url='' store_android_sha='' store_android_bytes=''
-store_fields() { # SWITCH-STORE ubuntu URL SHA256 BYTES android URL SHA256 BYTES
-	shift
-	[ -f "$switch_store" ] || die 'the switch-store step is missing from the installer image'
-	# Validate everything before anything is formatted.
-	sh "$switch_store" --check "$@"
-	store=SWITCH-STORE
-	store_ubuntu_url=$2 store_ubuntu_sha=$3 store_ubuntu_bytes=$4
-	store_android_url=$6 store_android_sha=$7 store_android_bytes=$8
-}
 parse_options() { # the script's own arguments
 	shift 7
 	while [ "$#" -gt 0 ]; do
@@ -41,11 +26,6 @@ parse_options() { # the script's own arguments
 		KEEP-HOME)
 			[ -z "$keep_home" ] || die "option given twice: $1; $usage"
 			keep_home=$1
-			;;
-		SWITCH-STORE)
-			[ "$#" = 9 ] || die "$usage"
-			store_fields "$@"
-			return 0
 			;;
 		*) die "unsupported option: $1; $usage" ;;
 		esac
@@ -241,11 +221,6 @@ if home_needs_skeleton /mnt/install-home "$keep_home" && [ -d /mnt/install/nativ
 		--xattrs-include='*' | /usr/bin/tar -C /mnt/install-home -xf - \
 		--numeric-owner --same-owner --same-permissions --acls --xattrs --xattrs-include='*' \
 		--warning=no-timestamp
-fi
-if [ -n "$store" ]; then
-	sh "$switch_store" /mnt/install/native-root \
-		ubuntu "$store_ubuntu_url" "$store_ubuntu_sha" "$store_ubuntu_bytes" \
-		android "$store_android_url" "$store_android_sha" "$store_android_bytes"
 fi
 {
 	printf '# Written by the liuqin installer. The root filesystem is mounted by\n'

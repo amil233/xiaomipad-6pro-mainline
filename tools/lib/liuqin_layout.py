@@ -2,13 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Partition layout engine for the liuqin installer.
 
-One engine serves both installation modes.  Slot assignment is not a layout
-decision and is not made here: the installer (``tools/install-liuqin.py``,
-``boot_slots``) boots both systems from slot A in the dual layout, with the
-Android boot image rotated through ``boot_a`` by ``liuqin-switch``, and keeps
-Ubuntu in slot B in the Linux-only layout.  The modes differ here only in the
-size given to the Android ``userdata`` partition and in whether the Android
-system is provisioned at all.
+Slot assignment is not a layout decision and is not made here: the installer
+(``tools/install-liuqin.py``, ``boot_slots``) boots Ubuntu from slot A on this
+device.  The Android/dual-boot path and its assets were removed on the
+liuqin-7.3 branch; the legacy ``dual`` branches below are kept only so the
+historical layout tests remain readable.
 
 The tail of ``sda`` is laid out as::
 

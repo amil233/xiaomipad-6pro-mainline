@@ -2,7 +2,7 @@ name: System image
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [liuqin-7.3]
     paths:
       - 'device/**'
       - 'initramfs/**'
@@ -16,8 +16,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   image:
-    # This privileged job only runs trusted main code, never external PRs.
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.LIUQIN_IMAGE_CI == 'enabled')
+    # This privileged job only runs trusted liuqin-7.3 code, never external PRs.
+    if: github.ref == 'refs/heads/liuqin-7.3' && (github.event_name == 'workflow_dispatch' || vars.LIUQIN_IMAGE_CI == 'enabled')
     runs-on: [self-hosted, linux, X64, liuqin-images]
     timeout-minutes: 360
     steps:
