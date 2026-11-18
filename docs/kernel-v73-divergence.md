@@ -156,7 +156,7 @@
 
 | 功能 | 芯片 | 本地驱动 | 主线缺口 |
 |---|---|---|---|
-| **触控** | Novatek NT36532（SPI） | `input/touchscreen/nt36523/` | 主线 `novatek-nvt-ts.c` **仅 I2C**，不支持 SPI |
+| **触控** | Novatek NT36523（SPI） | `input/touchscreen/nt36523/` | 主线 `novatek-nvt-ts.c` **仅 I2C**，不支持 SPI |
 | **显示面板** | 天马 `m81_36_02_0a` | `panel-novatek-nt36532.c` | 主线 nt36523 驱动无本机 desc |
 | **pinctrl** | SM8475 TLMM | `pinctrl-sm8475.c` | 上游至今没有 SM8475 pinctrl |
 
