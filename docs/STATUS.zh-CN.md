@@ -112,7 +112,7 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 9 | 电压/电流计数值 | c03e10 上机已正常；v0.8.0 相关改动已回退，不要重引入 |
 | 10 | 用户态版本落差 | 见 §3；合并与否待决策 |
 | 11 | 安装器槽位 | 本分支已把 linux-only 目标改为 A；双系统路径已禁用。**下一次全新安装要复核 `--set-active=a` 与 `boot_a` 回读** |
-| 12 | 固件集已换 V14，待真机复测 | 2026-11-18 从 V14 `super.img`/`NON-HLOS.bin`/`BTFM.bin` 重提取，见 §7；刷入含新固件的镜像后复测 Wi-Fi/蓝牙/触控/音频/GPU |
+| 12 | 固件集已对齐 V14（无需刷机） | 2026-11-18 从 V14 `super.img`/`NON-HLOS.bin`/`BTFM.bin` 重提取；设备已装 rootfs 的 `native.contract` 与其中 5 个固件逐字节相同，说明实机本来就在用这组文件，见 §7 |
 | 13 | 安装器不再用 256GB 样例做预览 | 确认页现按设备 `userdata` 实际大小计算 `linux_root`/`linux_home`；`STOCK_TABLE` 只剩合成测试用，`--check` 不再打印虚构分区表 |
 
 **已撤销的登记（编号留空，避免其它文档的 `§5 #N` 引用错位）**
@@ -122,30 +122,35 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 - 2026-11-18 复核：`FLASHING` 的 "33554432 扇区 = 16 GiB" 按 512 B 扇区计
   是正确的，不是换算错误。
 
-## 7. 固件与 ROM 输入（已按 V14 重提取）
+## 7. 固件与 ROM 输入（V14 已对齐，无需再刷机）
 
-- **唯一受支持的 ROM 输入是 `V14.0.9.0.TMYCNXM`。** 装配 boot 所需的
-  ABL overlay/DTB 分析数据在
-  `tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis`（38 DTBO + 11 base DTB）。
-- 2026-11-18 已从本机 V14 线刷包重提取固件并替换 `device/firmware/`：
+- **唯一受支持的 ROM 输入是 `V14.0.9.0.TMYCNXM`**（MIUI 14 / Android 13）。
+  `OS2.0.6.0.VMYCNXM`（HyperOS 2 / Android 15）也是小米官方 liuqin 包，两者
+  都能刷进这台设备；区别是 Android 基线、厂商 blob 版本（WLAN/BT/DSP/触摸/
+  GPU/VPU）和传感器配置。参考项目用 OS2 是因为它的机器在 OS2；我们的 persist、
+  校准和已装 rootfs 都是 V14，所以统一用 V14，不混用。
+- 2026-11-18 已从 V14 线刷包重提取并替换 `device/firmware/`：
   1. `images/super.img`（Android sparse）→ `simg2img` → `lpunpack.py -p vendor_a`；
   2. `vendor_a.img` 是 EROFS → `fsck.erofs --extract` 取 `/firmware`
      （触摸、GPU、VPU、WLAN 板号文件）；
   3. `NON-HLOS.bin`（FAT）→ `mcopy` 取 DSP 68 件；`BTFM.bin` → `mcopy`
      取蓝牙 89 件；
-  4. 用 `tools/build-liuqin-firmware-prep.sh` 重新生成树（音频拓扑来自
-     仓库、WLAN tuple 来自 `out/wlan`、VPU 来自 V14 `/firmware`）。
-- 新树：**173 个文件 + 4 个符号链接**，`firmware.manifest` 逐文件 sha256。
-  关键值与 V14 提取物一致：触摸 `709726ba…`/`267f5eb0…`、VPU `cc27f8e3…`、
-  A730 SQE `8df3e5ab…`；蓝牙池与 V14 `BTFM.bin` 的 89 个文件逐一相同。
+  4. `tools/build-liuqin-firmware-prep.sh` 重新生成树（音频拓扑来自仓库、
+     WLAN tuple 来自 `out/wlan`、VPU 来自 V14 `/firmware`）。
+- 新树 **173 文件 + 4 符号链接**；触摸 `709726ba…`/`267f5eb0…`、VPU
+  `cc27f8e3…`、A730 SQE `8df3e5ab…` 与 V14 提取物一致，蓝牙 89 件与
+  V14 `BTFM.bin` 逐一相同。
+- **实机本来就在用这组固件**：`native.contract` 是设备已装 rootfs 的哈希快照，
+  其中 5 个 `/usr/lib/firmware` 条目与本次提取逐字节相同（旧 OS2 集是不匹配的）。
+  所以 `device/firmware/` 只是**构建期的副本**，供以后整包装配使用；
+  当前设备不需要因此重刷镜像，也不需要再做一次"固件验收"。
 - 与旧 OS2 集相比，V14 少 22 个蓝牙 patch 变体、且不带 `regulatory.db`
   （内核已内建签名 regdb，属可选）。这些是有意删除，不是漏拷。
-- **尚未做的**：新固件树还没有打进镜像上机复测。必须先装配含新固件的镜像，
-  冷启动验证 Wi-Fi（2.4/5G）、蓝牙、触控、外放、GPU，再在 §6 #12 划掉。
-- 工具默认路径全部指向 V14：`prepare-image-inputs.py`、`build-liuqin-firmware-prep.sh`、
-  `build-liuqin-sensors-stack.sh`、`build-liuqin-wlan.py` 的输入/注释。
-  原 Android 双系统用的 `liuqin-rom-images.json`（OS2 校验表）已随 dual 路径删除，
-  安装器改用设备常量 `PINNED_BOOT_BYTES = 192 MiB`。
+- 说明：`firmware.manifest` 是固件树的内容校验；脚本里的 `*_sha256` 只是
+  **漂移提示**（不一致时打印 note），不是发布/产品锁。没有新增任何产品 SHA
+  门禁，也不会因为换 ROM 而阻塞构建。
+- 原 Android 双系统用的 `liuqin-rom-images.json`（OS2 校验表）已随 dual 路径
+  删除，安装器改用设备常量 `PINNED_BOOT_BYTES = 192 MiB`。
 
 ## 8. 2026-11-18 决策记录
 

@@ -78,9 +78,9 @@ root、GNU tar、ACL/xattr、squashfs-tools、cpio、ARM64 binfmt；整包 CI
 - 音频拓扑：`tools/build-liuqin-audio-topology.sh`；
 - 传感器：`tools/build-liuqin-sensors-stack.sh`（V14 提取物）。
 
-> **已知缺口**：`device/firmware/` 里跟踪的 blob 仍是 2026-10-20 从
-> `OS2.0.6.0` 导入的旧集（见 `STATUS.zh-CN.md` §7）。重提取 V14 前，
-> 镜像里的固件不是 V14；不要声称已统一。
+> `device/firmware/` 已于 2026-11-18 按 V14 重提取（173 文件 + 4 符号链接），
+> 且设备已装 rootfs 本来就在用同组固件（`native.contract` 对照），
+> 不需要为换固件再刷镜像。OS2 是参考项目的 ROM，不混用。
 
 ## 5. 内核 deb 与模块
 

@@ -19,7 +19,9 @@ SM8475 DSP（adsp/cdsp/slpi，68 件）、QCA6490 蓝牙（89 件）、QCA6490 W
 | 音频拓扑 | 仓库 `tools/build-liuqin-audio-topology.sh` 构建 |
 | WLAN 运行时 | `out/wlan` 的 V14 HSP2 tuple + 上游 WCN6855 |
 
-生成器：`tools/build-liuqin-firmware-prep.sh`。关键值：触摸
+生成器：`tools/build-liuqin-firmware-prep.sh`。这台设备的已装 rootfs
+（`native.contract`）本来就在用这组固件，所以本目录只是构建期副本，
+**不需要为了这批 blob 再刷一次镜像**。关键值：触摸
 `709726ba…`（CSOT）/`267f5eb0…`（TM）、VPU `cc27f8e3…`、A730 SQE
 `8df3e5ab…`；蓝牙池与 V14 `BTFM.bin` 的 89 个文件逐一相同。
 
