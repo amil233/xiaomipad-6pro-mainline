@@ -40,8 +40,8 @@ esac
 # Touchscreen (NT36532, both panel-vendor variants; vendor_a.img).
 touch_dir=$pool/touch-nt36532/vendor/firmware
 touch_sha256="\
-2582cf81d6eeb69b57cb8b18b2afe683e9cd7e20ed0be390e14ed75302b0c584  novatek_nt36532_m81_fw_csot.bin
-3d9737da5e0fc3ea64e340c495067d4d6dcbd5ca2a2351fe955ec88fab35da1e  novatek_nt36532_m81_fw_tm.bin"
+709726bacaec710566a8619e4a31aa96ca4cdda7145d53ef46e3c8b037122cc9  novatek_nt36532_m81_fw_csot.bin
+267f5eb01047e63b72eefb686d57ab8ddb88debc606713aad7ef60b9908a53c6  novatek_nt36532_m81_fw_tm.bin"
 (cd "$touch_dir" && printf '%s\n' "$touch_sha256" | sha256sum -c --quiet -) ||
 	say "note: touchscreen firmware differs from the historical pin: $touch_dir"
 
@@ -76,10 +76,10 @@ else
 	say "wlan pool: derived the WCN6855 zst set from $tuple_dir/hw2.0"
 fi
 wlan_sha256="\
-d94af8648a0347903b68809b4100ea816e76afb6ead967c8b353c6521500f285  amss.bin.zst
-ba583c3550d15871dbbbe1349dab64bac5badced5b6bf122aa7263f8d7df76d4  board-2.bin.zst
-7769d18f26c025008221702e6884c9225f375db46d3e584e20223e33728376ec  m3.bin.zst
-c4b298869269bc55ca73d71beeb756b72a9b19e710cea2af0401accbafa2d3c7  regdb.bin.zst"
+545ae91592926649802069cdbf788aabf3b264e85e0481f8f6600c1517a3c54d  amss.bin.zst
+495d877c73c8ecf19ce8644c4d08e28d4785f3935f1f2517035657fae931d0cd  board-2.bin.zst
+3475ffceaac7bd6f172d9c54767f95764ccc9195f4a62a84607d339dc9916dff  m3.bin.zst
+1ac06385b40546c36857a66749ab85254e7c429ae72cd10f7d5a7faf6e483005  regdb.bin.zst"
 (cd "$wlan_dir" && printf '%s\n' "$wlan_sha256" | sha256sum -c --quiet -) ||
 	say 'note: upstream WCN6855 firmware differs from the historical pin'
 

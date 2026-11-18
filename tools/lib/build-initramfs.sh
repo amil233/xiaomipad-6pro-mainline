@@ -48,15 +48,15 @@ touch_firmware_sha256="\
 # check it against the same digest.
 bt_firmware_dir=${BT_FIRMWARE_DIR:-"$project_root/tools/local/firmware-liuqin/bt-qca6490/vendor/bt_firmware/image"}
 bt_firmware_pattern='^(hpbtfw2[01]\.tlv|hpnv2[01]g?\.(bin|b[0-9a-f]+))$'
-bt_firmware_set_sha256=d31712321a1c15591148a2e6a7ce94a12445558d2de82b48e5815abc581203a0
+bt_firmware_set_sha256=c89dd2a8174a5480b7a1ce9411d2eefa3732a9a43ce574a11c76fbfa2652462b
 wlan_board_file=${WLAN_BOARD_FILE:-"$project_root/tools/local/firmware-liuqin/wlan-qca6490/vendor/firmware_mnt/image/qca6490/bd_m81.elf"}
 wlan_board_sha256=aa8ae92d781e09db8cffa960b00c9606e4bb65d9c7a89f9b32df1bd24aee8573
 wlan_firmware_dir=${WLAN_FIRMWARE_DIR:-"$project_root/tools/local/firmware-liuqin/wlan-qca6490/upstream/WCN6855/hw2.0"}
 wlan_firmware_sha256="\
-d94af8648a0347903b68809b4100ea816e76afb6ead967c8b353c6521500f285  amss.bin.zst
-ba583c3550d15871dbbbe1349dab64bac5badced5b6bf122aa7263f8d7df76d4  board-2.bin.zst
-7769d18f26c025008221702e6884c9225f375db46d3e584e20223e33728376ec  m3.bin.zst
-c4b298869269bc55ca73d71beeb756b72a9b19e710cea2af0401accbafa2d3c7  regdb.bin.zst"
+545ae91592926649802069cdbf788aabf3b264e85e0481f8f6600c1517a3c54d  amss.bin.zst
+495d877c73c8ecf19ce8644c4d08e28d4785f3935f1f2517035657fae931d0cd  board-2.bin.zst
+3475ffceaac7bd6f172d9c54767f95764ccc9195f4a62a84607d339dc9916dff  m3.bin.zst
+1ac06385b40546c36857a66749ab85254e7c429ae72cd10f7d5a7faf6e483005  regdb.bin.zst"
 # The GNOME product image uses the complete HSP2-amss20 tuple that passed the
 # device validation. ath11k probes before
 # switch_root, so carrying this only in the stage-2 device layer would leave a

@@ -148,7 +148,7 @@ build_firmware() {
 		die 'firmware content does not match the pinned firmware-prep manifest'
 	count=$(find "$root/usr/lib/firmware" -type f | wc -l | tr -d ' ')
 	[ "$count" -ge 1 ] || die 'firmware closure is empty'
-	[ "$count" = 197 ] || say "note: firmware closure is $count files, historical pin was 197"
+	[ "$count" = 173 ] || say "note: firmware closure is $count files, historical pin was 173"
 	# The main-tree ath11k blobs (hw2.0 files and the hw2.1 symlinks pointing
 	# at them) collide with linux-firmware-qualcomm-wireless at different
 	# bytes; divert the distro copies so the pinned fallbacks survive a
