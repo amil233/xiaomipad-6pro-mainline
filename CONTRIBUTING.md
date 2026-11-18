@@ -1,19 +1,24 @@
-# Contributing
+# 参与贡献
 
-Device integration, build tools and documentation belong in this repository.
-Kernel changes belong in `linux-sm8450-liuqin`, on the `liuqin-7.3` branch.
-The project build selects an exact kernel commit through `kernel/source.json`.
+本仓库只维护 **Xiaomi Pad 6 Pro（liuqin，128G）** 的本机状态，工作分支是
+**`liuqin-7.3`**。`main` 只保留 2026 年从参考项目 v0.6.0 分出来时的历史骨架，
+不再接受更新。
 
-Keep changes focused and explain the behavior they address. Preserve original
-authors and license notices when adapting third-party code. Build and test the
-affected components before proposing a change.
+## 范围
 
-For device results, include the model, source revision, image version and steps
-to reproduce. Distinguish a successful build from a successful hardware test.
-Remove credentials, device addresses, serial numbers and personal data from
-logs before sharing them.
+- 内核改动在内核仓 `linux-sm8450-liuqin` 的 `liuqin-7.3` 分支；本仓库只放
+  设备配置、用户态适配、构建/安装工具、initramfs 与文档。
+- **不要提交 Android/双系统相关内容**：Android 资产、KernelSU 回切模块、
+  `liuqin-switch` 已移除；安装器的 `--layout dual` 已禁用。
+- ROM 输入只用 `V14.0.9.0.TMYCNXM`；不要引入 `OS2.0.6.0` 或其他版本的
+  数值、固件或校验值。
+- 文档只维护中文；英文版已删除。
 
-Do not change a published release tag. A release must identify its sources and
-build inputs, and its installation and recovery instructions must match the
-tested images. Kernel and root filesystem updates must preserve user accounts
-and files unless an explicitly selected reinstall requires otherwise.
+## 提交
+
+- 先取证再改：提交信息写清内核/镜像版本、证据位置、影响范围。
+- 一个提交只做一件事；内核升级按"新分支 → merge → 解冲突 → CI → 刷机 →
+  点亮才进下一级"。
+- 本地提交即可，**不要 push**；把 SHA 和推送命令交给维护者。
+- 文档改动同步更新 `docs/STATUS.zh-CN.md`（唯一状态源），历史文档只进
+  `docs/archive/`。

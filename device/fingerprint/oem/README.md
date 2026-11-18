@@ -1,6 +1,6 @@
 # FPC1264 OEM fingerprint support
 
-User guide: [English](../../../docs/FINGERPRINT.md) · [简体中文](../../../docs/FINGERPRINT.zh-CN.md).
+User guide: [English](../../../docs/FEATURES.zh-CN.md) · [简体中文](../../../docs/FEATURES.zh-CN.md).
 
 This optional liuqin component implements fingerprint enrollment through
 **Ubuntu Settings → System → Users → Fingerprint Login**, using the normal

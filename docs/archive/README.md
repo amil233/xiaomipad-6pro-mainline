@@ -8,8 +8,21 @@
 "Ubuntu 从 B 槽启动"）。当前事实只认：
 
 - [`../STATUS.zh-CN.md`](../STATUS.zh-CN.md) —— 唯一状态源
+- [`../INSTALL.zh-CN.md`](../INSTALL.zh-CN.md) —— 本机安装/恢复
+- [`../BUILD.zh-CN.md`](../BUILD.zh-CN.md) —— CI-only 构建
+- [`../FEATURES.zh-CN.md`](../FEATURES.zh-CN.md) —— 指纹/相机/快充/Waydroid
 - [`../display.md`](../display.md) —— 显示侧已确立的结论
 - [`../kernel-v73-divergence.md`](../kernel-v73-divergence.md) —— 内核偏离与 7.4 决策
+
+## 参考项目旧文档（`reference-v0.6.0/`）
+
+这一组是 2026 年从 `liuqin-6.17test`（yzddmr6）v0.6.0 分出来时保留的旧文档：
+双语 README、BUILD/INSTALL-TESTING/FLASHING、STAGE2、CAMERA/FINGERPRINT/
+FASTCHARGE/WAYDROID 的中文版。它们描述的是**参考项目**（6.17 内核、
+`OS2.0.6.0` ROM、256GB 开发机、B 槽/双系统），**不是本机**。
+
+保留原因只有一个：追溯"用户态骨架从哪来"。里面的容量、槽位、ROM、内核、
+版本号一律不得引用；本机事实只认上面列出的现行文档。
 
 ## 索引
 
