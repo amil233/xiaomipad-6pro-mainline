@@ -91,10 +91,14 @@ hashes 是参考仓 `liuqin-6.17test` 的提交。
 
 ### 7.1 建议先做（通用、低依赖）
 
+> 2026-11-18 已落地到本地 `liuqin-7.3`（尚未构建/安装到设备）：
+> `9fb6e8e` → `2197ecf`、`63bedc8` → `792336f`、`664c6c0`+`52136c8` → `76d663c`、
+> `58a4f49` → `d89ef8c`。`9fae989` 见下，本机不适用。
+
 | 参考提交 | 内容 | 为什么值得 | 风险 |
 |---|---|---|---|
 | `9fb6e8e` | `wlan-mac` 等 udev 处理完 netdev，而不是 `udev-settle` | 开机/Wi-Fi 竞态直接表现为“没 WiFi”；我们仍是 v0.6.0 写法 | 低 |
-| `9fae989` | deb 降级时忘掉旧版本没有的 unit | 我们正是 `0.1` 被 hold 的包，升级/回滚会踩 | 低 |
+| `9fae989` | deb 降级时忘掉旧版本没有的 unit | **不适用**：v0.6.0 包没有 enable/disable unit 的生命周期；等我们引入 unit 管理再取 | — |
 | `63bedc8` | GNOME Shell 50 null-actor 键盘 guard | Ubuntu 26.04 是 GNOME 50；触摸释放时的 null 异常与输入体验相关 | 低 |
 | `664c6c0` + `52136c8` | 登录界面/会话音频等 compositor 就绪再启动 | 首会话 PipeWire 抢设备的时序问题，通用 | 低 |
 | `e121682` | initramfs 在可写挂载前检查持久 ext4 | 掉电/坏根时的启动安全，纯 initramfs 脚本 | 低 |
