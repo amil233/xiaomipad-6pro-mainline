@@ -112,8 +112,8 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 9 | 电压/电流计数值 | c03e10 上机已正常；v0.8.0 相关改动已回退，不要重引入 |
 | 10 | 用户态版本落差 | 见 §3；合并与否待决策 |
 | 11 | 安装器槽位 | 本分支已把 linux-only 目标改为 A；双系统路径已禁用。**下一次全新安装要复核 `--set-active=a` 与 `boot_a` 回读** |
-| 12 | 固件集仍是 OS2 旧集 | 见 §7；在重提取前不要声称"固件已是 V14" |
-| 13 | 安装器离线预览表是 256GB 样例 | `liuqin_layout.py` 的 `STOCK_TABLE` 只用于 `--check` 预览与合成测试；实机安装读设备 GPT。128G 的真实表待从设备读出后替换 |
+| 12 | 固件集已换 V14，待真机复测 | 2026-11-18 从 V14 `super.img`/`NON-HLOS.bin`/`BTFM.bin` 重提取，见 §7；刷入含新固件的镜像后复测 Wi-Fi/蓝牙/触控/音频/GPU |
+| 13 | 安装器不再用 256GB 样例做预览 | 确认页现按设备 `userdata` 实际大小计算 `linux_root`/`linux_home`；`STOCK_TABLE` 只剩合成测试用，`--check` 不再打印虚构分区表 |
 
 **已撤销的登记（编号留空，避免其它文档的 `§5 #N` 引用错位）**
 
@@ -122,31 +122,30 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 - 2026-11-18 复核：`FLASHING` 的 "33554432 扇区 = 16 GiB" 按 512 B 扇区计
   是正确的，不是换算错误。
 
-## 7. 固件与 ROM 输入（V14 唯一，但树内 blob 仍待重提取）
+## 7. 固件与 ROM 输入（已按 V14 重提取）
 
 - **唯一受支持的 ROM 输入是 `V14.0.9.0.TMYCNXM`。** 装配 boot 所需的
   ABL overlay/DTB 分析数据在
   `tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis`（38 DTBO + 11 base DTB）。
-- 工具默认路径已全部指向 V14：`prepare-image-inputs.py`、`build-liuqin-firmware-prep.sh`、
+- 2026-11-18 已从本机 V14 线刷包重提取固件并替换 `device/firmware/`：
+  1. `images/super.img`（Android sparse）→ `simg2img` → `lpunpack.py -p vendor_a`；
+  2. `vendor_a.img` 是 EROFS → `fsck.erofs --extract` 取 `/firmware`
+     （触摸、GPU、VPU、WLAN 板号文件）；
+  3. `NON-HLOS.bin`（FAT）→ `mcopy` 取 DSP 68 件；`BTFM.bin` → `mcopy`
+     取蓝牙 89 件；
+  4. 用 `tools/build-liuqin-firmware-prep.sh` 重新生成树（音频拓扑来自
+     仓库、WLAN tuple 来自 `out/wlan`、VPU 来自 V14 `/firmware`）。
+- 新树：**173 个文件 + 4 个符号链接**，`firmware.manifest` 逐文件 sha256。
+  关键值与 V14 提取物一致：触摸 `709726ba…`/`267f5eb0…`、VPU `cc27f8e3…`、
+  A730 SQE `8df3e5ab…`；蓝牙池与 V14 `BTFM.bin` 的 89 个文件逐一相同。
+- 与旧 OS2 集相比，V14 少 22 个蓝牙 patch 变体、且不带 `regulatory.db`
+  （内核已内建签名 regdb，属可选）。这些是有意删除，不是漏拷。
+- **尚未做的**：新固件树还没有打进镜像上机复测。必须先装配含新固件的镜像，
+  冷启动验证 Wi-Fi（2.4/5G）、蓝牙、触控、外放、GPU，再在 §6 #12 划掉。
+- 工具默认路径全部指向 V14：`prepare-image-inputs.py`、`build-liuqin-firmware-prep.sh`、
   `build-liuqin-sensors-stack.sh`、`build-liuqin-wlan.py` 的输入/注释。
-- **但 `device/firmware/` 里跟踪的 197 个 blob 是 2026-10-20 从 `OS2.0.6.0`
-  导入的旧集**（提交 `dea2482` 的提交信息明写 OS2）。与本机 V14 提取池
-  `tools/local/firmware-liuqin/` 对比：201 个跟踪文件中 135 个哈希不同、
-  36 个在池里没有同名件（含 VPU、拓扑等）。触摸固件就是最直接的例子：
-  树内 `novatek_nt36532_m81_fw_tm.bin` 是 `3d9737da…`，V14 池里是 `267f5eb0…`。
-- **本机无法离线重提取 V14**：`V14.../extracted` 已被清理（只剩 `analysis`），
-  且本机没有 `simg2img`/`lpunpack`/`debugfs`，`super.img` 是稀疏镜像，
-  磁盘只剩 11 GB。因此"把树内固件换成 V14"必须在一台有 Android 解包工具、
-  且能访问 V14 `super.img` 的机器上做，步骤：
-  1. 解包 V14 `super.img` → `vendor_a`；
-  2. 按 `tools/build-liuqin-firmware-prep.sh` 的输入布局重摆 pool（触摸、BT、
-     WLAN、DSP、GPU、VPU、拓扑）；
-  3. 运行固件准备脚本生成新树，替换 `device/firmware/usr/lib/firmware/`，
-     重写 `firmware.manifest` 与 README；
-  4. 冷启动验证 Wi-Fi/蓝牙/触控/音频/GPU 后，再在 STATUS 把 #12 划掉。
-- **在 #12 完成前**：所有文档只写"目标/唯一输入是 V14"，不得写"固件池已
-  全部来自 V14"。原 Android 双系统用的 `liuqin-rom-images.json`（OS2 校验表）
-  已随 dual 路径一起删除，安装器改用设备常量 `PINNED_BOOT_BYTES = 192 MiB`。
+  原 Android 双系统用的 `liuqin-rom-images.json`（OS2 校验表）已随 dual 路径删除，
+  安装器改用设备常量 `PINNED_BOOT_BYTES = 192 MiB`。
 
 ## 8. 2026-11-18 决策记录
 
