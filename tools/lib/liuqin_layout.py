@@ -65,11 +65,11 @@ DEFAULT_SIZES = {'dual': ('96G', '32G'), 'linux-only': ('0', '32G')}
 WIPE_BYTES = 16 * MIB
 
 
-# The factory partition table of the 256 GB liuqin, taken from a read-only
-# inventory of a real tablet: partition numbers, sector bounds and names only.
-# No per-device identifier -- disk GUID, partition GUIDs, serial -- is recorded
-# here.  It serves the offline layout preview that the confirmation prompt
-# prints and the synthetic disk that tests/installer-layout.py builds.
+# A sample factory table used only for the offline layout preview and the
+# synthetic disk that tests/installer-layout.py builds.  It is a 256 GB test
+# unit's inventory, NOT this 128 GB tablet's table: a real installation always
+# reads the device's own GPT and re-plans from it.  No per-device identifier --
+# disk GUID, partition GUIDs, serial -- is recorded here.
 STOCK_TOTAL_SECTORS = 61731840
 STOCK_FIRST_USABLE = 6
 STOCK_LAST_USABLE = 61731834
