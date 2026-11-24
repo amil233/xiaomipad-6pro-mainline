@@ -76,8 +76,8 @@ sudo sh tools/build-liuqin-rootfs.sh           # 准备输入，然后装配
 ```
 
 `--check` 逐项检查：是不是 arm64（或有没有 qemu binfmt）、是不是 root、空闲
-空间、需要的命令、Ubuntu 桌面基础系统、内核产物、V14 提取树、WLAN 固件、
-固件池、busybox/mkbootimg、AudioReach 源码。
+空间、需要的命令、Ubuntu 桌面基础系统、内核产物、跟踪的固件池、WLAN tuple、
+传感器配置、AudioReach 子集和 busybox；完整装配还要 mkbootimg 和 ABL 分析。
 
 正式运行分三步：
 
@@ -176,15 +176,10 @@ sh tools/build-liuqin-boot.sh --deb
 
 通用镜像的输入都能从 V14 线刷包和公开上游得到，不需要额外提供文件：
 
-其中三样可以在这台开发机上先准备好，不需要 root，也不编译：
+AudioReach 源码已经以子集形式跟踪在 `device/audio-topology/upstream`，
+不需要另下。剩下两样源码可以在这台开发机上先准备好，不需要 root：
 
 ```sh
-# AudioReach 源码（约 1 MB）
-git clone https://github.com/linux-msm/audioreach-topology tools/local/audioreach-topology
-# 板级 m4 文件是按 2026-08-24 的源码写的；换别的版本可能生成不同的 topology
-git -C tools/local/audioreach-topology checkout \
-  "$(git -C tools/local/audioreach-topology log --before=2026-08-25 -1 --format=%H)"
-
 # 传感器栈的三个源码仓库（约 4 MB），按 sources.manifest 的 commit 检出
 SOURCES_ONLY=1 sh tools/build-liuqin-sensors-stack.sh
 

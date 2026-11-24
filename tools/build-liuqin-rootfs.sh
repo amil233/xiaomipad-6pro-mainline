@@ -117,6 +117,12 @@ else
 	report MISSING 'no consistent ci/liuqin-kernel-* artifact (copy one from CI or pass --kernel)'
 fi
 
+audio_sources_ok() {
+	[ -f "$project_root/device/audio-topology/upstream/audioreach/audioreach.m4" ] ||
+		[ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
+		[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]
+}
+
 say 'inputs'
 if [ -d "$project_root/device/sensors/rom" ]; then
 	report OK 'tracked sensor configuration: device/sensors/rom'
@@ -128,40 +134,32 @@ if [ -x "$project_root/tools/local/busybox-arm64/usr/bin/busybox" ]; then
 else
 	report MISSING 'busybox under tools/local (fetch-busybox-arm64.sh)'
 fi
-if [ "$rootfs_only" = 1 ]; then
-	if [ -d "$project_root/device/firmware-pool" ]; then
-		report OK 'tracked firmware pool: device/firmware-pool'
-	else
-		report MISSING 'tracked firmware pool device/firmware-pool'
-	fi
-	if [ -f "$project_root/device/wlan-tuple/hw2.0/board-2.bin" ]; then
-		report OK 'tracked WLAN tuple: device/wlan-tuple'
-	else
-		report MISSING 'tracked WLAN tuple device/wlan-tuple'
-	fi
-	if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
-		[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
-		report OK 'AudioReach topology sources'
-	else
-		report MISSING 'AudioReach topology sources (audioreach-topology checkout)'
-	fi
+if [ -d "$project_root/device/firmware-pool" ]; then
+	report OK 'tracked firmware pool: device/firmware-pool'
 else
-	if [ -f "$project_root/out/wlan/hw2.0/board-2.bin" ]; then
-		report OK 'WLAN HSP2 tuple: out/wlan'
-	else
-		report MISSING 'WLAN HSP2 tuple out/wlan (run tools/build-liuqin-wlan.py)'
-	fi
-	if [ -d "$project_root/tools/local/firmware-liuqin" ]; then report OK 'firmware pool: tools/local/firmware-liuqin'; else report MISSING 'firmware pool tools/local/firmware-liuqin'; fi
+	report MISSING 'tracked firmware pool device/firmware-pool'
+fi
+if [ -f "$project_root/device/wlan-tuple/hw2.0/board-2.bin" ]; then
+	report OK 'tracked WLAN tuple: device/wlan-tuple'
+else
+	report MISSING 'tracked WLAN tuple device/wlan-tuple'
+fi
+if audio_sources_ok; then
+	report OK 'AudioReach topology sources'
+else
+	report MISSING 'AudioReach topology sources (device/audio-topology/upstream)'
+fi
+if [ "$rootfs_only" = 0 ]; then
 	if [ -d "$project_root/tools/local/aosp-mkbootimg" ]; then
 		report OK 'mkbootimg'
 	else
 		report MISSING 'mkbootimg under tools/local (fetch-aosp-mkbootimg.sh)'
 	fi
-	if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
-		[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
-		report OK 'AudioReach topology sources'
+	if [ -d "$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo" ] &&
+		[ -d "$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs" ]; then
+		report OK 'ABL overlay/base DTB analysis'
 	else
-		report MISSING 'AudioReach topology sources (audioreach-topology checkout)'
+		report MISSING 'ABL overlay/base DTB analysis (tools/extract-v14-vendor.sh)'
 	fi
 fi
 
