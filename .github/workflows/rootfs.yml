@@ -26,7 +26,7 @@ jobs:
         with:
           path: project
           persist-credentials: false
-      - uses: ./.github/actions/free-disk
+      - uses: ./project/.github/actions/free-disk
 
       - name: Kernel branch
         id: kernel
