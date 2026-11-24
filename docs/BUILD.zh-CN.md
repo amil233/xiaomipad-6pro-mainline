@@ -11,7 +11,7 @@
 | `ci/liuqin-kernel-<sha>/` | `kernel/`：Image、`sm8475-xiaomi-liuqin.dtb`、`.config`、`vmlinux`、`System.map`、`SHA256SUMS`、`build-info.json`；`kernel-modules/`：`modules.tar`、`modules.manifest`、`kernel.release`、`kernel.commit`、`SHA256SUMS` | 内核仓 CI |
 | `boot.img` | Image + DTB + initramfs + ABL overlay，刷到 `boot_a` | 本机 `tools/build-liuqin-boot.sh`（日常），或整机装配（成对） |
 | `rootfs.tar.gz` | Ubuntu 26.04 桌面 + 设备/内核 deb；路径相对 `/`，保留属主、ACL、xattr | 整机装配（CI） |
-| `rootfs.img` | 上面那个 tar 的 ext4 版本，树放在 `native-root/` 下 | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
+| `rootfs.img` | 上面那个 tar 的 ext4 版本，树放在 `native-root/` 下，刷到原厂 `userdata` | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
 | `liuqin-kernel_*.deb` | `/usr/lib/modules/<release>` + `/boot` 载荷 + `/usr/share/liuqin/kernel.release` | 本机 `tools/build-liuqin-debs.sh` |
 
 `kernel/source.json` 是**唯一内核锁**：`commit`、`config_sha256`、10 个配置分片、
@@ -38,6 +38,7 @@ python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' \
 
 ```sh
 sh tools/build-liuqin-boot.sh            # 取锁对应的 artifact，装配到 repack/<sha6>-boot
+sh tools/build-liuqin-boot.sh --deb      # 同时打出配套的 liuqin-kernel deb
 sh tools/build-liuqin-boot.sh --check    # 只做下面三道检查，不生成镜像
 ```
 
@@ -71,8 +72,15 @@ sudo python3 tools/build-liuqin-image.py --inputs <inputs.json> --kernel-out <�
 
 - 阶段可续跑：`modules → debs → copy → install → assemble → manifest → boot →
   pack → bundle`，`--stage <名字>` 从某一步继续；`--out` 必须在 `out/` 下。
-- **不在本机跑**：需要 root、ARM64 chroot（apt/dpkg）、GNU tar/ACL/xattr、
-  squashfs，2 核笔记本不具备这个条件。
+- 输入清单不手写：镜像宿主机上先 `python3 tools/prepare-image-inputs.py check`
+  看哪些慢产物能复用，再 `sudo python3 tools/prepare-image-inputs.py run`，
+  它写出 `out/image-inputs.local.json`（`--inputs` 直接指向它）。runner 上则用
+  `/opt/liuqin/inputs.json`；两者格式相同。
+- runner 需要 root、ARM64 binfmt（非 arm64 主机上跑 chroot）、GNU tar/ACL/xattr、
+  squashfs-tools、`dpkg-deb`；`LIUQIN_IMAGE_CI=enabled` 是仓库变量。
+- **不在本机、更不在平板上跑**：需要 root、ARM64 chroot（apt/dpkg）、
+  GNU tar/ACL/xattr、squashfs；2 核笔记本不具备这个条件，平板只接收镜像。
+  这是与参考项目安装器最大的不同：rootfs 在设备外装配，设备端不做构建。
 - 产物是 `out/image/bundle/`：`boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
   `liuqin-firstboot.cpio.gz`、`bundle.json`、`SHA256SUMS`，加上安装/构建/功能
   文档和指纹构建输入。
@@ -95,30 +103,36 @@ rootfs 与内核是怎么对上的：
 
 ```sh
 sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist
-# 连 /home 也重装时（会清空 /home）：
-sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist --home-size 8G
 ```
 
 - **为什么需要这一步**：fastboot 写块设备；initramfs 把
-  `<linux_root>/native-root` 绑定成 `/`，所以树必须放在这个子目录。
+  `<userdata>/native-root` 绑定成 `/`，所以树必须放在这个子目录。
+- 为什么是 `userdata`：分区表保持原厂，`userdata` 是唯一的数据分区；根和
+  `/home` 都在这一块文件系统里。**没有** `linux_root`/`linux_home` 拆分，也
+  **没有** `/boot` 分区（内核由 `boot_a` 直接提供）。
 - 工具做什么：解包（`rootfs-archive.sh`，保留属主/ACL/xattr）→ 校验 marker 与
-  模块目录 → 补 `/etc/fstab` 的 `LABEL=LIUQIN_HOME /home`（这是布局，不属于
-  共享 rootfs）→ `mke2fs -d` → `e2fsck`/`dumpe2fs` 验证。
-- 默认大小 = 树 + 25%（至少 6G）。刷进分区后可以
-  `resize2fs /dev/disk/by-partlabel/linux_root` 长到整分区。
-- 只适用于**已存在** `linux_root`（以及可选的 `linux_home`）的设备；分区表是
-  一次性前提，见 `INSTALL.zh-CN.md` §1。
+  模块目录 → `mke2fs -d` → `e2fsck`/`dumpe2fs` 验证。它**不改** `/etc/fstab`：
+  没有第二个分区需要挂载。
+- 默认大小 = 树 + 25%（至少 6G）。刷进 `userdata` 后可以
+  `resize2fs /dev/disk/by-partlabel/userdata` 长到整个分区；镜像本身不必等于
+  分区大小，否则每次刷机都要传完整块设备。
+- Ubuntu rootfs 只在 CI 装配；平板从不构建自己的根文件系统，刷机主机也只做
+  “tar → ext4”这一步。
 
 ## 6. 内核 deb：更新内核的另一半
 
 ```sh
-sh tools/build-liuqin-debs.sh kernel
-# → out/liuqin-debs/liuqin-kernel_0.1_arm64.deb
+sh tools/build-liuqin-boot.sh --deb
+# → out/liuqin-debs/liuqin-kernel_0.1_arm64.deb（与 boot.img 同一个 artifact）
 ```
 
+它只是把 `tools/build-liuqin-debs.sh kernel` 需要的
+`KERNEL_MODULES_DIR`/`KERNEL_IMAGE`/`KERNEL_DTB` 从 artifact 里填好；直接调用
+底层脚本时要自己给这三个变量。
+
 纯文件包：`/usr/lib/modules/<release>`（自带 `modules.dep`）、
-`/boot/{vmlinuz,initrd,dtb}-<release>`、`/usr/share/liuqin/kernel.release`。
-没有维护脚本，装机后不需要 `depmod`；`/boot/initrd` 也不参与启动——启动用的
+`/boot/{vmlinuz,dtb}-<release>`、`/usr/share/liuqin/kernel.release`。
+没有维护脚本，装机后不需要 `depmod`；也不带 `/boot/initrd`——启动用的
 initramfs 在 boot.img 里。更新内核时它与新 boot.img 一起上机：
 **deb 换模块与 release，boot.img 换 Image/DTB/initramfs**；契约不变。
 上机顺序见 `INSTALL.zh-CN.md` §3。

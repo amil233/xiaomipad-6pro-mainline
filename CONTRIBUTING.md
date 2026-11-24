@@ -1,7 +1,7 @@
 # 参与贡献
 
 本仓库只维护 **Xiaomi Pad 6 Pro（liuqin，128G）** 的本机状态，工作分支是
-**`liuqin-7.3`**。`main` 只保留 2026 年从参考项目 v0.6.0 分出来时的历史骨架，
+**`liuqin-install`**（与内核仓的 `liuqin-7.3` 区分开）。`main` 只保留 2026 年从参考项目 v0.6.0 分出来时的历史骨架，
 不再接受更新。
 
 ## 范围
@@ -11,8 +11,8 @@
 - **不要提交 Android/双系统相关内容**：Android 资产、KernelSU 回切模块、
   `liuqin-switch` 已移除；参考项目式的安装器（`installer.img` / `install.py` /
   `--layout dual`）已整体移除，不再实现设备端安装流程。上机只保留两条 fastboot：
-  `boot.img → boot_a`、`rootfs.img → linux_root`；rootfs 镜像在刷机主机上由
-  `rootfs.tar.gz` 生成（`tools/build-liuqin-rootfs-image.sh`）。
+  `boot.img → boot_a`、`rootfs.img → userdata`（原厂单块数据分区）；rootfs
+  镜像在刷机主机上由 `rootfs.tar.gz` 生成（`tools/build-liuqin-rootfs-image.sh`）。
 - ROM 输入只用 `V14.0.9.0.TMYCNXM`；不要引入 `OS2.0.6.0` 或其他版本的
   数值、固件或校验值。
 - 文档只维护中文；英文版已删除。

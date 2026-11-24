@@ -1,8 +1,10 @@
-# xiaomipad-6pro-mainline（liuqin-7.3 分支）
+# xiaomipad-6pro-mainline（liuqin-install 分支）
 
 Xiaomi Pad 6 Pro（liuqin，**128G**）上的 Ubuntu 26.04 arm64 单系统：
 本工作区自建的主线 **7.3** 内核 + 树外驱动，**没有 Android**，
-**从 A 槽直接启动**。
+**从 A 槽直接启动**。分区表保持原厂：`boot_a` 换成我们的 boot.img，
+`userdata` 是唯一的数据分区（根在这里，`/home` 只是它上面的一个目录），
+**不建** `linux_root`/`linux_home`，也**没有** `/boot` 分区。
 
 本分支只维护**本机**的设备状态、装配工具与文档。`main` 是 2026 年从参考项目
 v0.6.0 分出来时的用户态骨架，不再更新；参考项目的文档已整体归档到
@@ -30,7 +32,7 @@ GitHub Actions ──▶ ci/liuqin-kernel-<sha>/        锁：kernel/source.json
         │                                  ▼
         │                             rootfs.img
         ▼                                  ▼
-  fastboot flash boot_a          fastboot flash linux_root
+  fastboot flash boot_a          fastboot flash userdata
         └───────────────┬────────────────┘
              冷启动 → 首启 provision → GNOME
 ```
@@ -44,20 +46,21 @@ GitHub Actions ──▶ ci/liuqin-kernel-<sha>/        锁：kernel/source.json
 | boot ↔ rootfs | boot.img 的 initramfs 内嵌 rootfs 的设备文件契约；不符就拒绝挂载 | `build-liuqin-boot.sh`、initramfs |
 
 由此得到两条规则：**只换内核** → 新 boot.img + 新内核 deb（契约不锁内核文件，
-所以契约不变）；**动了用户态** → boot.img 与 rootfs 成对换（契约随 rootfs 变）。
+所以契约不变，`userdata` 不动）；**动了用户态** → boot.img 与 rootfs 成对换
+（契约随 rootfs 变，整块 `userdata` 重写，`/home` 先备份）。
 
 ## 三条命令（开发机 + 刷机主机）
 
 ```sh
 # 开发机：内核。CI artifact 放进 ci/ 后，一条命令装配 boot.img（含配对检查）
-sh tools/build-liuqin-boot.sh
+sh tools/build-liuqin-boot.sh          # 加 --deb 同时打出配套的内核 deb
 
 # 刷机主机：用户态。把整机装配产出的 rootfs.tar.gz 变成可刷的 ext4 镜像
 sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist
 
 # 刷机主机：连平板
 fastboot flash boot_a    repack/<sha6>-boot/boot-liuqin-firstboot.img
-fastboot flash linux_root out/dist/rootfs.img
+fastboot flash userdata out/dist/rootfs.img
 ```
 
 日常循环只有第 1 条（约 15 秒，不编译内核）。第 2、3 条只在首次安装、重装

@@ -258,7 +258,7 @@ def main():
         if stage == 'bundle':
             destination = out / 'bundle'
             destination.mkdir()
-            # Android/dual-boot packaging was removed on the liuqin-7.3
+            # Android/dual-boot packaging was removed on the liuqin-install
             # branch: this device is single-system and boots slot A.
             files = {'boot.img': out / 'boot/boot-liuqin-native.img',
                      'rootfs.tar.gz': out / 'root/rootfs.tar.gz',
