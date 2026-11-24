@@ -13,8 +13,8 @@
 #   * root (chroot, ownership, tar xattrs)
 #   * aarch64 host, or qemu-aarch64 binfmt with the P flag on another arch
 #   * about 20 GiB free (ISO 3.9 + casper 3.2 + desktop root 3.2 + copy 3.2 + tar ~3 GiB)
-#   * the tracked firmware/sensor inputs, the Ubuntu ISO, and the
-#     CI kernel artifact of kernel/source.json
+#   * the tracked firmware pool, WLAN tuple, sensor configuration and
+#     AudioReach sources, the Ubuntu ISO, and the kernel artifact
 #
 # usage:
 #   sudo sh tools/build-liuqin-rootfs.sh --check     # report readiness only
@@ -88,8 +88,7 @@ if [ "${free_gb:-0}" -ge "$need_gb" ]; then
 else
 	report MISSING "free space ${free_gb:-0} GiB (need about $need_gb GiB)"
 fi
-tools='python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 zstd patch'
-[ "$rootfs_only" = 1 ] || tools="$tools alsatplg"
+tools='python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 alsatplg zstd patch'
 for tool in $tools; do
 	command -v "$tool" >/dev/null 2>&1 || report MISSING "tool: $tool"
 done
@@ -131,10 +130,21 @@ else
 	report MISSING 'busybox under tools/local (fetch-busybox-arm64.sh)'
 fi
 if [ "$rootfs_only" = 1 ]; then
-	if [ -d "$project_root/device/firmware/usr/lib/firmware" ]; then
-		report OK 'tracked firmware tree: device/firmware'
+	if [ -d "$project_root/device/firmware-pool" ]; then
+		report OK 'tracked firmware pool: device/firmware-pool'
 	else
-		report MISSING 'tracked firmware tree device/firmware'
+		report MISSING 'tracked firmware pool device/firmware-pool'
+	fi
+	if [ -f "$project_root/device/wlan-tuple/hw2.0/board-2.bin" ]; then
+		report OK 'tracked WLAN tuple: device/wlan-tuple'
+	else
+		report MISSING 'tracked WLAN tuple device/wlan-tuple'
+	fi
+	if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
+		[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
+		report OK 'AudioReach topology sources'
+	else
+		report MISSING 'AudioReach topology sources (audioreach-topology checkout)'
 	fi
 else
 	if [ -f "$project_root/out/wlan/hw2.0/board-2.bin" ]; then

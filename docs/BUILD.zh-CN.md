@@ -98,7 +98,7 @@ bundle 里有 `boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
 | 权限 | root（chroot、属主、tar 的 ACL/xattr） |
 | 磁盘 | 峰值约 20 GB（GitHub runner 145 GiB，清理后 118 GiB） |
 | 命令 | `dpkg-deb`、GNU `tar`、`unsquashfs`、`7z`、`m4`、`alsatplg`、`zstd`、`patch`、`git`、`curl`、`chroot`/`mount`/`unshare` |
-| 输入 | `tools/local`、V14 提取树、AudioReach 源码、内核产物 |
+| 输入 | `device/firmware-pool`、`device/wlan-tuple`、`device/sensors/rom`、AudioReach 源码、内核产物 |
 
 磁盘实测（26.04.1 ISO，arm64）：
 
@@ -124,7 +124,7 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
 版本和校验和），`dtc`/`fdtoverlay` 用系统包。
 
-集成仓的 `.github/workflows/rootfs.yml` 只装 rootfs：用 `PAT_GET_KERNEL`
+集成仓的 `.github/workflows/rootfs.yml` 只装 rootfs：用跟踪的固件池、WLAN tuple 和 AudioReach 源码重建固件树，用 `PAT_GET_KERNEL`
 下载内核仓最近的 artifact，在托管 arm64 runner 上运行
 `build-liuqin-rootfs.sh --rootfs-only`，上传分片的 `rootfs.tar.gz` 和
 `native-root.hashes`，不生成 boot.img。`.github/workflows/build.yml` 在
@@ -203,12 +203,13 @@ sudo python3 tools/prepare-image-inputs.py run
 | 输入 | 来源 |
 |---|---|
 | Ubuntu 26.04.1 桌面 ISO | cdimage.ubuntu.com，下载时核对官方 `SHA256SUMS` |
-| 触摸/GPU/VPU/传感器配置 | V14 `super.img` 的 vendor 分区；`tools/extract-v14-vendor.sh` 解出 |
+| 固件池、传感器配置 | V14 `super.img` 的 vendor 分区；已提取为 `device/firmware-pool`、`device/sensors/rom` |
 | WLAN qca6490 固件 | V14 `NON-HLOS.bin`（modem 分区的 FAT）里的 `/qca6490/` |
 | 指纹固件 | 同一个 FAT 根目录的 `fpcliu.*` |
 | 指纹用户态 | `device/fingerprint/oem/` 的源码；默认另下载参考项目 v0.6.0 发布包里的预编译输入（解压时核对包内 `SHA256.json`），可用 `FINGERPRINT_BUNDLE` 换成本地重建的包 |
 | 蓝牙固件 | V14 `BTFM.bin` |
 | ABL 覆盖层和基设备树 | V14 `dtbo.img`、`vendor_boot.img` |
+| WLAN tuple | 已提取为 `device/wlan-tuple`（V14 qca6490 + 上游 board） |
 | WLAN 上游固件 | linux-firmware 的 WCN6855 文件 |
 | WLAN bdencoder | qca-swiss-army-knife 的 `ath11k-bdencoder`（Python） |
 | 音频拓扑 | linux-msm/audioreach-topology |

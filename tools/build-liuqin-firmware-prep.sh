@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 #
-# Prepare the liuqin firmware tree from pinned stock and upstream firmware,
+# Prepare the liuqin firmware tree from the tracked stock and upstream firmware,
 # source-built AudioReach topology and tools/build-liuqin-wlan.py output.
 #
 # Per-device objects are deliberately absent: the CS35L41 cirrus/*-calr.bin
@@ -11,8 +11,8 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-pool=${FIRMWARE_POOL:-$project_root/tools/local/firmware-liuqin}
-vpu_blob=${VPU_BLOB:-$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/firmware/vpu20_4v.mbn}
+pool=${FIRMWARE_POOL:-$project_root/device/firmware-pool}
+vpu_blob=${VPU_BLOB:-$project_root/device/firmware-pool/vpu20_4v.mbn}
 topology_bin=${TOPOLOGY_BIN:?set TOPOLOGY_BIN to the output of tools/build-liuqin-audio-topology.sh}
 tuple_dir=${HSP2_TUPLE_DIR:?set HSP2_TUPLE_DIR to the output of tools/build-liuqin-wlan.py}
 out_dir=${OUT_DIR:?set OUT_DIR to a fresh output directory}

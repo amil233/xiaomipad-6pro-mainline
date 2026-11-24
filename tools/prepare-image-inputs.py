@@ -14,8 +14,8 @@ This tool fingerprints those source sets, keeps the produced artifacts under
 tools/local/artifacts-cache/ keyed by fingerprint, and reuses an artifact
 when its fingerprint still matches.  An artifact is admitted only after its
 recorded sha256 re-verifies against the bytes on disk; anything else is
-rebuilt.  Cheap inputs (audio topology, firmware tree, WLAN tuple) are
-rebuilt fresh on every run so they can never go stale silently.
+rebuilt.  The audio topology and firmware tree are rebuilt on every run from the
+tracked pool, WLAN tuple and AudioReach sources, so they cannot go stale.
 
 Usage:
   python3 tools/prepare-image-inputs.py check    # report reuse/rebuild, no work
@@ -228,9 +228,9 @@ def cmd_check(rootfs: bool) -> None:
             else 'REBUILD (sources changed or no verified cache entry)'
         print(f'{name}: {state}')
     if rootfs:
-        firmware = PROJECT / 'device/firmware/usr/lib/firmware'
-        print('firmware:', 'tracked device/firmware' if firmware.is_dir()
-              else f'MISSING {firmware}')
+        for name, path in (('firmware pool', PROJECT / 'device/firmware-pool'),
+                           ('WLAN tuple', PROJECT / 'device/wlan-tuple')):
+            print(f'{name}:', 'tracked' if path.is_dir() else f'MISSING {path}')
         busybox = PROJECT / 'tools/local/busybox-arm64/usr/bin/busybox'
         print('busybox:', 'present' if busybox.is_file() else 'will fetch')
 
@@ -255,28 +255,17 @@ def cmd_run(rootfs: bool) -> None:
         cache_store(cache, 'gnome-control-center', plan['settings']['fp'], settings_bin)
     save_cache(cache)
 
-    if rootfs:
-        # Rootfs assembly consumes the tracked firmware tree; it does not need
-        # the AudioReach build, the WLAN tuple, the ABL overlays or the pool.
-        firmware_dir = PROJECT / 'device/firmware'
-        if not (firmware_dir / 'usr/lib/firmware').is_dir():
-            raise SystemExit(f'tracked firmware tree is missing: {firmware_dir}')
-        firmware_manifest = firmware_dir / 'firmware.manifest'
-    else:
-        topology_bin = PREPARED / 'topology/Xiaomi-Pad-6-Pro-tplg.bin'
-        rebuild_topology(topology_bin)
+    topology_bin = PREPARED / 'topology/Xiaomi-Pad-6-Pro-tplg.bin'
+    rebuild_topology(topology_bin)
 
-        # build-liuqin-wlan.py writes the HSP2 tuple to out/wlan by default; the
-        # old out/wlan-source-check name was never produced by any builder.
-        wlan = Path(os.environ.get('WLAN_HSP2_TUPLE', PROJECT / 'out/wlan')).resolve()
-        if not (wlan / 'hw2.0' / 'board-2.bin').is_file():
-            raise SystemExit(f'WLAN tuple is missing or incomplete: {wlan} '
-                             '(build it with tools/build-liuqin-wlan.py)')
+    wlan = Path(os.environ.get('WLAN_HSP2_TUPLE', PROJECT / 'device/wlan-tuple')).resolve()
+    if not (wlan / 'hw2.0' / 'board-2.bin').is_file():
+        raise SystemExit(f'WLAN tuple is missing or incomplete: {wlan}')
 
-        firmware_dir = PREPARED / 'firmware'
-        subprocess.run(['rm', '-rf', str(firmware_dir)], check=True)
-        rebuild_firmware(firmware_dir, topology_bin, wlan)
-        firmware_manifest = firmware_dir / 'firmware.manifest'
+    firmware_dir = PREPARED / 'firmware'
+    subprocess.run(['rm', '-rf', str(firmware_dir)], check=True)
+    rebuild_firmware(firmware_dir, topology_bin, wlan)
+    firmware_manifest = firmware_dir / 'firmware.manifest'
 
     settings_manifest = PREPARED / 'settings-manifest.json'
     settings_manifest.parent.mkdir(parents=True, exist_ok=True)
@@ -314,7 +303,7 @@ def cmd_run(rootfs: bool) -> None:
         inputs = common
     else:
         inputs = dict(common,
-                      FIRMWARE_POOL=str(PROJECT / 'tools/local/firmware-liuqin'),
+                      FIRMWARE_POOL=str(PROJECT / 'device/firmware-pool'),
                       AUDIO_TOPOLOGY=str(topology_bin),
                       WLAN_HSP2_TUPLE=str(wlan),
                       STOCK_OVERLAY_DIR=str(env_path('STOCK_OVERLAY_DIR',
