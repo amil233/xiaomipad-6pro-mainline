@@ -24,10 +24,10 @@ iio_claim_patch=${IIO_CLAIM_PATCH:-$project_root/device/sensors/patches/0003-iio
 iio_polling_patch=${IIO_POLLING_PATCH:-$project_root/device/sensors/patches/0004-iio-sensor-proxy-serialize-ssc-accel-polling.patch}
 iio_release_patch=${IIO_RELEASE_PATCH:-$project_root/device/sensors/patches/0005-iio-sensor-proxy-cancel-released-pending-claims.patch}
 iio_availability_patch=${IIO_AVAILABILITY_PATCH:-$project_root/device/sensors/patches/0006-iio-sensor-proxy-broadcast-sensor-availability.patch}
+iio_gate_patch=${IIO_GATE_PATCH:-$project_root/device/sensors/patches/0007-iio-sensor-proxy-test-coldplug-gate.patch}
 out_dir=${OUT_DIR:-$project_root/out/liuqin-sensors-stack}
 jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 12)}
 update_apt=${UPDATE_APT:-0}
-allow_coldplug_skip=${SSC_ALLOW_COLDPLUG_SKIP:-0}
 resume=${RESUME:-0}
 assemble_only=${ASSEMBLE_ONLY:-0}
 caller_uid=${SUDO_UID:-$(id -u)}
@@ -87,6 +87,7 @@ fi
 [ -r "$iio_polling_patch" ] || die "missing iio-sensor-proxy patch: $iio_polling_patch"
 [ -r "$iio_release_patch" ] || die "missing iio-sensor-proxy patch: $iio_release_patch"
 [ -r "$iio_availability_patch" ] || die "missing iio-sensor-proxy patch: $iio_availability_patch"
+[ -r "$iio_gate_patch" ] || die "missing iio-sensor-proxy test gate patch: $iio_gate_patch"
 [ -d "$static_overlay" ] || die "missing static sensor overlay: $static_overlay"
 [ -d "$rom_sensors/config" ] || die "missing exact-ROM sensor config: $rom_sensors/config"
 [ -r "$rom_sensors/sns_reg_config" ] || die 'missing exact-ROM sns_reg_config'
@@ -160,6 +161,9 @@ for patch in "$iio_polling_patch" "$iio_release_patch" "$iio_availability_patch"
 	git -C "$work/source/iio-sensor-proxy" apply --check "$patch" || die "sensor patch does not apply: $patch"
 	git -C "$work/source/iio-sensor-proxy" apply "$patch"
 done
+git -C "$work/source/iio-sensor-proxy" apply --check "$iio_gate_patch" ||
+	die 'coldplug test gate patch no longer applies after the sensor patches'
+git -C "$work/source/iio-sensor-proxy" apply "$iio_gate_patch"
 git -C "$work/source/iio-sensor-proxy" diff --check ||
 	say 'note: iio-sensor-proxy patch leaves whitespace warnings'
 
@@ -277,7 +281,6 @@ cat >"$merged/build/build.sh" <<'EOF'
 #!/bin/sh
 set -eu
 jobs=${JOBS:-12}
-allow_coldplug_skip=${SSC_ALLOW_COLDPLUG_SKIP:-0}
 # Keep deterministic messages by default, but do not set LC_ALL: two upstream
 # tests intentionally override LC_NUMERIC=fr_FR.UTF-8 and LC_ALL would win.
 unset LC_ALL
@@ -420,17 +423,14 @@ if ! top_builddir=/build/work/iio-sensor-proxy \
 	cat "$ssc_log" >&2
 	exit 1
 fi
-ssc_coldplug_skipped=0
-if grep -q '^OK$' "$ssc_log"; then
-	:
-elif [ "$allow_coldplug_skip" = 1 ] && grep -q '^OK (skipped=1)$' "$ssc_log" &&
-	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* skipped ' "$ssc_log" &&
-	! grep -Eq '^test_liuqin_ssc_accel .* skipped ' "$ssc_log"; then
-	ssc_coldplug_skipped=1
-	printf '%s\n' 'note: coldplug-claim race was lost on this host; that one test is skipped' >&2
-else
+grep -q '^OK$' "$ssc_log" || {
 	cat "$ssc_log" >&2
 	printf '%s\n' 'SSC accelerometer integration test did not complete with OK' >&2
+	exit 1
+}
+if grep -Eq '^test_liuqin_ssc_(accel|claim_during_coldplug) .* skipped ' "$ssc_log"; then
+	cat "$ssc_log" >&2
+	printf '%s\n' 'SSC accelerometer integration test was skipped' >&2
 	exit 1
 fi
 grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_log" || {
@@ -438,13 +438,11 @@ grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_log" || {
 	printf '%s\n' 'normal SSC accelerometer claim did not pass' >&2
 	exit 1
 }
-if [ "$ssc_coldplug_skipped" = 0 ]; then
-	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_log" || {
-		cat "$ssc_log" >&2
-		printf '%s\n' 'SSC Claim-before-coldplug regression did not pass' >&2
-		exit 1
-	}
-fi
+grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_log" || {
+	cat "$ssc_log" >&2
+	printf '%s\n' 'SSC Claim-before-coldplug regression did not pass' >&2
+	exit 1
+}
 cleanup_ssc_server
 trap - EXIT HUP INT TERM
 fi
@@ -459,7 +457,7 @@ dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
 	LC_ALL=C sort >/build/dest/ubuntu-resolute-build-deps.tsv
 EOF
 chmod 0755 "$merged/build/build.sh"
-SSC_ALLOW_COLDPLUG_SKIP=$allow_coldplug_skip JOBS=$jobs chroot "$merged" /build/build.sh
+JOBS=$jobs chroot "$merged" /build/build.sh
 ;;
 1)
 	[ -x "$merged/build/dest/usr/bin/ssccli" ] || die 'ASSEMBLE_ONLY has no completed ssccli'
@@ -489,23 +487,15 @@ if grep -q 'QIPCRTR protocol not supported' "$ssc_server_log" 2>/dev/null; then
 	say '      on the tablet at first boot.'
 else
 	[ -r "$ssc_accel_log" ] || die 'SSC accelerometer integration log is absent'
-	if ! grep -q '^OK$' "$ssc_accel_log"; then
-		[ "$allow_coldplug_skip" = 1 ] &&
-		grep -q '^OK (skipped=1)$' "$ssc_accel_log" &&
-		grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* skipped ' "$ssc_accel_log" &&
-		! grep -Eq '^test_liuqin_ssc_accel .* skipped ' "$ssc_accel_log" ||
-			die 'SSC accelerometer integration log is not a PASS with only the coldplug race skipped'
-		printf '%s\n' 'note: coldplug-claim race was lost on this host; that one test is skipped' >&2
+	grep -q '^OK$' "$ssc_accel_log" || die 'SSC accelerometer integration log is not an unskipped PASS'
+	if grep -Eq '^test_liuqin_ssc_(accel|claim_during_coldplug) .* skipped ' "$ssc_accel_log"; then
+		die 'SSC accelerometer integration log contains a skipped test'
 	fi
 	grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_accel_log" ||
 		die 'normal SSC accelerometer claim is absent from the integration log'
-	if grep -q '^OK$' "$ssc_accel_log"; then
-		grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_accel_log" ||
-			die 'Claim-before-coldplug regression is absent from the integration log'
-		cp "$ssc_accel_log" "$out_dir/artifacts/iio-ssc-accel-unskipped.log"
-	else
-		cp "$ssc_accel_log" "$out_dir/artifacts/iio-ssc-accel-skipped-coldplug.log"
-	fi
+	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_accel_log" ||
+		die 'Claim-before-coldplug regression is absent from the integration log'
+	cp "$ssc_accel_log" "$out_dir/artifacts/iio-ssc-accel-unskipped.log"
 fi
 
 # libqrtr is a direct dependency of the upstream libssc test server and is not

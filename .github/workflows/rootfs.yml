@@ -90,7 +90,7 @@ jobs:
 
       - name: Assemble rootfs
         run: |
-          sudo env DROP_ISO=1 SSC_ALLOW_COLDPLUG_SKIP=1 sh project/tools/build-liuqin-rootfs.sh \
+          sudo env DROP_ISO=1 sh project/tools/build-liuqin-rootfs.sh \
             --rootfs-only \
             --kernel "${{ steps.kernel_artifact.outputs.dir }}" \
             --out "$PWD/project/out/image"

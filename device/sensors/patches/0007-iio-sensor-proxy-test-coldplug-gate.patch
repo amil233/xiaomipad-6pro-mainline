@@ -1,0 +1,40 @@
+diff --git a/src/iio-sensor-proxy.c b/src/iio-sensor-proxy.c
+index 0f0dfbb..e12eadc 100644
+--- a/src/iio-sensor-proxy.c
++++ b/src/iio-sensor-proxy.c
+@@ -804,6 +804,26 @@ bus_acquired_handler (GDBusConnection *connection,
+ 	data->connection = g_object_ref (connection);
+ }
+ 
++/*
++ * Test-only gate: process pending D-Bus calls until the test creates the gate
++ * file.  The integration test uses it to claim a sensor after the bus name is
++ * owned but before synchronous coldplug discovery starts, deterministically.
++ */
++static void
++wait_for_test_coldplug_gate (void)
++{
++	const char *gate = g_getenv ("IIO_SENSOR_PROXY_TEST_COLDPLUG_GATE");
++
++	if (gate == NULL || *gate == '\0')
++		return;
++
++	while (!g_file_test (gate, G_FILE_TEST_EXISTS)) {
++		while (g_main_context_iteration (NULL, FALSE))
++			;
++		g_usleep (1000);
++	}
++}
++
+ static void
+ name_acquired_handler (GDBusConnection *connection,
+ 		       const gchar     *name,
+@@ -822,6 +842,8 @@ name_acquired_handler (GDBusConnection *connection,
+ 	for (i = 0; i < NUM_SENSOR_TYPES; i++)
+ 		data->sensor_startup_dbus_invocations_delayed[i] = g_ptr_array_new ();
+ 
++	wait_for_test_coldplug_gate ();
++
+ 	if (!find_sensors (data->client, data))
+ 		goto bail;
+ 

@@ -5,6 +5,7 @@
 import importlib.util
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,7 +33,11 @@ def main() -> int:
     class LiuqinSSCTests(module.Tests):
         def start_daemon_before_coldplug_finishes(self):
             """Own the proxy as soon as its bus name appears, before SSC discovery."""
+            gate_dir = tempfile.mkdtemp(prefix="liuqin-coldplug-gate.")
+            self.gate = pathlib.Path(gate_dir) / "open"
+            self.addCleanup(shutil.rmtree, gate_dir, ignore_errors=True)
             env = os.environ.copy()
+            env["IIO_SENSOR_PROXY_TEST_COLDPLUG_GATE"] = str(self.gate)
             env["G_DEBUG"] = "fatal-criticals"
             env["G_MESSAGES_DEBUG"] = "all"
             env["UMOCKDEV_DEBUG"] = "all"
@@ -106,29 +111,28 @@ def main() -> int:
 
         def test_liuqin_ssc_claim_during_coldplug(self):
             self.add_liuqin_accelerometer(self.testbed)
-            # Coldplug can finish before the first property read on a fast or
-            # loaded host.  Start the claim as soon as the bus name appears
-            # and retry a few daemon runs before treating the race as skipped.
-            for _ in range(5):
-                self.start_daemon_before_coldplug_finishes()
-                self.proxy.ClaimAccelerometer()
-                self.assertEventually(
-                    lambda: self.get_dbus_property("AccelerometerOrientation")
-                    == "left-up",
-                    timeout=60,
-                )
-                self.assertEqual(self.get_dbus_property("HasAccelerometer"), True)
+            self.start_daemon_before_coldplug_finishes()
 
-                with open(self.log.name, encoding="utf-8") as daemon_log:
-                    output = daemon_log.read()
-                claim = output.find(
-                    "Handling driver refcounting method 'ClaimAccelerometer'"
-                )
-                discovered = output.find("Found device ")
-                self.stop_daemon()
-                if claim >= 0 and discovered > claim and output.count("Enabling sensor (") == 1:
-                    return
-            self.skipTest("coldplug finished before the claim on this host")
+            self.assertEqual(self.get_dbus_property("HasAccelerometer"), False)
+            self.proxy.ClaimAccelerometer()
+            self.gate.touch()
+            self.assertEventually(
+                lambda: self.get_dbus_property("AccelerometerOrientation")
+                == "left-up",
+                timeout=60,
+            )
+            self.assertEqual(self.get_dbus_property("HasAccelerometer"), True)
+
+            with open(self.log.name, encoding="utf-8") as daemon_log:
+                output = daemon_log.read()
+            claim = output.find(
+                "Handling driver refcounting method 'ClaimAccelerometer'"
+            )
+            discovered = output.find("Found device ")
+            self.assertGreaterEqual(claim, 0)
+            self.assertGreater(discovered, claim)
+            self.assertEqual(output.count("Enabling sensor ("), 1)
+            self.stop_daemon()
 
     suite = unittest.TestSuite(
         (
