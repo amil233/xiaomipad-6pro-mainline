@@ -20,6 +20,7 @@
 # usage:
 #   sh tools/build-liuqin-boot.sh                     # artifact of the lock
 #   sh tools/build-liuqin-boot.sh --check             # verify, build nothing
+#   sh tools/build-liuqin-boot.sh --deb               # also the kernel deb
 #   sh tools/build-liuqin-boot.sh --kernel CI_DIR --ramdisk FILE --out DIR
 #
 # Everything is local: the kernel is not compiled here, and no device is
@@ -37,7 +38,7 @@ sha() { sha256sum "$1" | cut -d' ' -f1; }
 usage() {
 	cat <<'EOF'
 usage: build-liuqin-boot.sh [--kernel ARTIFACT] [--ramdisk FILE]
-                           [--native-hashes FILE] [--out DIR] [--check]
+                           [--native-hashes FILE] [--out DIR] [--deb] [--check]
 
   --kernel ARTIFACT    ci/liuqin-kernel-<sha> (or its kernel/ directory);
                        defaults to the artifact of kernel/source.json's commit
@@ -47,6 +48,8 @@ usage: build-liuqin-boot.sh [--kernel ARTIFACT] [--ramdisk FILE]
                        out/native-root/native-root.hashes
   --out DIR            output directory; defaults to repack/<sha6>-boot and
                        must not exist yet
+  --deb                also package the matching liuqin-kernel deb into
+                       out/liuqin-debs (the other half of a kernel update)
   --check              verify every input and print the plan, build nothing
 EOF
 }
@@ -55,6 +58,7 @@ kernel=
 ramdisk=
 hashes=
 out_dir=
+with_deb=0
 check_only=0
 while [ $# -gt 0 ]; do
 	case $1 in
@@ -62,6 +66,7 @@ while [ $# -gt 0 ]; do
 	--ramdisk) [ $# -ge 2 ] || die '--ramdisk needs a value'; ramdisk=$2; shift 2 ;;
 	--native-hashes) [ $# -ge 2 ] || die '--native-hashes needs a value'; hashes=$2; shift 2 ;;
 	--out) [ $# -ge 2 ] || die '--out needs a value'; out_dir=$2; shift 2 ;;
+	--deb) with_deb=1; shift ;;
 	--check) check_only=1; shift ;;
 	-h|--help) usage; exit 0 ;;
 	*) die "unknown argument: $1" ;;
@@ -149,6 +154,10 @@ if [ "$check_only" = 1 ]; then
 	say 'check PASS: artifact, root contract and inputs are consistent'
 	say "would assemble: $out_dir/boot-liuqin-firstboot.img"
 	[ ! -e "$out_dir" ] || say "note: $out_dir already exists; assembly would need --out"
+	if [ "$with_deb" = 1 ]; then
+		command -v dpkg-deb >/dev/null 2>&1 || die 'dpkg-deb is required for --deb'
+		say "would package:  $project_root/out/liuqin-debs/liuqin-kernel_0.1_arm64.deb"
+	fi
 	exit 0
 fi
 if [ -e "$out_dir" ]; then
@@ -169,5 +178,21 @@ image=$out_dir/boot-liuqin-firstboot.img
 [ -f "$image" ] || die "assembly produced no boot image: $image"
 say "image:    $image ($(stat -c '%s' "$image") bytes)"
 say "sha256:   $(sha "$image")"
+
+if [ "$with_deb" = 1 ]; then
+	command -v dpkg-deb >/dev/null 2>&1 || die 'dpkg-deb is required for --deb'
+	say 'packaging the matching kernel deb'
+	deb_dir=$project_root/out/liuqin-debs
+	KERNEL_MODULES_DIR="$modules_dir" \
+		KERNEL_IMAGE="$kernel_dir/arch/arm64/boot/Image" \
+		KERNEL_DTB="$kernel_dir/arch/arm64/boot/dts/$dtb_rel" \
+		OUT_DIR="$deb_dir" \
+		sh "$project_root/tools/build-liuqin-debs.sh" kernel
+	deb=$(ls "$deb_dir"/liuqin-kernel_*.deb 2>/dev/null | head -n 1)
+	[ -n "$deb" ] || die "the deb package was not produced in $deb_dir"
+	say "deb:      $deb ($(stat -c '%s' "$deb") bytes, sha256 $(sha "$deb" | cut -c1-16)...)"
+fi
+
 say 'next:     fastboot boot  <image>   # trial'
 say '          fastboot flash boot_a <image>'
+[ "$with_deb" = 0 ] || say '          dpkg -i <deb> on the tablet, then flash the image (INSTALL section 3)'

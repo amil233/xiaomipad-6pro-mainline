@@ -109,6 +109,9 @@ def main():
                      "--native-hashes", manifest)
         assert "check PASS" in result.stdout, result.stdout
         assert commit[:6] in result.stdout, result.stdout
+        result = run("--check", "--kernel", artifact, "--ramdisk", ramdisk,
+                     "--native-hashes", manifest, "--deb")
+        assert "would package" in result.stdout, result.stdout
 
         # A kernel-only change reuses the installed root's ramdisk; any change
         # to the root makes that ramdisk refuse it.

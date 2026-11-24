@@ -3,12 +3,11 @@
 """Host-side checks for tools/build-liuqin-rootfs-image.sh (no device access).
 
 The deployment step turns an assembled root into the ext4 image that
-`fastboot flash linux_root` writes.  Three things make that image bootable and
-are asserted here: the tree sits below native-root/ (where the initramfs
-bind-mounts it), the native-root marker is the one the initramfs pins, and the
-kernel release in the root has its module directory.  The home partition entry
-is layout, so the tool writes it into the staged copy and must never modify
-the input tree.
+`fastboot flash userdata` writes.  The stock data partition is the single root:
+one filesystem labelled LIUQIN_ROOT, the tree below native-root/ (where the
+initramfs bind-mounts it), the pinned marker, and the kernel release's module
+directory.  There is no /home or /boot partition, so the tool must not invent
+either, and it must not modify the input tree.
 
 Run as an ordinary user; root is only needed for the real rootfs.tar.gz path.
 """
@@ -22,7 +21,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools/build-liuqin-rootfs-image.sh"
 MARKER = b"liuqin-native-root-v1\n"
-HOME_LINE = b"LABEL=LIUQIN_HOME /home ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2\n"
 
 
 def e2fsprogs():
@@ -41,7 +39,8 @@ def e2fsprogs():
 
 
 def run(*arguments, expect=0):
-    result = subprocess.run(["sh", str(TOOL), *map(str, arguments)], capture_output=True, text=True)
+    result = subprocess.run(["sh", str(TOOL), *map(str, arguments)],
+                            capture_output=True, text=True)
     if expect == 0 and result.returncode != 0:
         raise AssertionError(f"tool failed ({result.returncode}):\n{result.stdout}\n{result.stderr}")
     if expect != 0 and result.returncode == 0:
@@ -60,6 +59,7 @@ def make_tree(root):
         (root / directory).mkdir(parents=True, exist_ok=True)
     (root / "etc/liuqin-native-root").write_bytes(MARKER)
     (root / "etc/liuqin-native-root").chmod(0o644)
+    # An fstab without /home must survive verbatim: there is no second partition.
     (root / "etc/fstab").write_bytes(b"UUID=fixture-root / ext4 defaults 0 1\n")
     (root / "usr/lib/systemd/systemd").write_bytes(b"#!/bin/sh\n: systemd fixture\n")
     (root / "usr/lib/systemd/systemd").chmod(0o755)
@@ -81,22 +81,18 @@ def main():
         fstab_hash = hashlib.sha256(fstab_before).hexdigest()
 
         # --- normal build ---------------------------------------------------
-        run("--root", root, "--out", out, "--size", "64M", "--home-size", "32M")
-        image, home = out / "rootfs.img", out / "linux_home.img"
+        run("--root", root, "--out", out, "--size", "64M")
+        image = out / "rootfs.img"
         assert image.stat().st_size == 64 * 1024 * 1024, image.stat().st_size
-        assert home.stat().st_size == 32 * 1024 * 1024, home.stat().st_size
-        for path, label in ((image, "LIUQIN_ROOT"), (home, "LIUQIN_HOME")):
-            subprocess.run([tools["e2fsck"], "-fn", str(path)],
-                           capture_output=True, check=True)
-            head = subprocess.run([tools["dumpe2fs"], "-h", str(path)],
-                                  capture_output=True, text=True, check=True).stdout
-            assert f"Filesystem volume name:   {label}" in head, head
+        assert not (out / "linux_home.img").exists(), "a split home image was produced"
+        subprocess.run([tools["e2fsck"], "-fn", str(image)], capture_output=True, check=True)
+        head = subprocess.run([tools["dumpe2fs"], "-h", str(image)],
+                              capture_output=True, text=True, check=True).stdout
+        assert "Filesystem volume name:   LIUQIN_ROOT" in head, head
         assert hashlib.sha256((root / "etc/fstab").read_bytes()).hexdigest() == fstab_hash, \
             "the input tree's fstab was modified"
-        staged_fstab = debugfs(tools, image, "cat /native-root/etc/fstab")
-        assert staged_fstab.encode().startswith(fstab_before), staged_fstab
-        assert staged_fstab.encode().count(b"/home") == 1, staged_fstab
-        assert HOME_LINE in staged_fstab.encode(), staged_fstab
+        assert debugfs(tools, image, "cat /native-root/etc/fstab").encode() == fstab_before, \
+            "the image fstab does not match the assembled root"
         assert "Type: regular" in debugfs(tools, image, "stat /native-root/etc/liuqin-native-root")
         assert "Mode:  0644" in debugfs(tools, image, "stat /native-root/etc/liuqin-native-root")
         assert "Type: directory" in debugfs(
@@ -106,15 +102,18 @@ def main():
         assert "user.fixture" in debugfs(tools, image, "ea_list /native-root/etc/keep")
         sums = dict(reversed(line.split("  ", 1))
                     for line in (out / "SHA256SUMS").read_text().splitlines())
-        assert set(sums) == {"rootfs.img", "linux_home.img"}, sums
-        for name, digest in sums.items():
-            assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+        assert set(sums) == {"rootfs.img"}, sums
+        assert hashlib.sha256(image.read_bytes()).hexdigest() == sums["rootfs.img"]
+        result = run("--root", root, "--out", out, "--size", "64M")
+        assert "userdata" in result.stdout, result.stdout
 
-        # A rerun replaces the images and still writes exactly one /home line.
+        # A rerun replaces the image and keeps exactly one checksum entry.
+        assert len((out / "SHA256SUMS").read_text().splitlines()) == 1
+
+        # A stale split-layout image is removed, not left beside the new one.
+        (out / "linux_home.img").write_bytes(b"stale\n")
         run("--root", root, "--out", out, "--size", "64M")
-        staged_fstab = debugfs(tools, image, "cat /native-root/etc/fstab")
-        assert staged_fstab.encode().count(b"/home") == 1, staged_fstab
-        assert not home.exists(), "a run without --home-size kept the old home image"
+        assert not (out / "linux_home.img").exists(), "stale linux_home.img survived"
 
         # --- refusals -------------------------------------------------------
         check_out = work / "check"
@@ -145,8 +144,8 @@ def main():
         assert "inside the input tree" in result.stderr, result.stderr
         assert not (root / "dist").exists(), "the tool created an output directory inside the input tree"
 
-    print("PASS: native-root layout, marker, kernel link, fstab, ownership of the input tree, "
-          "home image, checksums and refusals")
+    print("PASS: single data partition image, native-root layout, marker, kernel link, "
+          "verbatim fstab, ownership of the input tree, checksums and refusals")
 
 
 if __name__ == "__main__":
