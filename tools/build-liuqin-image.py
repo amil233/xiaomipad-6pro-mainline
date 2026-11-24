@@ -145,12 +145,14 @@ def main():
     if args.device_tested and args.stage != 'release-assets':
         parser.error('--device-tested is only valid with --stage release-assets')
     supplied = json.loads(args.inputs.read_text())
-    if set(supplied) != INPUTS or not all(isinstance(v, str) and v for v in supplied.values()):
-        parser.error('Input keys must match: ' + ', '.join(sorted(INPUTS)))
-    for key, value in supplied.items():
+    for key in INPUTS:
+        value = supplied.get(key)
+        if not isinstance(value, str) or not value:
+            parser.error('prepared input is missing or empty: ' + key)
         supplied[key] = str((args.inputs.resolve().parent / value).resolve())
         if not Path(supplied[key]).exists():
-            parser.error('Prepared input missing: ' + key)
+            parser.error('prepared input does not exist: ' + key)
+    supplied = {key: supplied[key] for key in INPUTS}
     out, kernel = args.out.resolve(), args.kernel_out.resolve()
     kernel_source = args.kernel_source.resolve()
     if project / 'out' not in out.parents:
