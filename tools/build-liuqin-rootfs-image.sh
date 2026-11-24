@@ -30,6 +30,11 @@
 #        [--size 8G] [--kernel-release 7.3.0-g...] [--check]
 set -eu
 
+# Build scripts run from cron, CI and sudo shells with different PATHs; make
+# the standard locations deterministic before looking for e2fsprogs.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:/usr/bin:/bin
+export PATH
+
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 # The native root marker the initramfs checks before mounting the root.
 marker_text=liuqin-native-root-v1
@@ -55,11 +60,16 @@ EOF
 }
 
 tool() {
-	# e2fsprogs lives in /sbin, which is not always in PATH.
-	command -v "$1" 2>/dev/null ||
-		for candidate in /usr/sbin/"$1" /sbin/"$1"; do
-			[ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
-		done
+	if command -v "$1" >/dev/null 2>&1; then
+		command -v "$1"
+		return 0
+	fi
+	for candidate in /usr/sbin/"$1" /sbin/"$1" /usr/bin/"$1" /bin/"$1"; do
+		if [ -x "$candidate" ]; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
 	return 1
 }
 
@@ -114,7 +124,8 @@ else
 fi
 
 for command in mke2fs e2fsck dumpe2fs debugfs; do
-	eval "${command}_bin=\$(tool $command)" || die "$command is required (install e2fsprogs)"
+	eval "${command}_bin=\$(tool $command)" ||
+		die "$command is required (install e2fsprogs; PATH=$PATH)"
 done
 
 mkdir -p "$out_dir"
