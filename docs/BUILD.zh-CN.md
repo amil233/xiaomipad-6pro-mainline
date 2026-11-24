@@ -143,6 +143,35 @@ sh tools/build-liuqin-boot.sh --deb
 
 通用镜像的输入都能从 V14 线刷包和公开上游得到，不需要额外提供文件：
 
+其中三样可以在这台开发机上先准备好，不需要 root，也不编译：
+
+```sh
+# AudioReach 源码（约 1 MB）
+git clone https://github.com/linux-msm/audioreach-topology tools/local/audioreach-topology
+# 板级 m4 文件是按 2026-08-24 的源码写的；换别的版本可能生成不同的 topology
+git -C tools/local/audioreach-topology checkout \
+  "$(git -C tools/local/audioreach-topology log --before=2026-08-25 -1 --format=%H)"
+
+# 传感器栈的三个源码仓库（约 4 MB），按 sources.manifest 的 commit 检出
+SOURCES_ONLY=1 sh tools/build-liuqin-sensors-stack.sh
+
+# GNOME 设置程序的源码和补丁（约 54 MB）
+python3 tools/build-liuqin-settings.py --prepare-only --out out/prepared-inputs/settings
+```
+
+真正编译传感器栈和 GNOME 设置程序（也就是生成二进制缓存）需要 root 和
+Ubuntu 桌面 root，在构建机上执行：
+
+```sh
+sudo python3 tools/prepare-image-inputs.py run
+```
+
+它复用上面三份源码，写出 `tools/local/artifacts-cache/`（传感器栈 tar 和
+`gnome-control-center` 二进制）和 `out/prepared-inputs/`。这两处都在
+`.gitignore` 里，不提交；把 `tools/local/` 和 `out/prepared-inputs/` 一起拷
+到构建机，构建机就不用重新下载或重编这些慢输入。
+
+
 | 输入 | 来源 |
 |---|---|
 | Ubuntu 26.04 桌面 ISO | cdimage.ubuntu.com，下载时核对官方 `SHA256SUMS` |

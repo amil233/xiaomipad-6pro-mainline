@@ -5,6 +5,10 @@
 # The stock Ubuntu 26.04 root is mounted as a read-only overlay lowerdir; apt
 # and compilation can never mutate the release root.  Exact ROM configuration
 # is copied into the output, while per-device registry/calibration is excluded.
+#
+#   SOURCES_ONLY=1 sh tools/build-liuqin-sensors-stack.sh
+# fetches the three source trees without root and stops; the build itself
+# needs root and the Ubuntu root filesystem.
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -36,6 +40,42 @@ device_prefix=usr/share/qcom/sm8450/Xiaomi/liuqin
 die() { printf 'build-liuqin-sensors-stack: %s\n' "$*" >&2; exit 1; }
 say() { printf 'build-liuqin-sensors-stack: %s\n' "$*"; }
 
+fetch_sources() {
+	mkdir -p "$source_cache"
+while IFS="$(printf '\t')" read -r component version repository commit tree; do
+	case $component in ''|'#'*) continue ;; esac
+	dir=$source_cache/$component
+	if [ ! -d "$dir/.git" ]; then
+		say "fetching $component $version"
+		git clone --filter=blob:none --no-checkout "$repository" "$dir"
+	fi
+	[ "$(git -C "$dir" remote get-url origin)" = "$repository" ] ||
+		die "$component origin differs from the recorded repository"
+	if ! git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
+		git -C "$dir" fetch --quiet origin "$commit"
+	fi
+	git -C "$dir" checkout --quiet --detach "$commit"
+	[ "$(git -C "$dir" rev-parse HEAD)" = "$commit" ] || die "$component commit mismatch"
+	[ "$(git -C "$dir" rev-parse 'HEAD^{tree}')" = "$tree" ] || die "$component tree mismatch"
+	git -C "$dir" diff --quiet && git -C "$dir" diff --cached --quiet || die "$component source tree is dirty"
+done <"$source_manifest"
+}
+
+case $source_cache in "$project_root"/tools/local/* | /tmp/*) ;; *) die 'SOURCE_CACHE must be below tools/local or /tmp' ;; esac
+case $out_dir in "$project_root"/out/* | /tmp/*) ;; *) die 'OUT_DIR must be below out or /tmp' ;; esac
+case $source_cache:$out_dir in *'/../'*|*'/..:'*|*':..'*) die 'path traversal is not allowed' ;; esac
+
+sources_only=${SOURCES_ONLY:-0}
+case $sources_only in 0|1) ;; *) die 'SOURCES_ONLY must be 0 or 1' ;; esac
+if [ "$sources_only" = 1 ]; then
+	[ -r "$source_manifest" ] || die "missing source manifest: $source_manifest"
+	command -v git >/dev/null || die 'git is required'
+	fetch_sources
+	say "sources ready in $source_cache"
+	say 'build the stack on an arm64 host with root and the Ubuntu root filesystem'
+	exit 0
+fi
+
 [ "$(id -u)" = 0 ] || die 'run as root (an overlay mount and arm64 chroot are required)'
 [ -x "$rootfs/usr/lib/systemd/systemd" ] || die "not an Ubuntu root: $rootfs"
 [ -r "$source_manifest" ] || die "missing source manifest: $source_manifest"
@@ -52,10 +92,6 @@ say() { printf 'build-liuqin-sensors-stack: %s\n' "$*"; }
 command -v git >/dev/null || die 'git is required'
 command -v mount >/dev/null || die 'mount is required'
 command -v tar >/dev/null || die 'tar is required'
-
-case $source_cache in "$project_root"/tools/local/* | /tmp/*) ;; *) die 'SOURCE_CACHE must be below tools/local or /tmp' ;; esac
-case $out_dir in "$project_root"/out/* | /tmp/*) ;; *) die 'OUT_DIR must be below out or /tmp' ;; esac
-case $source_cache:$out_dir in *'/../'*|*'/..:'*|*':..'*) die 'path traversal is not allowed' ;; esac
 
 # The hash is over a sorted, basename-only SHA256SUMS file, so it is stable
 # across checkout locations.  These pins were measured from this tablet's
@@ -78,24 +114,6 @@ grep -Fqx 'property=persist.vendor.sensors.enable.property=/mnt/vendor/persist/s
 grep -Fqx 'property=persist.vendor.sensors.enable.property1=/mnt/vendor/persist/sensors/registry/file2' \
 	"$rom_sensors/sns_reg_config" || die 'exact-ROM sensor property 1 mismatch'
 
-mkdir -p "$source_cache"
-while IFS="$(printf '\t')" read -r component version repository commit tree; do
-	case $component in ''|'#'*) continue ;; esac
-	dir=$source_cache/$component
-	if [ ! -d "$dir/.git" ]; then
-		say "fetching $component $version"
-		git clone --filter=blob:none --no-checkout "$repository" "$dir"
-	fi
-	[ "$(git -C "$dir" remote get-url origin)" = "$repository" ] ||
-		die "$component origin differs from the recorded repository"
-	if ! git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
-		git -C "$dir" fetch --quiet origin "$commit"
-	fi
-	git -C "$dir" checkout --quiet --detach "$commit"
-	[ "$(git -C "$dir" rev-parse HEAD)" = "$commit" ] || die "$component commit mismatch"
-	[ "$(git -C "$dir" rev-parse 'HEAD^{tree}')" = "$tree" ] || die "$component tree mismatch"
-	git -C "$dir" diff --quiet && git -C "$dir" diff --cached --quiet || die "$component source tree is dirty"
-done <"$source_manifest"
 
 # Avoid a broad deletion target derived from the environment.  RESUME=1 keeps
 # a failed isolated upperdir (never the stock root) so a dependency correction
