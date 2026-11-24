@@ -65,6 +65,11 @@ def dir_content_hash(path: Path) -> str:
 def sensors_fingerprint() -> dict:
     rom = (PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/'
            'super-work/vendor-extract/etc/sensors')
+    if not rom.is_dir():
+        raise SystemExit(
+            f'V14 vendor sensors extraction is missing: {rom}\n'
+            '       extract vendor_a from the V14 super image first '
+            '(super.img -> vendor_a EROFS -> /etc/sensors)')
     return {
         'device/sensors': tree_hash('device/sensors'),
         'device/sensors-overlay': tree_hash('device/sensors-overlay'),
@@ -248,9 +253,11 @@ def cmd_run() -> None:
     topology_bin = PREPARED / 'topology/Xiaomi-Pad-6-Pro-tplg.bin'
     rebuild_topology(topology_bin)
 
-    wlan = PROJECT / 'out/wlan-source-check'
-    if not wlan.is_dir():
-        raise SystemExit('WLAN tuple missing: out/wlan-source-check '
+    # build-liuqin-wlan.py writes the HSP2 tuple to out/wlan by default; the
+    # old out/wlan-source-check name was never produced by any builder.
+    wlan = Path(os.environ.get('WLAN_HSP2_TUPLE', PROJECT / 'out/wlan')).resolve()
+    if not (wlan / 'hw2.0' / 'board-2.bin').is_file():
+        raise SystemExit(f'WLAN tuple is missing or incomplete: {wlan} '
                          '(build it with tools/build-liuqin-wlan.py)')
 
     firmware_dir = PREPARED / 'firmware'
@@ -283,7 +290,7 @@ def cmd_run() -> None:
         'FIRMWARE_TREE': str(firmware_dir),
         'FIRMWARE_MANIFEST_SHA256': sha256_file(firmware_manifest),
         'AUDIO_TOPOLOGY': str(topology_bin),
-        'WLAN_HSP2_TUPLE': str(PROJECT / 'out/wlan-source-check'),
+        'WLAN_HSP2_TUPLE': str(wlan),
         'STOCK_OVERLAY_DIR': str(env_path('STOCK_OVERLAY_DIR',
                                           PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo')),
         'STOCK_BASE_DIR': str(env_path('STOCK_BASE_DIR',

@@ -99,6 +99,34 @@ rootfs 与内核是怎么对上的：
 
 所以**同一 bundle 里的 boot.img 与 rootfs.tar.gz 是一对**，不要跨 bundle 混用。
 
+### 4.1 原料与来源（哪些能自己拿，哪些不能）
+
+整机装配的输入可以全部从 **V14 线刷包 + 公开上游 + 本仓库脚本**得到，不需要额外
+提供原料；只有最后一行是例外：
+
+| 原料 | 来源 | 本机状态 |
+|---|---|---|
+| Ubuntu 26.04 desktop arm64 ISO | cdimage.ubuntu.com，脚本钉 size/sha256（4,161,089,536 B） | 未下载，网络可取 |
+| 触摸/GPU/VPU/传感器配置 | `super.img` → `vendor_a`（EROFS）的 `/firmware`、`/etc/sensors` | 线刷包在本机；`extracted/` 需重建 |
+| WLAN qca6490 组（amss20/m3/regdb/bd_m81gf 等） | `NON-HLOS.bin`（modem FAT）的 `/qca6490/` | 线刷包在本机；用 mtools 取 |
+| FPC 指纹固件（`fpcliu.mdt` + `b00..b08`） | 同一 FAT 的根目录 | 线刷包在本机；用 mtools 取 |
+| 蓝牙固件（89 件） | `BTFM.bin`（FAT） | 线刷包在本机 |
+| ABL overlay / 基 DTB | `dtbo.img`、`vendor_boot.img` | 已提取到 `tools/local/roms/.../analysis` |
+| WLAN 上游 board-2.bin.zst | linux-firmware（sha256 `495d877c…`） | 网络 |
+| bdencoder | qca-swiss-army-knife `6df4dae3…`（Python） | 网络 |
+| 音频拓扑 | audioreach-topology `2af1f1eb…` | 网络；`out/audio-topology` 已生成 |
+| GNOME 设置 / 传感器源码 | archive.ubuntu.com + `device/` | 网络 |
+| 每机校准（WLAN MAC、蓝牙地址、CS35L41 校准、传感器 registry） | **平板自己的 `persist` 分区** | **拿不到，也不该进镜像**：首启 provision 从设备读取 |
+
+注意两点：
+
+- `persist.img` 虽然在线刷包里，但那是通用/他机的数据；用它会把别机的 MAC 和
+  校准写进镜像。每机数据只能在设备上 provision。
+- 指纹的**预编译** `fingerprint-build-inputs.tar.gz` 目前取自参考项目 v0.6.0 的
+  Release（sha256 `7af0e818…`，2.76 MB）。这与 §7“不要使用参考项目 Releases”
+  冲突，是当前唯一的例外。固件本体在 V14 modem FAT（`/fpcliu.*`）、用户态源码在
+  `device/fingerprint/oem/`，可以改为自行重建；继续用还是重建，待决策。
+
 ## 5. 把 rootfs 变成可刷镜像（刷机主机）
 
 ```sh
