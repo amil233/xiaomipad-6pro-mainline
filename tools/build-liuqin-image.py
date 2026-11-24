@@ -60,6 +60,14 @@ INPUTS = {
     'FINGERPRINT_BUNDLE',
 }
 
+# Rootfs assembly does not touch the boot image, the ABL overlays or the WLAN
+# tuple; it needs the tracked firmware tree instead of the firmware pool.
+ROOTFS_INPUTS = {
+    'UBUNTU_DESKTOP_ROOT', 'DESKTOP_ROOTFS_MANIFEST', 'FIRMWARE_TREE',
+    'SENSOR_STACK_TAR', 'POWER_SETTINGS_BINARY', 'POWER_SETTINGS_MANIFEST',
+    'BUSYBOX', 'FINGERPRINT_BUNDLE',
+}
+
 
 def kernel_release_string(kernel: Path) -> str:
     """The kernel release string, from the build tree or the packaged module set.
@@ -136,23 +144,24 @@ def main():
     parser.add_argument('--kernel-source', type=Path,
                         default=project.parent / 'linux-sm8450-liuqin')
     parser.add_argument('--out', type=Path, default=project / 'out/image')
-    parser.add_argument('--stage', choices=['all', 'modules', 'debs', 'copy', 'install',
-                                          'assemble', 'manifest', 'boot', 'pack', 'bundle',
-                                          'release-assets'], default='all')
+    parser.add_argument('--stage', choices=['all', 'rootfs', 'modules', 'debs', 'copy',
+                                          'install', 'assemble', 'manifest', 'boot', 'pack',
+                                          'bundle', 'release-assets'], default='all')
     parser.add_argument('--device-tested', action='store_true',
                         help='Mark release assets after completing device installation tests')
     args = parser.parse_args()
     if args.device_tested and args.stage != 'release-assets':
         parser.error('--device-tested is only valid with --stage release-assets')
     supplied = json.loads(args.inputs.read_text())
-    for key in INPUTS:
+    required = ROOTFS_INPUTS if args.stage == 'rootfs' else INPUTS
+    for key in required:
         value = supplied.get(key)
         if not isinstance(value, str) or not value:
             parser.error('prepared input is missing or empty: ' + key)
         supplied[key] = str((args.inputs.resolve().parent / value).resolve())
         if not Path(supplied[key]).exists():
             parser.error('prepared input does not exist: ' + key)
-    supplied = {key: supplied[key] for key in INPUTS}
+    supplied = {key: supplied[key] for key in required}
     out, kernel = args.out.resolve(), args.kernel_out.resolve()
     kernel_source = args.kernel_source.resolve()
     if project / 'out' not in out.parents:
@@ -196,7 +205,10 @@ def main():
         'boot': ('build-liuqin-native-boot.sh', [], out / 'boot'),
         'pack': ('build-liuqin-native-root.sh', ['pack'], out / 'root'),
     }
-    selected = [*stages, 'bundle'] if args.stage == 'all' else [args.stage]
+    if args.stage == 'rootfs':
+        selected = ['modules', 'debs', 'copy', 'install', 'assemble', 'manifest', 'pack']
+    else:
+        selected = [*stages, 'bundle'] if args.stage == 'all' else [args.stage]
     if args.stage == 'all' and out.exists():
         parser.error('all requires a fresh output; resume with --stage instead')
     out.mkdir(parents=True, exist_ok=True)

@@ -34,20 +34,23 @@ say() { printf 'build-liuqin-rootfs: %s\n' "$*"; }
 
 usage() {
 	cat <<'EOF'
-usage: build-liuqin-rootfs.sh [--check] [--kernel DIR] [--out DIR]
+usage: build-liuqin-rootfs.sh [--check] [--rootfs-only] [--kernel DIR] [--out DIR]
 
-  --kernel DIR   artifact root or its kernel/ directory; defaults to the
-                 newest artifact under ci/
-  --out DIR      assembly output inside out/; defaults to out/image
-  --check        print the readiness report and exit; write nothing
+  --kernel DIR    artifact root or its kernel/ directory; defaults to the
+                  newest artifact under ci/
+  --out DIR       assembly output inside out/; defaults to out/image
+  --rootfs-only   assemble rootfs.tar.gz only (tracked firmware, no boot.img)
+  --check         print the readiness report and exit; write nothing
 EOF
 }
 
 kernel=
 out_dir=$project_root/out/image
 check_only=0
+rootfs_only=0
 while [ $# -gt 0 ]; do
 	case $1 in
+	--rootfs-only) rootfs_only=1; shift ;;
 	--kernel) [ $# -ge 2 ] || die '--kernel needs a value'; kernel=$2; shift 2 ;;
 	--out) [ $# -ge 2 ] || die '--out needs a value'; out_dir=$2; shift 2 ;;
 	--check) check_only=1; shift ;;
@@ -78,12 +81,16 @@ else
 fi
 if [ "$(id -u)" = 0 ]; then report OK 'running as root'; else report MISSING 'root (run with sudo)'; fi
 free_gb=$(df -Pm "$project_root" | awk 'NR == 2 { print int($4 / 1024) }')
-if [ "${free_gb:-0}" -ge 20 ]; then
+need_gb=20
+[ "$rootfs_only" = 1 ] && need_gb=13
+if [ "${free_gb:-0}" -ge "$need_gb" ]; then
 	report OK "free space ${free_gb} GiB on $project_root"
 else
-	report MISSING "free space ${free_gb:-0} GiB (need about 20 GiB)"
+	report MISSING "free space ${free_gb:-0} GiB (need about $need_gb GiB)"
 fi
-for tool in python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 alsatplg zstd patch; do
+tools='python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 zstd patch'
+[ "$rootfs_only" = 1 ] || tools="$tools alsatplg"
+for tool in $tools; do
 	command -v "$tool" >/dev/null 2>&1 || report MISSING "tool: $tool"
 done
 if command -v gcc >/dev/null 2>&1 && [ "$(gcc -dumpmachine 2>/dev/null)" != "${arch}-linux-gnu" ] &&
@@ -118,22 +125,35 @@ if [ -d "$project_root/device/sensors/rom" ]; then
 else
 	report MISSING 'tracked sensor configuration device/sensors/rom'
 fi
-if [ -f "$project_root/out/wlan/hw2.0/board-2.bin" ]; then
-	report OK 'WLAN HSP2 tuple: out/wlan'
+if [ -x "$project_root/tools/local/busybox-arm64/usr/bin/busybox" ]; then
+	report OK 'busybox'
 else
-	report MISSING 'WLAN HSP2 tuple out/wlan (run tools/build-liuqin-wlan.py)'
+	report MISSING 'busybox under tools/local (fetch-busybox-arm64.sh)'
 fi
-if [ -d "$project_root/tools/local/firmware-liuqin" ]; then report OK 'firmware pool: tools/local/firmware-liuqin'; else report MISSING 'firmware pool tools/local/firmware-liuqin'; fi
-if [ -d "$project_root/tools/local/aosp-mkbootimg" ] && [ -x "$project_root/tools/local/busybox-arm64/usr/bin/busybox" ]; then
-	report OK 'busybox + mkbootimg tools'
+if [ "$rootfs_only" = 1 ]; then
+	if [ -d "$project_root/device/firmware/usr/lib/firmware" ]; then
+		report OK 'tracked firmware tree: device/firmware'
+	else
+		report MISSING 'tracked firmware tree device/firmware'
+	fi
 else
-	report MISSING 'busybox/mkbootimg under tools/local (fetch-aosp-mkbootimg.sh, fetch-busybox-arm64.sh)'
-fi
-if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
-	[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
-	report OK 'AudioReach topology sources'
-else
-	report MISSING 'AudioReach topology sources (audioreach-topology checkout)'
+	if [ -f "$project_root/out/wlan/hw2.0/board-2.bin" ]; then
+		report OK 'WLAN HSP2 tuple: out/wlan'
+	else
+		report MISSING 'WLAN HSP2 tuple out/wlan (run tools/build-liuqin-wlan.py)'
+	fi
+	if [ -d "$project_root/tools/local/firmware-liuqin" ]; then report OK 'firmware pool: tools/local/firmware-liuqin'; else report MISSING 'firmware pool tools/local/firmware-liuqin'; fi
+	if [ -d "$project_root/tools/local/aosp-mkbootimg" ]; then
+		report OK 'mkbootimg'
+	else
+		report MISSING 'mkbootimg under tools/local (fetch-aosp-mkbootimg.sh)'
+	fi
+	if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
+		[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
+		report OK 'AudioReach topology sources'
+	else
+		report MISSING 'AudioReach topology sources (audioreach-topology checkout)'
+	fi
 fi
 
 if [ "$check_only" = 1 ]; then
@@ -156,6 +176,29 @@ if [ ! -d "$base_root" ] || [ ! -f "$base_manifest" ]; then
 	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" download
 	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" casper
 	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" extract
+fi
+if [ "${DROP_ISO:-0}" = 1 ]; then
+	rm -rf "$base_dir/iso"
+	rm -f "$base_dir"/*.iso
+fi
+
+# --- rootfs-only ------------------------------------------------------------
+
+if [ "$rootfs_only" = 1 ]; then
+	say 'preparing rootfs inputs'
+	python3 "$project_root/tools/prepare-image-inputs.py" run --rootfs
+	[ -f "$inputs_json" ] || die "input preparation produced no $inputs_json"
+	say 'assembling rootfs'
+	python3 "$project_root/tools/build-liuqin-image.py" \
+		--inputs "$inputs_json" --kernel-out "$kernel_dir" --out "$out_dir" \
+		--stage rootfs
+	tar=$out_dir/root/rootfs.tar.gz
+	hashes=$out_dir/root/native-root.hashes
+	[ -f "$tar" ] || die "assembly produced no rootfs tar: $tar"
+	say "rootfs: $tar"
+	say "hashes: $hashes"
+	say 'next:   split the tar for upload; build boot.img separately when pairing a fresh root'
+	exit 0
 fi
 
 # --- slow inputs (sensors stack, power panel, firmware, topology, WLAN) -----

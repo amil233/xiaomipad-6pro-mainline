@@ -1,0 +1,93 @@
+name: Rootfs image
+on:
+  workflow_dispatch:
+  push:
+    branches: [liuqin-install]
+    paths:
+      - 'device/**'
+      - 'kernel/source.json'
+      - 'tools/**'
+      - '.github/actions/free-disk/**'
+      - '.github/workflows/rootfs.yml'
+permissions:
+  contents: read
+concurrency:
+  group: liuqin-rootfs
+  cancel-in-progress: false
+jobs:
+  rootfs:
+    # This job downloads the kernel artifact with PAT_GET_KERNEL and runs as
+    # root; only trusted liuqin-install code is assembled.
+    if: github.ref == 'refs/heads/liuqin-install' && (github.event_name == 'workflow_dispatch' || vars.LIUQIN_IMAGE_CI == 'enabled')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: project
+          persist-credentials: false
+      - uses: ./.github/actions/free-disk
+
+      - name: Kernel branch
+        id: kernel
+        run: |
+          python3 - <<'PY'
+          import json, os
+          branch = json.load(open('project/kernel/source.json'))['branch']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write('branch=' + branch + '\n')
+          PY
+
+      - name: Install assembly tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd patch \
+            build-essential git curl dpkg-dev
+
+      - name: Fetch busybox
+        run: sh project/tools/fetch-busybox-arm64.sh
+
+      - name: Download kernel artifact
+        env:
+          GH_TOKEN: ${{ secrets.PAT_GET_KERNEL }}
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository_owner }}/linux-sm8450-liuqin"
+          branch="${{ steps.kernel.outputs.branch }}"
+          run_id=$(gh run list -R "$repo" --workflow liuqin.yml \
+            --branch "$branch" --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId')
+          [ -n "$run_id" ] || { echo "no successful kernel run on $branch" >&2; exit 1; }
+          mkdir -p ci
+          gh run download "$run_id" -R "$repo" -D ci
+          artifact=$(find ci -maxdepth 1 -type d -name 'liuqin-kernel-*' | head -n 1)
+          [ -n "$artifact" ] || { echo "kernel artifact was not downloaded" >&2; exit 1; }
+          echo "artifact: $artifact"
+          cat "$artifact/kernel-modules/kernel.release"
+
+      - name: Assemble rootfs
+        run: |
+          set -euo pipefail
+          artifact=$(find "$PWD/ci" -maxdepth 1 -type d -name 'liuqin-kernel-*' | head -n 1)
+          sudo env DROP_ISO=1 sh project/tools/build-liuqin-rootfs.sh \
+            --rootfs-only --kernel "${artifact%/}" \
+            --out "$PWD/project/out/image"
+
+      - name: Split the tar for upload
+        run: |
+          set -euo pipefail
+          mkdir -p project/out/upload
+          split -b 1900M -d -a 2 project/out/image/root/rootfs.tar.gz \
+            project/out/upload/rootfs.tar.gz.part-
+          cp project/out/image/root/native-root.hashes project/out/upload/
+          ls -lh project/out/upload
+          df -h /
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liuqin-rootfs-${{ github.sha }}
+          if-no-files-found: error
+          compression-level: 0
+          path: project/out/upload/
+          retention-days: 7

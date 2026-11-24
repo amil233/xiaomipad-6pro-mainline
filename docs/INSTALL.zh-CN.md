@@ -87,7 +87,7 @@ fastboot reboot
 用户态一变，boot.img 里的文件清单就过期，两样要一起换：
 
 1. 先备份 `/home`（`userdata` 会被整块重写）；
-2. 构建机（或集成仓的 image workflow）出新 bundle；刷机主机生成 `rootfs.img`
+2. 构建机（或集成仓的 rootfs workflow）出新 bundle；刷机主机生成 `rootfs.img`
    （BUILD 第 5 节）；
 3. `fastboot flash boot_a bundle/boot.img`，
    `fastboot flash userdata out/dist/rootfs.img`；

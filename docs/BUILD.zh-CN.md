@@ -124,9 +124,19 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 构建机不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
 版本和校验和），`dtc`/`fdtoverlay` 用系统包。
 
-集成仓的 `.github/workflows/image.yml` 是同一套脚本的另一条入口（自托管
-x86-64 runner，需要 `LIUQIN_IMAGE_CI=enabled`），产物和构建机一致；
-`.github/workflows/build.yml` 在集成仓 push 时也能编译内核。
+集成仓的 `.github/workflows/rootfs.yml` 只装 rootfs：用 `PAT_GET_KERNEL`
+下载内核仓最近的 artifact，在托管 arm64 runner 上运行
+`build-liuqin-rootfs.sh --rootfs-only`，上传分片的 `rootfs.tar.gz` 和
+`native-root.hashes`，不生成 boot.img。`.github/workflows/build.yml` 在
+集成仓 push 时也能编译内核。
+
+本地或构建机也可以只装 rootfs：
+
+```sh
+sudo sh tools/build-liuqin-rootfs.sh --rootfs-only
+# out/image/root/rootfs.tar.gz + native-root.hashes
+```
+
 
 ## 5. 把 rootfs 变成可刷镜像（刷机主机）
 

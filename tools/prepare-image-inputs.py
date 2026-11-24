@@ -18,9 +18,12 @@ rebuilt.  Cheap inputs (audio topology, firmware tree, WLAN tuple) are
 rebuilt fresh on every run so they can never go stale silently.
 
 Usage:
-  python3 tools/prepare-image-inputs.py check   # report reuse/rebuild, no work
-  python3 tools/prepare-image-inputs.py run     # build what's stale, then
-                                                # write out/image-inputs.local.json
+  python3 tools/prepare-image-inputs.py check    # report reuse/rebuild, no work
+  python3 tools/prepare-image-inputs.py run      # build what's stale, then
+                                                 # write out/image-inputs.local.json
+  python3 tools/prepare-image-inputs.py run --rootfs
+                                                 # sensors/settings only; use the
+                                                 # tracked device/firmware tree
 Rebuilds invoke the official builders as root (via sudo when not already root).
 """
 from __future__ import annotations
@@ -218,15 +221,21 @@ def gather() -> dict:
     return cache, plan
 
 
-def cmd_check() -> None:
+def cmd_check(rootfs: bool) -> None:
     _, plan = gather()
     for name, item in plan.items():
         state = 'reuse (fingerprint unchanged, artifact verified)' if item['hit'] \
             else 'REBUILD (sources changed or no verified cache entry)'
         print(f'{name}: {state}')
+    if rootfs:
+        firmware = PROJECT / 'device/firmware/usr/lib/firmware'
+        print('firmware:', 'tracked device/firmware' if firmware.is_dir()
+              else f'MISSING {firmware}')
+        busybox = PROJECT / 'tools/local/busybox-arm64/usr/bin/busybox'
+        print('busybox:', 'present' if busybox.is_file() else 'will fetch')
 
 
-def cmd_run() -> None:
+def cmd_run(rootfs: bool) -> None:
     cache, plan = gather()
 
     sensors_work = PROJECT / 'out/prepared-inputs/sensors'
@@ -246,20 +255,28 @@ def cmd_run() -> None:
         cache_store(cache, 'gnome-control-center', plan['settings']['fp'], settings_bin)
     save_cache(cache)
 
-    topology_bin = PREPARED / 'topology/Xiaomi-Pad-6-Pro-tplg.bin'
-    rebuild_topology(topology_bin)
+    if rootfs:
+        # Rootfs assembly consumes the tracked firmware tree; it does not need
+        # the AudioReach build, the WLAN tuple, the ABL overlays or the pool.
+        firmware_dir = PROJECT / 'device/firmware'
+        if not (firmware_dir / 'usr/lib/firmware').is_dir():
+            raise SystemExit(f'tracked firmware tree is missing: {firmware_dir}')
+        firmware_manifest = firmware_dir / 'firmware.manifest'
+    else:
+        topology_bin = PREPARED / 'topology/Xiaomi-Pad-6-Pro-tplg.bin'
+        rebuild_topology(topology_bin)
 
-    # build-liuqin-wlan.py writes the HSP2 tuple to out/wlan by default; the
-    # old out/wlan-source-check name was never produced by any builder.
-    wlan = Path(os.environ.get('WLAN_HSP2_TUPLE', PROJECT / 'out/wlan')).resolve()
-    if not (wlan / 'hw2.0' / 'board-2.bin').is_file():
-        raise SystemExit(f'WLAN tuple is missing or incomplete: {wlan} '
-                         '(build it with tools/build-liuqin-wlan.py)')
+        # build-liuqin-wlan.py writes the HSP2 tuple to out/wlan by default; the
+        # old out/wlan-source-check name was never produced by any builder.
+        wlan = Path(os.environ.get('WLAN_HSP2_TUPLE', PROJECT / 'out/wlan')).resolve()
+        if not (wlan / 'hw2.0' / 'board-2.bin').is_file():
+            raise SystemExit(f'WLAN tuple is missing or incomplete: {wlan} '
+                             '(build it with tools/build-liuqin-wlan.py)')
 
-    firmware_dir = PREPARED / 'firmware'
-    subprocess.run(['rm', '-rf', str(firmware_dir)], check=True)
-    rebuild_firmware(firmware_dir, topology_bin, wlan)
-    firmware_manifest = firmware_dir / 'firmware.manifest'
+        firmware_dir = PREPARED / 'firmware'
+        subprocess.run(['rm', '-rf', str(firmware_dir)], check=True)
+        rebuild_firmware(firmware_dir, topology_bin, wlan)
+        firmware_manifest = firmware_dir / 'firmware.manifest'
 
     settings_manifest = PREPARED / 'settings-manifest.json'
     settings_manifest.parent.mkdir(parents=True, exist_ok=True)
@@ -276,26 +293,35 @@ def cmd_run() -> None:
         value = os.environ.get(name)
         return Path(value).resolve() if value else default
 
-    inputs = {
-        'UBUNTU_DESKTOP_ROOT': str(env_path('UBUNTU_DESKTOP_ROOT',
-                                            PROJECT / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs')),
-        'DESKTOP_ROOTFS_MANIFEST': str(env_path('DESKTOP_ROOTFS_MANIFEST',
-                                                PROJECT / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs.manifest')),
-        'FIRMWARE_POOL': str(PROJECT / 'tools/local/firmware-liuqin'),
+    busybox = PROJECT / 'tools/local/busybox-arm64/usr/bin/busybox'
+    if not busybox.is_file():
+        subprocess.run(['sh', 'tools/fetch-busybox-arm64.sh'], cwd=PROJECT, check=True)
+    desktop_root = env_path('UBUNTU_DESKTOP_ROOT',
+                            PROJECT / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs')
+    desktop_manifest = env_path('DESKTOP_ROOTFS_MANIFEST',
+                                PROJECT / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs.manifest')
+    common = {
+        'UBUNTU_DESKTOP_ROOT': str(desktop_root),
+        'DESKTOP_ROOTFS_MANIFEST': str(desktop_manifest),
         'FIRMWARE_TREE': str(firmware_dir),
-        'AUDIO_TOPOLOGY': str(topology_bin),
-        'WLAN_HSP2_TUPLE': str(wlan),
-        'STOCK_OVERLAY_DIR': str(env_path('STOCK_OVERLAY_DIR',
-                                          PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo')),
-        'STOCK_BASE_DIR': str(env_path('STOCK_BASE_DIR',
-                                       PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs')),
         'SENSOR_STACK_TAR': str(sensor_tar),
         'POWER_SETTINGS_BINARY': str(settings_bin),
         'POWER_SETTINGS_MANIFEST': str(settings_manifest),
-        'BUSYBOX': str(PROJECT / 'tools/local/busybox-arm64/usr/bin/busybox'),
-        'MKBOOTIMG_DIR': str(PROJECT / 'tools/local/aosp-mkbootimg'),
+        'BUSYBOX': str(busybox),
         'FINGERPRINT_BUNDLE': str(fingerprint_build_input()),
     }
+    if rootfs:
+        inputs = common
+    else:
+        inputs = dict(common,
+                      FIRMWARE_POOL=str(PROJECT / 'tools/local/firmware-liuqin'),
+                      AUDIO_TOPOLOGY=str(topology_bin),
+                      WLAN_HSP2_TUPLE=str(wlan),
+                      STOCK_OVERLAY_DIR=str(env_path('STOCK_OVERLAY_DIR',
+                                                     PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo')),
+                      STOCK_BASE_DIR=str(env_path('STOCK_BASE_DIR',
+                                                  PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs')),
+                      MKBOOTIMG_DIR=str(PROJECT / 'tools/local/aosp-mkbootimg'))
     for key, value in inputs.items():
         if not key.endswith('_SHA256') and not Path(value).exists():
             raise SystemExit(f'prepared input missing on disk: {key} -> {value}')
@@ -308,8 +334,11 @@ def cmd_run() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['check', 'run'])
+    parser.add_argument('--rootfs', action='store_true',
+                        help='prepare only the inputs rootfs assembly consumes')
     args = parser.parse_args()
-    {'check': cmd_check, 'run': cmd_run}[args.action]()
+    {'check': lambda: cmd_check(args.rootfs),
+     'run': lambda: cmd_run(args.rootfs)}[args.action]()
 
 
 if __name__ == '__main__':
