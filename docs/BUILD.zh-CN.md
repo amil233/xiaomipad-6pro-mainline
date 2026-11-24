@@ -107,8 +107,8 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 构建机不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
 版本和校验和），`dtc`/`fdtoverlay` 用系统包。
 
-CI 的 `.github/workflows/image.yml` 是同一套脚本的另一条入口（自托管
-x86-64 runner），产物相同。
+集成仓不启用 GitHub Actions，整机装配只在构建机上跑；内核仓的 CI 只负责
+编译内核和产出 `ci/` 里的 artifact。
 
 ## 5. 把 rootfs 变成可刷镜像（刷机主机）
 
