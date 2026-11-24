@@ -64,14 +64,14 @@ DTC=/usr/bin/dtc FDTOVERLAY=/usr/bin/fdtoverlay \
 
 ## 4. 系统镜像与安装包（可选，需专用主机）
 
-`tools/build-liuqin-image.py` 是本地/CI 装配入口，消费已完成的 product
-kernel 构建与准备好的输入，不重编第三方依赖；`--stage` 可续跑。它需要
+`tools/build-liuqin-image.py` 是 CI 装配入口，消费已完成的 kernel 构建与
+准备好的输入，不重编第三方依赖；`--stage` 可续跑。它需要
 root、GNU tar、ACL/xattr、squashfs-tools、cpio、ARM64 binfmt；整包 CI
 使用自托管 x86-64 runner（`liuqin-images`），默认手动触发。
 
-**Android/双系统打包已移除**：不再生成 `liuqin_boot_ubuntu-*.zip` 或
-`dualboot-tools.zip`，bundle 里不再带 KernelSU/切换工具。`--layout dual`
-在安装器中直接报错。
+**Android/双系统打包已整体移除**：不再生成 `liuqin_boot_ubuntu-*.zip` 或
+`dualboot-tools.zip`，bundle 里不再带 KernelSU/切换工具；安装器与 `--layout dual`
+路径随安装器一并删除。
 
 输入来源必须是本机 **V14.0.9.0.TMYCNXM**：
 
