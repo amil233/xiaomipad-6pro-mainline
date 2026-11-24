@@ -277,6 +277,7 @@ cat >"$merged/build/build.sh" <<'EOF'
 #!/bin/sh
 set -eu
 jobs=${JOBS:-12}
+allow_coldplug_skip=${SSC_ALLOW_COLDPLUG_SKIP:-0}
 # Keep deterministic messages by default, but do not set LC_ALL: two upstream
 # tests intentionally override LC_NUMERIC=fr_FR.UTF-8 and LC_ALL would win.
 unset LC_ALL
@@ -458,7 +459,7 @@ dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
 	LC_ALL=C sort >/build/dest/ubuntu-resolute-build-deps.tsv
 EOF
 chmod 0755 "$merged/build/build.sh"
-JOBS=$jobs chroot "$merged" /build/build.sh
+SSC_ALLOW_COLDPLUG_SKIP=$allow_coldplug_skip JOBS=$jobs chroot "$merged" /build/build.sh
 ;;
 1)
 	[ -x "$merged/build/dest/usr/bin/ssccli" ] || die 'ASSEMBLE_ONLY has no completed ssccli'
