@@ -1053,10 +1053,9 @@ esac
 if { [ "$storage_profile" = gnome ] || [ "$storage_profile" = native ]; } && [ "$charger_boot" = true ]; then
 	charger_marker=/etc/liuqin-charger-mode
 	charger_marker_ok=false
-	charger_marker_hash=$(sha256sum "$charger_marker" 2>/dev/null | cut -d' ' -f1)
 	if [ -f "$charger_marker" ] && [ ! -L "$charger_marker" ] &&
 		[ "$(stat -c '%a %u %g %s' "$charger_marker" 2>/dev/null || true)" = "644 0 0 8" ] &&
-		[ "$charger_marker_hash" = 837fa926ba93f4a56e06d7e511f782465cebb250f67d74faee1d16bfc80aede1 ] &&
+		[ "$(cat "$charger_marker" 2>/dev/null)" = hold-v1 ] &&
 		[ -x /bin/liuqin-charger-mode ] &&
 		[ -x /bin/liuqin-charger-mode-power-key ] &&
 		[ -x /bin/liuqin-charger-mode-exit ]; then

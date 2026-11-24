@@ -37,7 +37,7 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 - **只换内核**：刷新的 boot.img，再装新的内核 deb；rootfs 不动。
 - **动了用户态**（device-support、固件等）：boot.img 和 rootfs 一起换。
 
-## 三条命令
+## 命令
 
 ```sh
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
