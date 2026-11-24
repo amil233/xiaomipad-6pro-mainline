@@ -98,7 +98,7 @@ bundle 里有 `boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
 | 权限 | root（chroot、属主、tar 的 ACL/xattr） |
 | 磁盘 | 峰值约 20 GB（GitHub runner 145 GiB，清理后 118 GiB） |
 | 命令 | `dpkg-deb`、GNU `tar`、`unsquashfs`、`7z`、`m4`、`alsatplg`、`zstd`、`patch`、`git`、`curl`、`chroot`/`mount`/`unshare` |
-| 输入 | `device/firmware-pool`、`device/wlan-tuple`、`device/sensors/rom`、AudioReach 源码、内核产物 |
+| 输入 | `device/firmware-pool`、`device/wlan-tuple`、`device/sensors/rom`、`device/audio-topology/upstream`、内核产物 |
 
 磁盘实测（26.04.1 ISO，arm64）：
 
@@ -217,7 +217,7 @@ sudo python3 tools/prepare-image-inputs.py run
 | WLAN tuple | 已提取为 `device/wlan-tuple`（V14 qca6490 + 上游 board） |
 | WLAN 上游固件 | linux-firmware 的 WCN6855 文件 |
 | WLAN bdencoder | qca-swiss-army-knife 的 `ath11k-bdencoder`（Python） |
-| 音频拓扑 | linux-msm/audioreach-topology |
+| 音频拓扑 | `device/audio-topology/upstream`（已跟踪的 AudioReach 子集） |
 | GNOME 设置、传感器、fprintd 源码 | Ubuntu 源和 `device/` |
 | 每机校准（MAC、蓝牙地址、喇叭校准、传感器数据） | 平板自己的 `persist` 分区，第一次启动时导入，不进镜像 |
 

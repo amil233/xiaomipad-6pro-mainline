@@ -11,12 +11,16 @@ output=${OUTPUT:?set OUTPUT to an isolated output path}
 die() { printf 'build-liuqin-audio-topology: %s\n' "$*" >&2; exit 1; }
 
 [ -f "$board" ] || die "board topology is unavailable: $board"
-git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || die "not a git checkout: $src"
+[ -f "$src/audioreach/audioreach.m4" ] || die "not an AudioReach tree: $src"
 # The board file was written against one AudioReach layout; a newer framework
 # can rename DAPM widgets and m4 macros, which shows up as "undefined sink
-# widget" from alsatplg.  The structural checks below stay hard; the source
-# revision itself is not fixed here.
-echo "audioreach source: $(git -C "$src" show -s --format='%h %s' HEAD 2>/dev/null || true)"
+# widget" from alsatplg.  The repository carries the matching source subset;
+# the structural checks below stay hard.
+if git -C "$src" rev-parse --git-dir >/dev/null 2>&1; then
+	echo "audioreach source: $(git -C "$src" show -s --format='%h %s' HEAD 2>/dev/null || true)"
+else
+	echo "audioreach source: $src (tracked)"
+fi
 command -v m4 >/dev/null 2>&1 || die 'm4 is unavailable'
 command -v alsatplg >/dev/null 2>&1 || die 'alsatplg is unavailable'
 
@@ -25,7 +29,7 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 m4 -I "$src" "$board" >"$tmp/control.conf"
 
-# The pinned framework emits one unified Audio-IF sink.  Rewrite only that
+# The tracked framework emits one unified Audio-IF sink.  Rewrite only that
 # tuple for the device firmware; an upstream layout change must fail closed.
 control_mid='                AR_TKN_U32_MODULE_ID "0x0700117C"'
 legacy_mid='                AR_TKN_U32_MODULE_ID "0x0700100E"'

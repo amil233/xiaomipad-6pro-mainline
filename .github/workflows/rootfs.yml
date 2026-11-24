@@ -48,15 +48,6 @@ jobs:
       - name: Fetch busybox
         run: sh project/tools/fetch-busybox-arm64.sh
 
-      - name: AudioReach source
-        run: |
-          set -euo pipefail
-          git clone --quiet https://github.com/linux-msm/audioreach-topology \
-            project/tools/local/audioreach-topology
-          git -C project/tools/local/audioreach-topology checkout --quiet \
-            "$(git -C project/tools/local/audioreach-topology log --before=2026-08-25 -1 --format=%H)"
-          git -C project/tools/local/audioreach-topology log -1 --format='%H %cs %s'
-
       - name: Download kernel artifact
         id: kernel_artifact
         env:

@@ -170,12 +170,13 @@ def rebuild_settings(out_dir: Path) -> Path:
 
 
 def rebuild_topology(out_bin: Path) -> None:
-    candidates = [PROJECT.parent / 'audioreach-topology',
+    candidates = [PROJECT / 'device/audio-topology/upstream',
+                  PROJECT.parent / 'audioreach-topology',
                   PROJECT / 'tools/local/audioreach-topology']
     src = next((c for c in candidates if (c / 'audioreach/audioreach.m4').is_file()), None)
     if src is None:
-        raise SystemExit('audioreach-topology checkout not found '
-                         '(expected next to the project or under tools/local)')
+        raise SystemExit('AudioReach sources not found '
+                         '(expected device/audio-topology/upstream, next to the project, or under tools/local)')
     out_bin.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, AUDIOREACH_TOPOLOGY_DIR=str(src), OUTPUT=str(out_bin))
     subprocess.run(['sh', 'tools/build-liuqin-audio-topology.sh'],
