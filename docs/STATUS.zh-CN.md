@@ -46,6 +46,7 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 | 连接器温度 | 不支持 | 内核里没有对应代码 |
 | 单数据分区安装 | 未验证 | 工具已就绪（rootfs workflow 生成镜像），还没在平板上走过一遍 |
 | 第一次启动的校准 | 未验证 | `provision-liuqin-from-persist.sh` 已在桌面环境支持，但新布局镜像没实测 |
+| g_idle 冷启动顺序 | 待测 | 生产改动尚未实现；步骤见 [`TEST-g-idle-coldplug.zh-CN.md`](TEST-g-idle-coldplug.zh-CN.md) |
 
 ## 已知问题
 
