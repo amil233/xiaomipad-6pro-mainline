@@ -38,7 +38,6 @@ audio_probe_source=${AUDIO_PROBE_SOURCE:-"$project_root/device/audio-topology/li
 power_settings_binary=${POWER_SETTINGS_BINARY:-"$project_root/out/prepared-inputs/settings/gnome-control-center"}
 power_settings_sha256=${POWER_SETTINGS_SHA256:-}
 power_settings_manifest=${POWER_SETTINGS_MANIFEST:-"$project_root/out/prepared-inputs/settings/build-info.json"}
-# SENSOR_STACK_SHA256 selects the sensor build to include in this package set.
 sensor_stack=${SENSOR_STACK_TAR:-"$project_root/out/prepared-inputs/sensors/artifacts/sensor-stack.tar"}
 webkit_env=etc/environment.d/50-liuqin-dmabuf.conf
 

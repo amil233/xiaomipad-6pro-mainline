@@ -53,9 +53,9 @@ def installation_path_changes(project, env):
 
 INPUTS = {
     'UBUNTU_DESKTOP_ROOT', 'DESKTOP_ROOTFS_MANIFEST', 'FIRMWARE_POOL',
-    'FIRMWARE_TREE', 'FIRMWARE_MANIFEST_SHA256', 'AUDIO_TOPOLOGY',
+    'FIRMWARE_TREE', 'AUDIO_TOPOLOGY',
     'WLAN_HSP2_TUPLE', 'STOCK_OVERLAY_DIR', 'STOCK_BASE_DIR',
-    'SENSOR_STACK_TAR', 'SENSOR_STACK_SHA256', 'POWER_SETTINGS_BINARY',
+    'SENSOR_STACK_TAR', 'POWER_SETTINGS_BINARY',
     'POWER_SETTINGS_MANIFEST', 'BUSYBOX', 'MKBOOTIMG_DIR',
     'FINGERPRINT_BUNDLE',
 }
@@ -148,10 +148,8 @@ def main():
     if set(supplied) != INPUTS or not all(isinstance(v, str) and v for v in supplied.values()):
         parser.error('Input keys must match: ' + ', '.join(sorted(INPUTS)))
     for key, value in supplied.items():
-        if not key.endswith('_SHA256'):
-            supplied[key] = str((args.inputs.resolve().parent / value).resolve())
-            value = supplied[key]
-        if not key.endswith('_SHA256') and not Path(value).exists():
+        supplied[key] = str((args.inputs.resolve().parent / value).resolve())
+        if not Path(supplied[key]).exists():
             parser.error('Prepared input missing: ' + key)
     out, kernel = args.out.resolve(), args.kernel_out.resolve()
     kernel_source = args.kernel_source.resolve()
