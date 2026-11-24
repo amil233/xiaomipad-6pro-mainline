@@ -3,22 +3,20 @@
 #
 # Assemble the slot-A boot image from one CI kernel artifact, in one command.
 #
-# Two things must agree before a boot image is worth flashing:
+# Two things are checked before the image is assembled:
 #
-#   * kernel identity -- the artifact's Image, DTB and modules were built from
-#     the commit kernel/source.json locks; an artifact of another commit (or a
-#     corrupted one) would boot a kernel whose modules do not match the root;
-#   * root identity -- the initramfs carries /etc/liuqin-native-root.contract,
-#     a hash list over the device files of the root it was assembled for.  The
-#     initramfs refuses to mount a root that differs, so a ramdisk built for
-#     another user space produces an image that cannot boot.
+#   * the artifact is self-consistent -- its directory name equals the commit
+#     recorded in kernel/build-info.json, and both SHA256SUMS files verify;
+#   * the initramfs carries a hash list of the installed root's device files.
+#     This script recomputes that list from out/native-root/native-root.hashes
+#     and refuses a ramdisk built for a different root.
 #
-# A kernel-only change never touches the root, so it reuses the installed
-# root's ramdisk.  A user-space change rebuilds the root (and its contract)
-# together with the boot image; see docs/BUILD.zh-CN.md.
+# A kernel-only change does not touch the root, so it reuses the installed
+# root's ramdisk.  A user-space change rebuilds the root and the boot image
+# together; see docs/BUILD.zh-CN.md.
 #
 # usage:
-#   sh tools/build-liuqin-boot.sh                     # artifact of the lock
+#   sh tools/build-liuqin-boot.sh                     # newest ci/ artifact
 #   sh tools/build-liuqin-boot.sh --check             # verify, build nothing
 #   sh tools/build-liuqin-boot.sh --deb               # also the kernel deb
 #   sh tools/build-liuqin-boot.sh --kernel CI_DIR --ramdisk FILE --out DIR
@@ -40,8 +38,8 @@ usage() {
 usage: build-liuqin-boot.sh [--kernel ARTIFACT] [--ramdisk FILE]
                            [--native-hashes FILE] [--out DIR] [--deb] [--check]
 
-  --kernel ARTIFACT    ci/liuqin-kernel-<sha> (or its kernel/ directory);
-                       defaults to the artifact of kernel/source.json's commit
+  --kernel ARTIFACT    ci/liuqin-kernel-<commit> (or its kernel/ directory);
+                       defaults to the newest artifact under ci/
   --ramdisk FILE       initramfs to embed; defaults to the installed root's
                        out/initramfs-liuqin/liuqin-firstboot.cpio.gz
   --native-hashes FILE manifest of the installed root; defaults to
@@ -73,35 +71,23 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -f "$lock" ] || die "kernel lock is missing: $lock"
-commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$lock")
+[ -f "$lock" ] || die "kernel/source.json is missing: $lock"
 dtb_rel=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["dtb"])' "$lock")
+
+# --- kernel artifact ---------------------------------------------------------
+
+# shellcheck source=tools/lib/kernel-artifact.sh
+. "$project_root/tools/lib/kernel-artifact.sh"
+if ! resolve_kernel_artifact "$project_root" "$workspace_root" "$kernel"; then
+	if [ -n "$kernel" ]; then
+		die "not a consistent artifact (directory name must be liuqin-kernel-<build-info commit>): $kernel"
+	fi
+	die "no ci/liuqin-kernel-* artifact found; copy one from CI or pass --kernel"
+fi
+artifact=$ARTIFACT kernel_dir=$KERNEL_DIR modules_dir=$MODULES_DIR commit=$KERNEL_COMMIT
 short=$(printf '%s' "$commit" | cut -c1-6)
-
-# The artifact is the CI output for exactly the locked commit.  Accept either
-# the artifact directory or its kernel/ subdirectory, because both spellings
-# appear in the documentation and in hand-typed commands.
-if [ -z "$kernel" ]; then
-	kernel=$workspace_root/ci/liuqin-kernel-$commit
-fi
-[ -d "$kernel" ] || die "kernel artifact is missing: $kernel (available: $(ls "$workspace_root/ci" 2>/dev/null | tr '\n' ' '))"
-if [ -d "$kernel/kernel" ] && [ ! -f "$kernel/build-info.json" ]; then
-	artifact=$(CDPATH= cd -- "$kernel" && pwd)
-	kernel_dir=$artifact/kernel
-else
-	kernel_dir=$(CDPATH= cd -- "$kernel" && pwd)
-	artifact=$(dirname "$kernel_dir")
-fi
-[ -f "$kernel_dir/build-info.json" ] || die "not a kernel artifact (no build-info.json): $kernel_dir"
-modules_dir=$artifact/kernel-modules
-
-# --- kernel identity ---------------------------------------------------------
-
-artifact_commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$kernel_dir/build-info.json")
-[ "$artifact_commit" = "$commit" ] ||
-	die "artifact commit $artifact_commit does not match kernel/source.json ($commit); update the lock or pick the right artifact"
 say "artifact: $artifact"
-say "kernel:   $artifact_commit ($short)"
+say "kernel:   $commit ($short)"
 
 say 'verifying artifact checksums'
 (cd "$kernel_dir" && sha256sum -c --quiet SHA256SUMS) || die "artifact checksum failure: $kernel_dir"
@@ -128,10 +114,10 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/liuqin-boot.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 python3 "$project_root/tools/lib/build-root-contract.py" --profile native \
 	--device-layer-manifest "$hashes" --output "$work/expected.contract" >/dev/null ||
-	die 'could not derive the root contract'
+	die 'could not derive the root file list'
 python3 "$project_root/tools/lib/cpio-read.py" "$ramdisk" etc/liuqin-native-root.contract \
 	>"$work/ramdisk.contract" 2>/dev/null ||
-	die "the ramdisk carries no etc/liuqin-native-root.contract: $ramdisk"
+	die "the ramdisk has no root file list (etc/liuqin-native-root.contract): $ramdisk"
 if ! cmp -s "$work/expected.contract" "$work/ramdisk.contract"; then
 	cat >&2 <<EOF
 build-liuqin-boot: the ramdisk was built for a different root filesystem.
@@ -145,13 +131,13 @@ The initramfs would refuse this root on the tablet.
 EOF
 	exit 1
 fi
-say "ramdisk:  $(sha "$ramdisk") (contract matches $hashes)"
+say "ramdisk:  $(sha "$ramdisk") (root file list matches $hashes)"
 
 # --- output and assembly -----------------------------------------------------
 
 [ -n "$out_dir" ] || out_dir=$workspace_root/repack/$short-boot
 if [ "$check_only" = 1 ]; then
-	say 'check PASS: artifact, root contract and inputs are consistent'
+	say 'check PASS: artifact, root file list and inputs are consistent'
 	say "would assemble: $out_dir/boot-liuqin-firstboot.img"
 	[ ! -e "$out_dir" ] || say "note: $out_dir already exists; assembly would need --out"
 	if [ "$with_deb" = 1 ]; then

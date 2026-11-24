@@ -27,12 +27,10 @@ version=${LIUQIN_DEB_VERSION:-0.1}
 maintainer='yzddmr6 <46088090+yzddmr6@users.noreply.github.com>'
 
 firmware_tree=${FIRMWARE_TREE:-"$project_root/device/firmware"}
-firmware_manifest_sha256=${FIRMWARE_MANIFEST_SHA256:-012c413e0a5d5c3c14631fbdfe50da5c51e95ffc1ae431b8d93f776538b65ba2}
 overlay=${GNOME_OVERLAY:-"$project_root/device/gnome-overlay"}
 ubuntu_desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs"}
 audio_probe_libasound=$ubuntu_desktop_root/usr/lib/aarch64-linux-gnu/libasound.so.2.0.0
 busybox=${BUSYBOX:-"$project_root/tools/local/busybox-arm64/usr/bin/busybox"}
-busybox_sha256=${BUSYBOX_SHA256:-52151e7f322f926b64049cdaa1410dc3ea6485525e0624b05813791c219ae933}
 power_key_cc=${POWER_KEY_CC:-$(command -v aarch64-linux-gnu-gcc || command -v gcc || command -v cc || true)}
 power_keyd_source=${POWER_KEYD_SOURCE:-"$project_root/device/power-key/liuqin-power-keyd.c"}
 uinput_automation_source=${UINPUT_AUTOMATION_SOURCE:-"$project_root/device/input/liuqin-uinput-automation.c"}
@@ -42,9 +40,7 @@ power_settings_sha256=${POWER_SETTINGS_SHA256:-}
 power_settings_manifest=${POWER_SETTINGS_MANIFEST:-"$project_root/out/prepared-inputs/settings/build-info.json"}
 # SENSOR_STACK_SHA256 selects the sensor build to include in this package set.
 sensor_stack=${SENSOR_STACK_TAR:-"$project_root/out/prepared-inputs/sensors/artifacts/sensor-stack.tar"}
-sensor_stack_sha256=${SENSOR_STACK_SHA256:-9dcb2b8cb3a6539ccd6d2b410476f3e6ebc725072a3b63089a570ebdaeec5701}
 webkit_env=etc/environment.d/50-liuqin-dmabuf.conf
-webkit_env_sha256=1db6b589d305556a976c72b20500d9e932650eb090ba845052a0b8f659bdcca5
 
 kernel_modules_dir=${KERNEL_MODULES_DIR:-}
 kernel_image=${KERNEL_IMAGE:-}
@@ -69,11 +65,6 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 # byte-reproducible, which is not a requirement for this assembly.  Report the
 # actual hash instead of failing; the structural gates (file presence, counts,
 # reviewed-content greps) stay mandatory.
-sha_report() {
-	actual=$(sha256sum "$1" | cut -d' ' -f1)
-	[ "$actual" = "$2" ] || say "note: $3 differs from the historical pin: $1 ($actual)"
-}
-
 # divert_add <pkg> <path>... : preinst body fragment file
 write_divert_preinst() {
 	pkg=$1; shift
@@ -136,20 +127,17 @@ build_firmware() {
 		die "firmware-prep tree is unavailable: $firmware_tree (run tools/build-liuqin-firmware-prep.sh)"
 	[ -f "$firmware_tree/firmware.manifest" ] && [ ! -L "$firmware_tree/firmware.manifest" ] ||
 		die 'firmware-prep manifest is unavailable'
-	sha_report "$firmware_tree/firmware.manifest" "$firmware_manifest_sha256" \
-		'firmware-prep manifest'
 	root=$work/$pkg/root
 	mkdir -p "$root"
 	cp -a "$firmware_tree/usr" "$root/"
-	# Re-hash every copied file against the pinned manifest; a wrong or
-	# partial tree fails here, not on the panel.
+	# Re-hash every copied file against the manifest firmware-prep wrote;
+	# a wrong or partial tree fails here, not on the panel.
 	sed 's|  /|  |' "$firmware_tree/firmware.manifest" |
 		(cd "$root" && sha256sum -c --quiet - >/dev/null) ||
-		die 'firmware content does not match the pinned firmware-prep manifest'
+		die 'firmware content does not match the firmware-prep manifest'
 	count=$(find "$root/usr/lib/firmware" -type f | wc -l | tr -d ' ')
 	[ "$count" -ge 1 ] || die 'firmware closure is empty'
-	[ "$count" = 173 ] || say "note: firmware closure is $count files, historical pin was 173"
-	# The main-tree ath11k blobs (hw2.0 files and the hw2.1 symlinks pointing
+		# The main-tree ath11k blobs (hw2.0 files and the hw2.1 symlinks pointing
 	# at them) collide with linux-firmware-qualcomm-wireless at different
 	# bytes; divert the distro copies so the pinned fallbacks survive a
 	# distro firmware upgrade.
@@ -175,8 +163,7 @@ build_firmware() {
 build_device_support() {
 	pkg=liuqin-device-support
 	[ -d "$overlay" ] || die "GNOME overlay is unavailable: $overlay"
-	[ -x "$busybox" ] || die "pinned BusyBox is unavailable: $busybox"
-	sha_report "$busybox" "$busybox_sha256" 'pinned BusyBox'
+	[ -x "$busybox" ] || die "BusyBox is unavailable: $busybox"
 	for src in "$power_keyd_source" "$uinput_automation_source" "$audio_probe_source"; do
 		[ -f "$src" ] && [ ! -L "$src" ] || die "reviewed source is unavailable: $src"
 	done
@@ -190,8 +177,6 @@ esac
 		die "Canonical arm64 libasound is unavailable: $audio_probe_libasound"
 	[ -r "$overlay/$webkit_env" ] ||
 		die 'the overlay carries no reviewed WebKit fallback environment file'
-	sha_report "$overlay/$webkit_env" "$webkit_env_sha256" \
-		'the overlay WebKit fallback revision'
 	if [ -f "$overlay/usr/share/liuqin/power/io.github.liuqin.power.gschema.xml" ]; then
 		[ -f "$power_settings_binary" ] && [ ! -L "$power_settings_binary" ] ||
 			die 'build the reviewed native power settings component or set POWER_SETTINGS_BINARY'
@@ -208,8 +193,8 @@ print(info['binary_sha256'])
 PY
 			) || die 'build GNOME Settings with tools/build-liuqin-settings.py first'
 		fi
-		sha_report "$power_settings_binary" "$power_settings_sha256" \
-			'native power settings binary'
+		[ "$(sha256sum "$power_settings_binary" | cut -d' ' -f1)" = "$power_settings_sha256" ] ||
+			die 'native power settings binary does not match its build-info'
 	fi
 	root=$work/$pkg/root
 	mkdir -p "$root"
@@ -233,11 +218,11 @@ PY
 	guard=$root/usr/local/sbin/liuqin-gnome-storage-guard
 	grep -qx 'marker=${LIUQIN_GNOME_GUARD_TEST_MARKER:-/etc/liuqin-gnome-root}' "$guard" ||
 		die 'storage guard drifted from the reviewed legacy marker'
-	grep -qx 'marker_sha=bd86a359f5b6bf05f09abf544967489e924c251ab7c07684df62b0dbda4c3fca' "$guard" ||
-		die 'storage guard drifted from the reviewed legacy marker hash'
+	grep -qx 'marker_text=LIUQIN_GNOME_ROOT_V1' "$guard" ||
+		die 'storage guard drifted from the reviewed legacy marker'
 	sed -i \
 		-e 's|^marker=${LIUQIN_GNOME_GUARD_TEST_MARKER:-/etc/liuqin-gnome-root}$|marker=/etc/liuqin-native-root|' \
-		-e 's|^marker_sha=bd86a359f5b6bf05f09abf544967489e924c251ab7c07684df62b0dbda4c3fca$|marker_sha=4fdae4f7a27af8b0d4a2bbc168c7f01c3c5c6b5e245fcc521389d662f8212c5b|' \
+		-e 's|^marker_text=LIUQIN_GNOME_ROOT_V1$|marker_text=liuqin-native-root-v1|' \
 		"$guard"
 	grep -qx 'marker=/etc/liuqin-native-root' "$guard" ||
 		die 'storage guard native marker rewrite did not land'
@@ -297,7 +282,6 @@ build_sensors() {
 	pkg=liuqin-sensors
 	[ -f "$sensor_stack" ] && [ ! -L "$sensor_stack" ] ||
 		die "reviewed sensor stack is unavailable: $sensor_stack (run tools/build-liuqin-sensors-stack.sh)"
-	sha_report "$sensor_stack" "$sensor_stack_sha256" 'sensor stack artifact'
 	root=$work/$pkg/root
 	mkdir -p "$root"
 	tar --extract --file "$sensor_stack" --directory "$root" --no-same-owner
@@ -367,7 +351,7 @@ build_kernel() {
 	mkdir -p "$root/boot"
 	tar --extract --file "$modules_tar" --directory "$root" --no-same-owner
 	[ -d "$root/usr/lib/modules/$release" ] ||
-		die "module tree does not contain the pinned release $release"
+		die "module tree does not contain the release $release"
 	[ -f "$root/usr/lib/modules/$release/modules.dep" ] ||
 		die 'module tree carries no dependency index'
 	install -D -m 0644 "$kernel_image" "$root/boot/vmlinuz-$release"

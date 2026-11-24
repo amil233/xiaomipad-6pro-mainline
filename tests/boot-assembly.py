@@ -74,7 +74,8 @@ def run(*arguments, expect=0):
 
 def main():
     lock = json.loads((ROOT / "kernel/source.json").read_text())
-    commit, dtb = lock["commit"], lock["dtb"]
+    dtb = lock["dtb"]
+    commit = "a" * 40
     contract = load_contract_module()
     pinned = contract.PROFILE_PINS["native"][0]
 
@@ -131,7 +132,7 @@ def main():
         (kernel / "build-info.json").write_text(json.dumps({"commit": "0" * 40}) + "\n")
         result = run("--check", "--kernel", artifact, "--ramdisk", ramdisk,
                      "--native-hashes", manifest, expect=1)
-        assert "does not match kernel/source.json" in result.stderr, result.stderr
+        assert "not a consistent artifact" in result.stderr, result.stderr
         (kernel / "build-info.json").write_text(json.dumps({"commit": commit}) + "\n")
 
         # A ramdisk without the contract cannot be checked, so it must not be
@@ -141,7 +142,7 @@ def main():
             newc_member("etc", b"", 1, 0o040755) + newc_member("TRAILER!!!", b"", 0, 0), mtime=0))
         result = run("--check", "--kernel", artifact, "--ramdisk", empty_ramdisk,
                      "--native-hashes", manifest, expect=1)
-        assert "no etc/liuqin-native-root.contract" in result.stderr, result.stderr
+        assert "has no root file list" in result.stderr, result.stderr
 
     print("PASS: artifact identity, checksums, root-contract pairing and refusal of a stale ramdisk")
 

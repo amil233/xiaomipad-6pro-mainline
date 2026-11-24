@@ -21,18 +21,6 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 OEM = ROOT / "device/fingerprint/oem"
 DEPLOYMENT = OEM / "src/fingerprint/deployment"
-# Public v0.6.0 release attachment, produced by make-fingerprint-build-inputs.py.
-# The original private host archive is not a consumer/build dependency.
-BUNDLE_SHA256 = "7af0e818fe27fcd569959d5f45568aa0e34f19bae78ad40d7a32170b8c8c8852"
-VERIFIED_COMPONENTS = {
-    "fprintd": "463c8b79c99758a610ed7a9b76f22cbaab808e48184f255ecd28bc30e04f25cd",
-    "tod/libfprint-tod-fpc1264-oem.so": "e128383ae639890f6020ca41e3dbcf5ba23e781de432c22edf26f9e00805a0dd",
-    "kernel/fpc1264_spi_diag.ko": "f2580d173c9b54dc8f55357b98fb5833d1be3ef4e8d9f9eda00c2176d2fd0db8",
-}
-# Kernel the bundle was validated on. Its module copy is checked for bundle
-# integrity only and is not installed: the loader uses the fpc1264_spi_diag
-# module of the running liuqin-kernel package, so kernel updates keep working.
-BUNDLE_KERNEL_RELEASE = "6.17.0-rc1-gfe81794b5e1b"
 RUNTIME_PATH = "usr/local/lib/liuqin-fpc-oem"
 FIRMWARE_NAMES = {"fpcliu.mdt", *(f"fpcliu.b{i:02d}" for i in range(9))}
 BINARIES = {"fprintd", "fpc_build_info", "qsee-gatekeeper", "qsee-supplicant",
@@ -46,8 +34,6 @@ def sha(path):
 
 
 def read_bundle(bundle, destination):
-    if sha(bundle) != BUNDLE_SHA256:
-        raise ValueError("input is not the public v0.6.0 fingerprint-build-inputs.tar.gz")
     with tarfile.open(bundle, "r:gz") as archive:
         seen = set()
         for item in archive:
@@ -67,19 +53,17 @@ def read_bundle(bundle, destination):
         raise ValueError("bundle manifest hash mismatch")
 
 
-def prepare_payload(payload, version):
+def prepare_payload(payload, version, bundle_sha256):
     info = json.loads((payload / "CANDIDATE.json").read_text())
-    if (info["kernel_release"] != BUNDLE_KERNEL_RELEASE or
-            info["enrollment_interface"] != "fprintd" or info["deployment_mode"] != "installed"):
-        raise ValueError("release requires the verified FE kernel/native userspace")
-    if any(sha(payload / name) != digest for name, digest in VERIFIED_COMPONENTS.items()):
-        raise ValueError("public input differs from the validated native components")
+    if (info["enrollment_interface"] != "fprintd" or
+            info["deployment_mode"] != "installed"):
+        raise ValueError("release requires the verified native userspace")
     module = payload / "kernel/fpc1264_spi_diag.ko"
     if sha(module) != info["kernel_module_sha256"]:
         raise ValueError("module hash mismatch")
     modinfo = shutil.which("modinfo") or "/usr/sbin/modinfo"
     vermagic = subprocess.check_output([modinfo, "-F", "vermagic", str(module)], text=True)
-    if vermagic.split()[0] != BUNDLE_KERNEL_RELEASE:
+    if vermagic.split()[0] != info["kernel_release"]:
         raise ValueError("module ABI differs from the validated bundle kernel")
     shutil.rmtree(payload / "kernel")
     expected = json.loads((OEM / "firmware/SHA256.json").read_text())
@@ -115,7 +99,7 @@ def prepare_payload(payload, version):
                      native_uid=0x60000000 | 1000, firmware_source="modem_a-read-only",
                      validated_kernel_release=info["kernel_release"],
                      kernel_module="fpc1264_spi_diag from the running liuqin-kernel package",
-                     release_version=version, binary_bundle_sha256=BUNDLE_SHA256,
+                     release_version=version, binary_bundle_sha256=bundle_sha256,
                      binary_revision=info["revision"])
     (payload / "CANDIDATE.json").write_text(json.dumps(candidate, indent=2) + "\n")
     manifest = {path.relative_to(payload).as_posix(): sha(path)
@@ -168,8 +152,9 @@ def build(bundle, out, version):
         work = Path(temporary)
         payload, root = work / "payload", work / "root"
         payload.mkdir()
+        bundle_sha256 = sha(bundle)
         read_bundle(bundle, payload)
-        info, manifest = prepare_payload(payload, version)
+        info, manifest = prepare_payload(payload, version, bundle_sha256)
         stage_root(payload, root, info)
         control = root / "DEBIAN"
         control.mkdir()

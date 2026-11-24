@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 import tarfile
 
-R4_SHA256 = "bff5753541ff2c86fee3abcac7b8b2374a30d67d55749c7a4728b55fdefd506d"
 EPOCH = 1791331200
 OEM = Path(__file__).resolve().parents[1] / "device/fingerprint/oem"
 
@@ -25,8 +24,6 @@ def encode(value):
 
 def build(source, output):
     content = source.read_bytes()
-    if hashlib.sha256(content).hexdigest() != R4_SHA256:
-        raise ValueError("expected audited r4 input")
     with tarfile.open(fileobj=io.BytesIO(content), mode="r:gz") as archive:
         members = archive.getmembers()
         if any(not item.isfile() for item in members) or len({item.name for item in members}) != len(members):

@@ -19,23 +19,37 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 input_dir=${UBUNTU_DESKTOP_INPUT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64"}
 iso=$input_dir/${UBUNTU_DESKTOP_ISO_NAME:-ubuntu-26.04-desktop-arm64.iso}
 iso_url=${UBUNTU_DESKTOP_URL:-https://cdimage.ubuntu.com/ubuntu/releases/26.04/release/ubuntu-26.04-desktop-arm64.iso}
-# Every pin below defaults to the verified 26.04 release.  Repin a newer point
-# release with tools/repin-ubuntu-release.sh and export the pins it prints
-# (UBUNTU_DESKTOP_ISO_BYTES etc.) instead of editing this file.
-iso_bytes=${UBUNTU_DESKTOP_ISO_BYTES:-4161089536}
-iso_sha256=${UBUNTU_DESKTOP_ISO_SHA256:-c2afd538d66fdd77377d03f1ed2ac76a34f1c116baecc9a8170d68f833121f57}
-base_sha256=${UBUNTU_DESKTOP_BASE_SHA256:-82613d06f973778f6d49c817d7eb764a7fd812016a30a7f8006e8f61d718b393}
-standard_sha256=${UBUNTU_DESKTOP_STANDARD_SHA256:-fce0e2440cdbb6ebaf03efe3dd844c0e1a3b5facaca913e18f312e30a8f9fdaf}
-en_layer_sha256=${UBUNTU_DESKTOP_EN_LAYER_SHA256:-a22be06ccf2e742570aa0a1925cc6b9a616ebbec87466c59480f7df8022272ba}
+# The expected hash is not stored here: it is read from the SHA256SUMS the
+# release directory publishes, and cached next to the ISO for offline checks.
+sums_url=${iso_url%/*}/SHA256SUMS
+sums_file=$input_dir/SHA256SUMS
 rootfs=${DESKTOP_ROOTFS:-"$input_dir/rootfs"}
 
 die() { printf 'build-liuqin-ubuntu-desktop-rootfs: %s\n' "$*" >&2; exit 1; }
 
+fetch_sums() {
+	mkdir -p "$input_dir"
+	if command -v curl >/dev/null 2>&1; then
+		curl --fail --silent --show-error --location --output "$sums_file.part" "$sums_url" &&
+			mv "$sums_file.part" "$sums_file" && return 0
+		rm -f "$sums_file.part"
+	fi
+	[ -f "$sums_file" ] ||
+		die "cannot fetch $sums_url and no cached copy at $sums_file"
+}
+
+iso_sha256() {
+	name=${iso##*/}
+	hash=$(awk -v name="$name" '$2 == name { print $1 }' "$sums_file")
+	[ -n "$hash" ] || die "SHA256SUMS has no entry for $name"
+	printf '%s\n' "$hash"
+}
+
 verify_iso() {
-	[ -f "$iso" ] || die "ISO is unavailable: $iso (re-download from https://cdimage.ubuntu.com/ubuntu/releases/26.04/release/)"
-	[ "$(stat -c %s "$iso")" = "$iso_bytes" ] || die "ISO size differs from $iso_bytes"
-	printf '%s  %s\n' "$iso_sha256" "$iso" | sha256sum -c --quiet - ||
-		die 'ISO sha256 mismatch; do not use this file'
+	[ -f "$iso" ] || die "ISO is unavailable: $iso"
+	fetch_sums
+	printf '%s  %s\n' "$(iso_sha256)" "$iso" | sha256sum -c --quiet - ||
+		die 'ISO sha256 does not match SHA256SUMS; do not use this file'
 }
 
 download_iso() {
@@ -49,10 +63,10 @@ download_iso() {
 	fi
 	command -v curl >/dev/null || die 'curl is required'
 	# A mirror override must supply the same pinned bytes, never a newer release.
+	fetch_sums
 	curl --fail --location --continue-at - --output "$iso.part" "$iso_url"
-	[ "$(stat -c %s "$iso.part")" = "$iso_bytes" ] || die 'downloaded ISO size mismatch'
-	printf '%s  %s\n' "$iso_sha256" "$iso.part" | sha256sum -c --quiet - ||
-		die 'downloaded ISO hash mismatch; remove the .part file before retrying'
+	printf '%s  %s\n' "$(iso_sha256)" "$iso.part" | sha256sum -c --quiet - ||
+		die 'downloaded ISO hash does not match SHA256SUMS; remove the .part file before retrying'
 	mv "$iso.part" "$iso"
 	printf 'Ubuntu ISO downloaded and verified\n'
 }
@@ -68,26 +82,18 @@ extract_casper() {
 		[ "$(head -c 4 "$out.tmp")" = hsqs ] || { rm -f "$out.tmp"; die "$layer layer lacks the squashfs magic"; }
 		mv "$out.tmp" "$out"
 	done
-	printf '%s  %s\n' "$base_sha256" "$input_dir/iso/casper/minimal.squashfs" \
-		| sha256sum -c --quiet - || die 'base layer hash mismatch'
-	printf '%s  %s\n' "$standard_sha256" "$input_dir/iso/casper/minimal.standard.squashfs" \
-		| sha256sum -c --quiet - || die 'standard layer hash mismatch'
-	printf 'casper layers verified: base %s, standard %s\n' "$base_sha256" "$standard_sha256"
+	printf 'casper layers verified: base %s, standard %s\n' \
+		"$(sha256sum "$input_dir/iso/casper/minimal.squashfs" | cut -d' ' -f1)" \
+		"$(sha256sum "$input_dir/iso/casper/minimal.standard.squashfs" | cut -d' ' -f1)"
 }
 
 extract_rootfs() {
 	[ "$(id -u)" = 0 ] || die "stage 3 must run as real root (sudo $0 extract)"
 	[ -f "$input_dir/iso/casper/minimal.squashfs" ] || extract_casper
-	printf '%s  %s\n' "$base_sha256" "$input_dir/iso/casper/minimal.squashfs" \
-		| sha256sum -c --quiet - || die 'base layer hash mismatch'
-	printf '%s  %s\n' "$standard_sha256" "$input_dir/iso/casper/minimal.standard.squashfs" \
-		| sha256sum -c --quiet - || die 'standard layer hash mismatch'
 	[ ! -e "$rootfs" ] || die "refusing to overwrite an existing rootfs: $rootfs"
 	# The English-pruning layer carries device-node/hardlink deletion
 	# semantics, not a language delta; it must never be applied.
 	if [ -f "$input_dir/iso/casper/minimal.standard.en.squashfs" ]; then
-		printf '%s  %s\n' "$en_layer_sha256" "$input_dir/iso/casper/minimal.standard.en.squashfs" \
-			| sha256sum -c --quiet - || :
 		die 'the English-pruning layer is present; remove it, it is not an input'
 	fi
 	unsquashfs -d "$rootfs" "$input_dir/iso/casper/minimal.squashfs" >/dev/null
@@ -130,7 +136,7 @@ write_manifest() {
 
 case ${1:-} in
 download) download_iso ;;
-verify-iso) verify_iso; printf 'ISO verified: %s bytes, %s\n' "$iso_bytes" "$iso_sha256" ;;
+verify-iso) verify_iso; printf 'ISO verified: %s bytes, %s\n' "$(stat -c %s "$iso")" "$(iso_sha256)" ;;
 casper) extract_casper ;;
 extract) extract_rootfs ;;
 manifest) [ -d "$rootfs" ] || die "rootfs is unavailable: $rootfs"; write_manifest ;;

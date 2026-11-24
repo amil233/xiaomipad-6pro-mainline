@@ -5,7 +5,7 @@ inputs:
     description: Kernel repository in owner/name form
     required: true
   revision:
-    description: Exact development commit; empty selects the product lock
+    description: Commit to build; empty builds the branch in kernel/source.json
     default: ''
 runs:
   using: composite
@@ -19,18 +19,22 @@ runs:
         python3 - <<'PY'
         import json, os, re
         lock = json.load(open('project/kernel/source.json'))
-        sha = os.environ['REVISION'] or lock['commit']
-        assert re.fullmatch(r'[0-9a-f]{40}', sha)
+        ref = os.environ['REVISION'] or lock['branch']
+        assert re.fullmatch(r'[0-9a-f]{40}', ref) or re.fullmatch(r'[A-Za-z0-9._/-]+', ref)
         with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-            stream.write('sha=' + sha + '\n')
+            stream.write('ref=' + ref + '\n')
         PY
     - uses: actions/checkout@v4
       with:
         repository: ${{ inputs.kernel-repository }}
-        ref: ${{ steps.source.outputs.sha }}
+        ref: ${{ steps.source.outputs.ref }}
         path: linux-sm8450-liuqin
         fetch-depth: 0
         persist-credentials: false
+    - name: Resolve commit
+      id: commit
+      shell: bash
+      run: echo "commit=$(git -C linux-sm8450-liuqin rev-parse HEAD)" >>"$GITHUB_OUTPUT"
     - name: Dependencies
       shell: bash
       run: |
@@ -45,7 +49,7 @@ runs:
     - uses: actions/cache@v4
       with:
         path: ~/.cache/ccache
-        key: liuqin-ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-${{ steps.source.outputs.sha }}
+        key: liuqin-ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-${{ steps.source.outputs.ref }}
         restore-keys: |
           liuqin-ccache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('project/device/configs/**', 'project/tools/build-liuqin-kernel.py') }}-
     - name: Build
@@ -96,7 +100,7 @@ runs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: liuqin-config-failure-${{ steps.source.outputs.sha }}
+        name: liuqin-config-failure-${{ steps.source.outputs.ref }}
         if-no-files-found: ignore
         include-hidden-files: true
         path: |
@@ -105,7 +109,7 @@ runs:
         retention-days: 7
     - uses: actions/upload-artifact@v4
       with:
-        name: liuqin-kernel-${{ steps.source.outputs.sha }}
+        name: liuqin-kernel-${{ steps.commit.outputs.commit }}
         if-no-files-found: error
         include-hidden-files: true
         path: |

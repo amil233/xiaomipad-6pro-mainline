@@ -167,7 +167,7 @@ shift
 printf 'busybox %s\n' "$command $*" >>"$TEST_COMMAND_LOG"
 exec "$TEST_FAKE_BIN/$command" "$@"
 EOF
-	for applet in cut grep head readlink sha256sum; do
+	for applet in cat cut grep head readlink sha256sum; do
 		cat >"$test_root/bin/$applet" <<EOF
 #!/bin/sh
 exec /usr/bin/$applet "\$@"
@@ -1282,7 +1282,7 @@ native_reset_fixture; TEST_MUTATE_NATIVE_ON_CHROOT=1 TEST_MUTATE_NATIVE=file-sta
 native_reset_fixture; TEST_STORAGE_PHASE=switch; export TEST_STORAGE_PHASE; gnome_expect_switch_root_returned_fail_closed native-switch-root-returned
 
 grep -q '^storage_marker=etc/liuqin-persistent-root$' "$init" || fail "marker path changed"
-grep -q '^storage_marker_sha256=0d354b25a425dcc17da2c7a8bbdaae09274cecdb1f137c70630ebe5634fa9a48$' \
+grep -q '^storage_marker_text=LIUQIN_PERSISTENT_ROOT_V1$' \
 	"$init" || fail "marker content contract changed"
 # The handoff target is profile-selected: /sbin/init for legacy (proved
 # dynamically by switch-root-returned) and systemd for gnome (proved by
@@ -1293,10 +1293,10 @@ grep -q '^storage_init=/sbin/init$' "$init" ||
 	fail "legacy handoff target is no longer /sbin/init"
 grep -q '^	storage_init=/usr/lib/systemd/systemd$' "$init" ||
 	fail "gnome handoff target is no longer systemd"
-grep -q '^	storage_marker_sha256=bd86a359f5b6bf05f09abf544967489e924c251ab7c07684df62b0dbda4c3fca$' \
+grep -q '^	storage_marker_text=LIUQIN_GNOME_ROOT_V1$' \
 	"$init" || fail "gnome marker content contract changed"
-grep -q '497a8b108a3eefc839c3738a5c452ee3d6a437eb1ebaf0ea43bd635a8a227978' "$init" ||
-	fail "gnome profile-file hash pin changed"
+grep -q 'storage_profile=\$("\$BB" cat "\$storage_profile_file"' "$init" ||
+	fail "profile file is no longer read as text"
 # The slot marked successful is the slot this boot came from, never a constant:
 # the dual layout boots Ubuntu from slot A (slot B only on the bootloader's
 # fallback copy), the Linux-only layout from slot B.

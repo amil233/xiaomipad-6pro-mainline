@@ -64,56 +64,46 @@ for input in "$image" "$raw_dtb" "$native_root_hashes" "$audio_topology" "$dtc" 
 done
 [ -d "$firmware_pool" ] && [ -d "$wlan_tuple" ] &&
 	[ -d "$stock_overlay_dir" ] && [ -d "$stock_base_dir" ] || die 'firmware/ROM input directory missing'
-# The mkbootimg script identities are release pins; any working copy is fine
-# for a personal assembly. The boot-image round-trip check in
-# build-bootimg.sh still catches a genuinely broken unpack/mk pair.
+# Any working copy of mkbootimg is fine here; build-bootimg.sh checks the
+# pack/unpack round trip and catches a genuinely broken pair.
 say "mkbootimg: $(sha "$mk_dir/mkbootimg.py" | cut -c1-16)"
 say "unpack_bootimg: $(sha "$mk_dir/unpack_bootimg.py" | cut -c1-16)"
 
-# The source identity gates below are a release-pipeline repetition of the
-# assembly-level lock checks (build-liuqin-image.py already validated the
-# artifact commit against the product lock and downgraded the .config byte
-# comparison to a NOTE).  When the kernel source tree is absent -- assembly
-# from a CI artifact on a machine without the kernel checkout -- take the
-# commit and the build timestamp from the artifact's build-info.json
-# instead; the identity is still anchored to the lock, just by metadata.
+# The kernel identity comes from the checkout or from the CI artifact, and the
+# two are cross-checked when both exist.  No commit is stored in the repo.
 kernel_info=$kernel_out/build-info.json
 if git -C "$kernel_source" rev-parse --git-dir >/dev/null 2>&1; then
 	kernel_source_kind=git
-else
-	if [ ! -f "$kernel_info" ]; then
-		die "neither a kernel source checkout ($kernel_source) nor an artifact build-info.json ($kernel_info) is available"
+	commit=$(git -C "$kernel_source" rev-parse HEAD)
+	[ -z "$(git -C "$kernel_source" status --porcelain)" ] ||
+		die 'kernel source is dirty'
+	if [ -f "$kernel_info" ]; then
+		artifact_commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$kernel_info")
+		[ "$artifact_commit" = "$commit" ] ||
+			die "kernel source ($commit) and artifact ($artifact_commit) disagree"
 	fi
+else
+	[ -f "$kernel_info" ] ||
+		die "neither a kernel checkout ($kernel_source) nor an artifact build-info.json ($kernel_info) is available"
 	kernel_source_kind=metadata
-	say "kernel source: using CI artifact metadata from $kernel_info"
+	commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' "$kernel_info")
+	say "kernel source: artifact metadata from $kernel_info"
 fi
+say "kernel commit: $commit"
 
 release_file=$kernel_out/include/config/kernel.release
 if [ ! -f "$release_file" ]; then
-	# CI artifacts do not carry the kernel build tree; the release string
-	# is packaged with the prepared module set instead.
+	# CI artifacts do not carry the kernel build tree; the release string is
+	# packaged with the prepared module set instead.
 	release_file=$kernel_out/../kernel-modules/kernel.release
 fi
 [ -f "$release_file" ] || die 'kernel release string is unavailable: no build tree and no packaged release'
 
-python3 - "$project_root/kernel/source.json" "$kernel_out" "$native_root_hashes" "$kernel_source_kind" "$kernel_source" "$release_file" <<'PY'
-import hashlib, json, subprocess, sys
+python3 - "$native_root_hashes" "$release_file" <<'PY'
+import hashlib, sys
 from pathlib import Path
-lock = json.loads(Path(sys.argv[1]).read_text())
-out, manifest, kind, source, release_file = (Path(sys.argv[2]), Path(sys.argv[3]),
-                                             sys.argv[4], sys.argv[5], Path(sys.argv[6]))
-if kind == 'git':
-    commit = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
-    if commit != lock['commit']:
-        raise SystemExit('kernel source does not match kernel/source.json')
-    if subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain']):
-        raise SystemExit('kernel source is dirty')
-else:
-    info = json.loads((out / 'build-info.json').read_text())
-    if info['commit'] != lock['commit']:
-        raise SystemExit('kernel artifact commit does not match kernel/source.json')
-release = release_file.read_bytes()
-wanted = hashlib.sha256(release).hexdigest()
+manifest, release_file = Path(sys.argv[1]), Path(sys.argv[2])
+wanted = hashlib.sha256(release_file.read_bytes()).hexdigest()
 rows = [line.split('  ', 1) for line in manifest.read_text().splitlines()]
 matches = [h for h, p in rows if p == '/usr/share/liuqin/kernel.release']
 if matches != [wanted]:
@@ -184,7 +174,7 @@ mv "$out_dir/boot/boot-liuqin-firstboot.img" "$out_dir/boot-liuqin-native.img"
 	printf 'image_sha256=%s\n' "$(sha "$image")"
 	printf 'raw_dtb_sha256=%s\n' "$(sha "$raw_dtb")"
 	printf 'native_root_hashes_sha256=%s\n' "$(sha "$native_root_hashes")"
-	printf 'contract_sha256=%s\n' "$(sha "$out_dir/native-root.contract")"
+	printf 'root_file_list_sha256=%s\n' "$(sha "$out_dir/native-root.contract")"
 	printf 'ramdisk_sha256=%s\n' "$(sha "$out_dir/liuqin-firstboot.cpio.gz")"
 	printf 'boot_sha256=%s\n' "$(sha "$out_dir/boot-liuqin-native.img")"
 } >"$out_dir/native-boot.identity"

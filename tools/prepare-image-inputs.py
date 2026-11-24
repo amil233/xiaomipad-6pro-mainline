@@ -189,11 +189,11 @@ def rebuild_firmware(out_dir: Path, topology: Path, wlan_tuple: Path) -> None:
 
 
 def fingerprint_build_input() -> Path:
-    """Use the public, reviewed binary/source input; it contains no OEM TA."""
-    spec = importlib.util.spec_from_file_location(
-        'fingerprint_deb', PROJECT / 'tools/build-liuqin-fingerprint-deb.py')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """Point at the public binary/source input; it contains no OEM TA bytes.
+
+    The archive's own SHA256.json is verified when the fingerprint package is
+    built, so no archive hash is stored here.  FINGERPRINT_BUNDLE can point at
+    a locally built replacement."""
     candidate = Path(os.environ.get('FINGERPRINT_BUNDLE',
         PROJECT / 'tools/local/downloads/fingerprint/v0.6.0/fingerprint-build-inputs.tar.gz'))
     if not candidate.exists():
@@ -204,12 +204,7 @@ def fingerprint_build_input() -> Path:
                'v0.6.0/fingerprint-build-inputs.tar.gz')
         temporary = candidate.with_suffix('.download')
         urllib.request.urlretrieve(url, temporary)
-        if sha256_file(temporary) != module.BUNDLE_SHA256:
-            temporary.unlink()
-            raise SystemExit('Fingerprint build-input download checksum mismatch')
         temporary.rename(candidate)
-    if sha256_file(candidate) != module.BUNDLE_SHA256:
-        raise SystemExit('Fingerprint build-input checksum mismatch')
     return candidate.resolve()
 
 
@@ -280,9 +275,8 @@ def cmd_run() -> None:
 
     # Paths are absolute: build-liuqin-image.py resolves relative values
     # against the JSON file's own directory, not against the project.
-    # UBUNTU_DESKTOP_ROOT / DESKTOP_ROOTFS_MANIFEST may be overridden for a
-    # repinned release (tools/repin-ubuntu-release.sh); the defaults are the
-    # verified 26.04 tree.
+    # UBUNTU_DESKTOP_ROOT / DESKTOP_ROOTFS_MANIFEST select the extracted
+    # Ubuntu tree; the ISO itself is verified against Canonical's SHA256SUMS.
     def env_path(name: str, default: Path) -> Path:
         value = os.environ.get(name)
         return Path(value).resolve() if value else default

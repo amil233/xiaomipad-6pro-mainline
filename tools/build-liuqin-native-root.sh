@@ -31,15 +31,12 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 out_dir=${OUT_DIR:-"$project_root/out/native-root"}
 desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs"}
 desktop_manifest=${DESKTOP_ROOTFS_MANIFEST:-"$desktop_root.manifest"}
-# Pin override for a repinned release (tools/repin-ubuntu-release.sh); the
-# default is the verified 26.04 tree manifest.
-desktop_manifest_sha256=${DESKTOP_ROOTFS_MANIFEST_SHA256:-175ca2299263545973831606e397cce3fbc79298d97eb0bd7e216ac34944eed7}
 debs_dir=${DEBS_DIR:-"$project_root/out/liuqin-debs"}
 # Shared with test-liuqin-debs.sh: the archive indexes are downloaded once per
 # host, not once per runner, and the shipped tree keeps the pinned (empty)
 # lists state instead of carrying stale host-fetched indexes.
 apt_cache=${APT_CACHE_DIR:-"$project_root/tools/local/apt-cache-26.04-arm64"}
-marker_sha256=4fdae4f7a27af8b0d4a2bbc168c7f01c3c5c6b5e245fcc521389d662f8212c5b
+marker_text=liuqin-native-root-v1
 
 die() { printf 'build-liuqin-native-root: %s\n' "$*" >&2; exit 1; }
 say() { printf 'build-liuqin-native-root: %s\n' "$*"; }
@@ -66,7 +63,7 @@ root=$out_dir/rootfs
 stage_copy() {
 	[ ! -e "$out_dir" ] || die "copy stage refuses an existing output: $out_dir (rm it or run a later stage)"
 	mkdir -p "$out_dir"
-	say "copying the pinned desktop rootfs to $root"
+	say "copying the desktop rootfs to $root"
 	cp -a "$desktop_root" "$root"
 	# The casper media source has no meaning on the installed system and breaks
 	# apt-get update with a file:/cdrom entry that has no Release file.
@@ -83,7 +80,7 @@ stage_copy() {
 	# paths differ.
 	src_caps=$(getcap "$desktop_root/usr/lib/snapd/snap-confine" 2>/dev/null | awk '{print $2}')
 	dst_caps=$(getcap "$root/usr/lib/snapd/snap-confine" 2>/dev/null | awk '{print $2}')
-	[ -n "$src_caps" ] || die 'pinned desktop rootfs lost the snap-confine capability'
+	[ -n "$src_caps" ] || die 'desktop rootfs lost the snap-confine capability'
 	[ "$src_caps" = "$dst_caps" ] || die 'snap-confine capability xattr did not survive the copy'
 	say 'copy PASS'
 }
@@ -245,7 +242,7 @@ END {
 	printf 'liuqin-native-root-v1\n' >"$root/etc/liuqin-native-root"
 	chown 0:0 "$root/etc/liuqin-native-root"
 	chmod 0644 "$root/etc/liuqin-native-root"
-	[ "$(sha256sum "$root/etc/liuqin-native-root" | cut -d' ' -f1)" = "$marker_sha256" ] ||
+	[ "$(cat "$root/etc/liuqin-native-root")" = "$marker_text" ] ||
 		die 'native root marker content mismatch'
 
 	# --- per-device and first-boot boundaries ----------------------------------

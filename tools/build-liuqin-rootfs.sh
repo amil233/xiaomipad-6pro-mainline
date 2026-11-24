@@ -19,12 +19,11 @@
 # usage:
 #   sudo sh tools/build-liuqin-rootfs.sh --check     # report readiness only
 #   sudo sh tools/build-liuqin-rootfs.sh             # prepare, then assemble
-#   sudo sh tools/build-liuqin-rootfs.sh --kernel ci/liuqin-kernel-<sha>/kernel
+#   sudo sh tools/build-liuqin-rootfs.sh --kernel ci/liuqin-kernel-<commit>/kernel
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 workspace_root=$(CDPATH= cd -- "$project_root/.." && pwd)
-lock=$project_root/kernel/source.json
 base_dir=$project_root/tools/local/ubuntu-desktop-26.04-arm64
 base_root=$base_dir/rootfs
 base_manifest=$base_dir/rootfs.manifest
@@ -37,8 +36,8 @@ usage() {
 	cat <<'EOF'
 usage: build-liuqin-rootfs.sh [--check] [--kernel DIR] [--out DIR]
 
-  --kernel DIR   artifact root or its kernel/ directory; defaults to
-                 ci/liuqin-kernel-<commit from kernel/source.json>/kernel
+  --kernel DIR   artifact root or its kernel/ directory; defaults to the
+                 newest artifact under ci/
   --out DIR      assembly output inside out/; defaults to out/image
   --check        print the readiness report and exit; write nothing
 EOF
@@ -57,10 +56,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -f "$lock" ] || die "kernel lock is missing: $lock"
 out_dir=$(realpath -m -- "$out_dir")
-commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$lock")
-[ -n "$kernel" ] || kernel=$workspace_root/ci/liuqin-kernel-$commit
 
 failures=0
 report() { # report OK|MISSING|WARN description
@@ -102,28 +98,18 @@ else
 fi
 
 say 'kernel artifact'
-if [ -d "$kernel/kernel" ] && [ ! -f "$kernel/build-info.json" ]; then
-	kernel_dir=$(CDPATH= cd -- "$kernel/kernel" 2>/dev/null && pwd) || kernel_dir=
-else
-	kernel_dir=$(CDPATH= cd -- "$kernel" 2>/dev/null && pwd) || kernel_dir=
-fi
-if [ -z "$kernel_dir" ] || [ ! -f "$kernel_dir/build-info.json" ]; then
-	report MISSING "kernel artifact $kernel (copy ci/liuqin-kernel-$commit here or pass --kernel)"
-else
-	artifact_commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$kernel_dir/build-info.json")
-	if [ "$artifact_commit" = "$commit" ]; then
-		report OK "artifact $artifact_commit matches kernel/source.json"
-	else
-		report MISSING "artifact $artifact_commit does not match kernel/source.json ($commit)"
-	fi
-	for modules in "$kernel_dir/../kernel-modules" "$kernel_dir/kernel-modules" "$kernel_dir/prepared-modules"; do
-		[ -f "$modules/modules.tar" ] && { found_modules=$modules; break; }
-	done
-	if [ -n "${found_modules:-}" ]; then
+# shellcheck source=tools/lib/kernel-artifact.sh
+. "$project_root/tools/lib/kernel-artifact.sh"
+if resolve_kernel_artifact "$project_root" "$workspace_root" "$kernel"; then
+	kernel_dir=$KERNEL_DIR
+	report OK "artifact $KERNEL_COMMIT"
+	if [ -f "$MODULES_DIR/modules.tar" ]; then
 		report OK 'artifact carries the prepared module set'
 	else
 		report MISSING 'artifact has no kernel-modules/ (the build machine has no kernel tree)'
 	fi
+else
+	report MISSING 'no consistent ci/liuqin-kernel-* artifact (copy one from CI or pass --kernel)'
 fi
 
 say 'inputs'
@@ -147,7 +133,7 @@ if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
 	[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
 	report OK 'AudioReach topology sources'
 else
-	report MISSING 'AudioReach topology checkout (audioreach-topology 2af1f1e)'
+	report MISSING 'AudioReach topology sources (audioreach-topology checkout)'
 fi
 
 if [ "$check_only" = 1 ]; then

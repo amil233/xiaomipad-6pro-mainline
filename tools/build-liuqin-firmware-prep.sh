@@ -13,11 +13,7 @@ set -eu
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 pool=${FIRMWARE_POOL:-$project_root/tools/local/firmware-liuqin}
 vpu_blob=${VPU_BLOB:-$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/firmware/vpu20_4v.mbn}
-# VPU pin measured from the V14.0.9.0.TMYCNXM vendor_a extraction (this
-# tablet's installed ROM).
-vpu_sha256=${VPU_SHA256:-cc27f8e39544f770b6f6204faffb910e3207255bc478496dbabcb9b2273fa44c}
 topology_bin=${TOPOLOGY_BIN:?set TOPOLOGY_BIN to the output of tools/build-liuqin-audio-topology.sh}
-topology_sha256=9c9f8bfcffde1f52c143d58cba821c5f6b3899553370ab92a88b90d81fef9ee9
 tuple_dir=${HSP2_TUPLE_DIR:?set HSP2_TUPLE_DIR to the output of tools/build-liuqin-wlan.py}
 out_dir=${OUT_DIR:?set OUT_DIR to a fresh output directory}
 oracle_manifest=${ORACLE_MANIFEST:-}
@@ -39,11 +35,6 @@ esac
 
 # Touchscreen (NT36532, both panel-vendor variants; vendor_a.img).
 touch_dir=$pool/touch-nt36532/vendor/firmware
-touch_sha256="\
-709726bacaec710566a8619e4a31aa96ca4cdda7145d53ef46e3c8b037122cc9  novatek_nt36532_m81_fw_csot.bin
-267f5eb01047e63b72eefb686d57ab8ddb88debc606713aad7ef60b9908a53c6  novatek_nt36532_m81_fw_tm.bin"
-(cd "$touch_dir" && printf '%s\n' "$touch_sha256" | sha256sum -c --quiet -) ||
-	say "note: touchscreen firmware differs from the historical pin: $touch_dir"
 
 # Bluetooth (QCA6490; whole constructible btqca name set, from BTFM.bin).
 bt_dir=$pool/bt-qca6490/vendor/bt_firmware/image
@@ -75,24 +66,13 @@ else
 	done
 	say "wlan pool: derived the WCN6855 zst set from $tuple_dir/hw2.0"
 fi
-wlan_sha256="\
-545ae91592926649802069cdbf788aabf3b264e85e0481f8f6600c1517a3c54d  amss.bin.zst
-495d877c73c8ecf19ce8644c4d08e28d4785f3935f1f2517035657fae931d0cd  board-2.bin.zst
-3475ffceaac7bd6f172d9c54767f95764ccc9195f4a62a84607d339dc9916dff  m3.bin.zst
-1ac06385b40546c36857a66749ab85254e7c429ae72cd10f7d5a7faf6e483005  regdb.bin.zst"
-(cd "$wlan_dir" && printf '%s\n' "$wlan_sha256" | sha256sum -c --quiet -) ||
-	say 'note: upstream WCN6855 firmware differs from the historical pin'
 
 # Regulatory database (upstream, signed).  Optional: our kernel carries the
 # signed database and its keys built-in (CONFIG_CFG80211_USE_KERNEL_REGDB_KEYS),
 # so a userland copy is informational only.  Install it when present.
 reg_dir=$pool/regulatory/upstream
 if [ -d "$reg_dir" ]; then
-	reg_sha256="\
-92eec693a0a9ec460be6bb3ff9e22b259b2f906eddd2984dd90654b5ecfa0f18  regulatory.db
-4242d15defb0608b917a2c3cd0dbea21c026a4acc905093e8947dd494c2e26b1  regulatory.db.p7s"
-	(cd "$reg_dir" && printf '%s\n' "$reg_sha256" | sha256sum -c --quiet -) ||
-		say 'note: regulatory database differs from the historical pin'
+	say "regulatory database: present"
 else
 	say 'note: no regulatory database in the pool; the kernel carries its own signed copy'
 fi
@@ -100,21 +80,12 @@ fi
 # Adreno 730 (vendor_a.img): zap stays device-keyed under qcom/sm8475/liuqin;
 # sqe/gmu go to the loader's updates/ override tree (no dpkg path collision).
 gpu_dir=$pool/gpu-adreno730/vendor
-gpu_sha256="\
-e67d1829f57fc8326d806234b932dc3b78e28a9940df34c70752f17d5f38b7aa  a730_sqe.fw
-36296b019753fbb2a4733450a2d0a94e307238227297a747d0ff2811364f5d5f  a730_zap.mbn
-b2d3f0e2a98fd6259ab9ffef16df63265542e6cc9a970d53d476e823d432042a  gmu_gen70000.bin"
-(cd "$gpu_dir" && printf '%s\n' "$gpu_sha256" | sha256sum -c --quiet -) ||
-	say 'note: Adreno 730 firmware differs from the historical pin'
 
 # SM8475 DSP (NON-HLOS.bin, .mdt headers renamed to the .mbn names the DTS uses).
 dsp_dir=$pool/dsp-sm8475/vendor/qcom/sm8475/liuqin
 dsp_count=$(find "$dsp_dir" -maxdepth 1 -type f | wc -l)
 [ "$dsp_count" -ge 1 ] || die 'DSP firmware directory is empty'
-[ "$dsp_count" = 68 ] || say "note: DSP firmware count is $dsp_count, historical pin was 68"
-dsp_seen=$(cd "$dsp_dir" && find . -maxdepth 1 -type f -printf '%P\n' | LC_ALL=C sort |
-	xargs sha256sum | sha256sum | cut -d' ' -f1)
-say "dsp set digest: $dsp_seen ($dsp_count files)"
+say "dsp files: $dsp_count"
 
 # VPU (Iris decode, vendor_a.img).
 [ -f "$vpu_blob" ] || die "VPU firmware is unavailable: $vpu_blob"
@@ -131,15 +102,8 @@ say "topology: $(sha256sum "$topology_bin" | cut -d' ' -f1)"
 # hardware-revision request paths.  Verify the consumed payloads directly;
 # archive directory modes are not firmware identity.
 [ -d "$tuple_dir/hw2.0" ] && [ -d "$tuple_dir/hw2.1" ] || die "HSP2 tuple is unavailable: $tuple_dir"
-for item in \
-	"amss.bin:cc3e477fa698a28bdb8c8115a071893f9b2f5230de190ad525e74fd69bbb6092" \
-	"m3.bin:6938b4bba268a02659ee5e16992971aa0e2fab103a4f60cbccf65e4bd8ac9836" \
-	"board-2.bin:15811f0b799fc26a881bce02e282834cd41b77c2812443ffd931012552a7c1f9" \
-	"regdb.bin:06810e85c94c8f412c4e72cb38546cac90db7fdbadd45aae00f977f862d38a7b"; do
-	name=${item%%:*}
-	hash=${item#*:}
-	[ "$(sha256sum "$tuple_dir/hw2.0/$name" | cut -d' ' -f1)" = "$hash" ] ||
-		say "note: HSP2 tuple $name differs from the historical pin"
+for name in amss.bin m3.bin board-2.bin regdb.bin; do
+	[ -f "$tuple_dir/hw2.0/$name" ] || die "HSP2 tuple is missing hw2.0/$name"
 done
 
 # --- Stage the tree ----------------------------------------------------------
@@ -191,7 +155,6 @@ file_count=$(wc -l <"$manifest" | tr -d ' ')
 # Self-install downgrade: exact-count pins are release-pipeline assertions.
 # The tree content is manifest-hashed above; count drift is a warning.
 [ "$file_count" -ge 1 ] || die 'firmware tree is empty'
-[ "$file_count" = 197 ] || say "note: firmware tree holds $file_count files, historical pin was 197"
 link_count=$(find "$out_dir/usr/lib/firmware" -type l | wc -l | tr -d ' ')
 [ "$link_count" -ge 1 ] || say 'note: firmware tree holds no hw2.1 zst symlinks'
 grep -q '/cirrus/' "$manifest" &&

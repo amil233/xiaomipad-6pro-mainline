@@ -31,9 +31,8 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-# The native root marker the initramfs pins; build-liuqin-native-root.sh writes
-# the same value and initramfs/init checks it before mounting the root.
-marker_sha256=4fdae4f7a27af8b0d4a2bbc168c7f01c3c5c6b5e245fcc521389d662f8212c5b
+# The native root marker the initramfs checks before mounting the root.
+marker_text=liuqin-native-root-v1
 
 die() { printf 'build-liuqin-rootfs-image: %s\n' "$*" >&2; exit 1; }
 say() { printf 'build-liuqin-rootfs-image: %s\n' "$*"; }
@@ -142,7 +141,7 @@ tree=$work/native-root
 [ -x "$tree/usr/lib/systemd/systemd" ] || die "not an Ubuntu root (no systemd): $tree"
 marker=$tree/etc/liuqin-native-root
 [ -f "$marker" ] && [ ! -L "$marker" ] || die "native root marker is missing or a symlink: $marker"
-[ "$(sha "$marker")" = "$marker_sha256" ] || die "native root marker content mismatch: $marker"
+[ "$(cat "$marker")" = "$marker_text" ] || die "native root marker content mismatch: $marker"
 [ "$(stat -c '%a' "$marker")" = 644 ] || die "native root marker mode is not 644: $marker"
 [ "$(id -u)" != 0 ] || [ "$(stat -c '%u:%g' "$marker")" = 0:0 ] ||
 	die "native root marker is not owned by root: $marker"

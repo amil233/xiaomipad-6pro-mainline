@@ -25,19 +25,19 @@ jobs:
         with:
           path: project
           persist-credentials: false
-      - name: Kernel revision
+      - name: Kernel branch
         id: kernel
         run: |
           python3 - <<'PY'
           import json, os
-          sha = json.load(open('project/kernel/source.json'))['commit']
+          ref = json.load(open('project/kernel/source.json'))['branch']
           with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-              stream.write('sha=' + sha + '\n')
+              stream.write('ref=' + ref + '\n')
           PY
       - uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/linux-sm8450-liuqin
-          ref: ${{ steps.kernel.outputs.sha }}
+          ref: ${{ steps.kernel.outputs.ref }}
           path: linux-sm8450-liuqin
           fetch-depth: 0
           persist-credentials: false

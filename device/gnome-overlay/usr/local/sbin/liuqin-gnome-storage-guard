@@ -6,7 +6,7 @@ set -u
 # environment, so on the device every default below applies unchanged.
 BB=${LIUQIN_GNOME_GUARD_TEST_BUSYBOX:-/usr/local/bin/busybox}
 marker=${LIUQIN_GNOME_GUARD_TEST_MARKER:-/etc/liuqin-gnome-root}
-marker_sha=bd86a359f5b6bf05f09abf544967489e924c251ab7c07684df62b0dbda4c3fca
+marker_text=LIUQIN_GNOME_ROOT_V1
 dev_root=${LIUQIN_GNOME_GUARD_TEST_DEV_ROOT:-/dev}
 mounts=${LIUQIN_GNOME_GUARD_TEST_MOUNTS:-/proc/mounts}
 kmsg=${LIUQIN_GNOME_GUARD_TEST_KMSG:-/dev/kmsg}
@@ -27,7 +27,7 @@ path_is_block() {
 
 [ -f "$marker" ] && [ ! -L "$marker" ] || fail 'root marker missing'
 [ "$($BB stat -c '%a %u %g' "$marker" 2>/dev/null)" = '644 0 0' ] || fail 'root marker metadata invalid'
-[ "$($BB sha256sum "$marker" | $BB cut -d' ' -f1)" = "$marker_sha" ] || fail 'root marker content invalid'
+[ "$($BB cat "$marker" 2>/dev/null)" = "$marker_text" ] || fail 'root marker content invalid'
 
 root_source=
 roots=0

@@ -52,8 +52,8 @@ fail() { printf 'test-liuqin-guard: %s\n' "$*" >&2; exit 1; }
 # (systemd.mount(5)), so home.mount has to be named explicitly; the guard also
 # stays ahead of basic.target.
 # --------------------------------------------------------------------------
-marker_sha=$(sha256sum "$real_marker" | cut -d' ' -f1)
-grep -q "^marker_sha=$marker_sha\$" "$guard_source" ||
+marker_text=$(cat "$real_marker")
+grep -q "^marker_text=$marker_text\$" "$guard_source" ||
 	fail 'the guard no longer pins the real marker content'
 grep -qx 'After=local-fs.target home.mount' "$guard_unit" ||
 	fail 'the guard unit is no longer ordered after local-fs.target and home.mount'

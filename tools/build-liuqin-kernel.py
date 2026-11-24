@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Build the kernel revision selected by kernel/source.json."""
+"""Build the checked-out kernel with the configuration in kernel/source.json."""
 
 import argparse
 import fcntl
@@ -29,21 +29,22 @@ def main():
     parser.add_argument('--out', type=Path, default=project / 'out/kernel')
     parser.add_argument('--jobs', type=int, default=min(os.cpu_count() or 1, 12))
     parser.add_argument('--configure-only', action='store_true')
-    parser.add_argument('--revision', help='Exact development SHA; does not update the product lock')
+    parser.add_argument('--revision', help='Require the checkout to be this exact commit')
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be positive')
     source, out = args.source.resolve(), args.out.resolve()
     lock = json.loads((project / 'kernel/source.json').read_text())
-    pinned_commit = lock['commit']
+    commit = output('git', '-C', str(source), 'rev-parse', 'HEAD').strip()
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        parser.error('kernel source has no commit')
     if args.revision:
         if not re.fullmatch(r'[0-9a-f]{40}', args.revision):
             parser.error('--revision must be a full commit SHA')
-        lock['commit'] = args.revision
+        if commit != args.revision:
+            parser.error('checked-out kernel is not the requested revision')
     if out == source or source in out.parents:
         parser.error('--out must be outside the kernel source tree')
-    if output('git', '-C', str(source), 'rev-parse', 'HEAD') != lock['commit']:
-        parser.error('kernel source does not match kernel/source.json')
     if output('git', '-C', str(source), 'status', '--porcelain', '--untracked-files=normal'):
         parser.error('kernel source must be clean')
     # Compile natively when the host itself is aarch64 (e.g. the
@@ -60,9 +61,7 @@ def main():
     compiler = str(Path(compiler).resolve())
     fragments = [project / path for path in lock['config_fragments']]
     identity = {
-        'source': str(source), 'commit': lock['commit'],
-        'upstream_base': lock['upstream_base'],
-        'config_sha256': lock['config_sha256'],
+        'commit': commit,
         'fragments': {str(p.relative_to(project)): digest(p) for p in fragments},
         'compiler': str(Path(compiler).resolve()), 'compiler_sha256': digest(compiler),
         'compiler_version': output(compiler, '--version'),
@@ -77,9 +76,11 @@ def main():
         stamp = out / 'build-inputs.json'
         if stamp.exists():
             previous = json.loads(stamp.read_text())
-            # Kbuild tracks source changes on the same base; keep those builds incremental.
-            compatible = lambda data: {k: v for k, v in data.items() if k not in ('commit', 'fragments')}
-            if compatible(previous) != compatible(identity):
+            # Kbuild tracks source changes on the same base; keep those builds
+            # incremental.  Compare the fields both records share, so an older
+            # build-inputs.json with extra fields still matches.
+            shared = (set(previous) & set(identity)) - {'commit', 'fragments'}
+            if {k: previous[k] for k in shared} != {k: identity[k] for k in shared}:
                 parser.error('build inputs changed; use a new --out directory')
         elif any(p.name != '.build.lock' for p in out.iterdir()):
             parser.error('output has no input identity; use a new --out directory')
@@ -100,17 +101,7 @@ def main():
                         '-m', '-O', str(out), str(out / '.config'),
                         *map(str, fragments)], env=env, check=True)
         subprocess.run(make + ['olddefconfig'], env=env, check=True)
-        #if digest(out / '.config') != lock['config_sha256']:
-        #    parser.error('generated configuration differs from kernel/source.json')
-        actual_config_sha = digest(out / '.config')
-        if actual_config_sha != lock['config_sha256']:
-            print(f'WARNING: generated configuration differs from kernel/source.json')
-            print(f'  expected: {lock["config_sha256"]}')
-            print(f'  actual:   {actual_config_sha}')
-            print(f'  This is expected when building on a different host than the')
-            print(f'  one that generated the lock. Continuing build.')
-            print(f'  To silence this warning, update kernel/source.json config_sha256')
-            print(f'  to the actual value above.')
+        config_sha256 = digest(out / '.config')
         if args.configure_only:
             print('Configuration verified; no Image or modules built.')
             return
@@ -120,7 +111,7 @@ def main():
                                'Image', lock['dtb'], 'modules'], env=env, check=True)
         subprocess.run(make + ['modules_install', 'INSTALL_MOD_PATH=' + str(out / 'modules')],
                        env=env, check=True)
-        if output('git', '-C', str(source), 'rev-parse', 'HEAD') != lock['commit'] or output(
+        if output('git', '-C', str(source), 'rev-parse', 'HEAD').strip() != commit or output(
                 'git', '-C', str(source), 'status', '--porcelain', '--untracked-files=normal'):
             identity['invalidated'] = 'source changed during build'
             stamp.write_text(json.dumps(identity, indent=2) + '\n')
@@ -128,10 +119,9 @@ def main():
         paths = ['arch/arm64/boot/Image', 'arch/arm64/boot/dts/' + lock['dtb'],
                  '.config', 'vmlinux', 'System.map']
         public_info = {key: identity[key] for key in
-                       ('commit', 'config_sha256', 'fragments', 'compiler_sha256',
+                       ('commit', 'fragments', 'compiler_sha256',
                         'compiler_version', 'builder_sha256')}
-        public_info.update(product_kernel_commit=pinned_commit,
-                           build_kind='development' if args.revision else 'product-input')
+        public_info['config_sha256'] = config_sha256
         (out / 'build-info.json').write_text(json.dumps(public_info, indent=2) + '\n')
         paths.append('build-info.json')
         (out / 'SHA256SUMS').write_text(''.join(f'{digest(out / p)}  {p}\n' for p in paths))

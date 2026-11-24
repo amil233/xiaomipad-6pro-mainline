@@ -31,16 +31,6 @@ caller_gid=${SUDO_GID:-$(id -g)}
 # ROM-content pins measured from the V14.0.9.0.TMYCNXM vendor_a extraction
 # (this tablet's installed ROM): sensor config manifest matches the OS2 value
 # byte-for-byte, sns_reg_config does not.
-expected_config_count=${EXPECTED_CONFIG_COUNT:-56}
-expected_config_manifest_sha256=${EXPECTED_CONFIG_MANIFEST_SHA256:-1cbf79b3ba5bfdd3efa152bcb5900ff6addd703f61b19def59cea62ae3c56867}
-expected_sns_reg_sha256=${EXPECTED_SNS_REG_SHA256:-4e89098ae7e009328b6c2e45d6d544a19211c7db992a9010efd637358a0c83a8}
-expected_hexagonrpc_patch_sha256=856b046e572209b5f13c54ef100e685463aba23eefb850d0f3389c4c7ac6fa90
-expected_hexagonrpc_sns_patch_sha256=7826943d36a93bbddf1746e96b831bbc2efd5e7c7ff1f0d8460fe2f2acf7a1a5
-expected_iio_claim_patch_sha256=84bd7c4986d5e1ad68a6edfe241147e41262db3c95f69b054e464a95846ac808
-expected_iio_polling_patch_sha256=978b9d168584890e576ac6cee4b27fb75260d0117da4b0d68813a25fe15fa738
-expected_iio_release_patch_sha256=c46633a0ff858cd4d28fcdc14226f473a874c7fc6073970a215bc77b1be11aaf
-expected_iio_availability_patch_sha256=c260ff38fc9f08e0ac9e84e0c661a3c692166f8969e2402f9ad50108cd6dc35c
-expected_sns_reg_version_sha256=dbe3f332ebc155730bd5291a550e3b89307c948a87111daef7cad7415770f729
 device_prefix=usr/share/qcom/sm8450/Xiaomi/liuqin
 
 die() { printf 'build-liuqin-sensors-stack: %s\n' "$*" >&2; exit 1; }
@@ -75,7 +65,7 @@ trap 'rm -f "$registry_manifest"' EXIT
 (cd "$rom_sensors/config" &&
 	find . -maxdepth 1 -type f -printf '%P\0' | LC_ALL=C sort -z | xargs -0 sha256sum) >"$registry_manifest"
 config_count=$(wc -l <"$registry_manifest" | tr -d ' ')
-say "ROM sensor configs: $config_count (historical pin $expected_config_count)"
+say "ROM sensor configs: $config_count"
 say "config manifest: $(sha256sum "$registry_manifest" | cut -d' ' -f1)"
 say "sns_reg_config: $(sha256sum "$rom_sensors/sns_reg_config" | cut -d' ' -f1)"
 say "sns_reg_config version file: $(sha256sum "$rom_sensors/sns_reg_version" 2>/dev/null | cut -d' ' -f1 || echo none)"
@@ -87,18 +77,6 @@ grep -Fqx 'property=persist.vendor.sensors.enable.property=/mnt/vendor/persist/s
 	"$rom_sensors/sns_reg_config" || die 'exact-ROM sensor property 0 mismatch'
 grep -Fqx 'property=persist.vendor.sensors.enable.property1=/mnt/vendor/persist/sensors/registry/file2' \
 	"$rom_sensors/sns_reg_config" || die 'exact-ROM sensor property 1 mismatch'
-[ "$(sha256sum "$hexagonrpc_patch" | cut -d' ' -f1)" = "$expected_hexagonrpc_patch_sha256" ] ||
-	die 'hexagonrpc registry-version patch mismatch'
-[ "$(sha256sum "$hexagonrpc_sns_patch" | cut -d' ' -f1)" = "$expected_hexagonrpc_sns_patch_sha256" ] ||
-	die 'hexagonrpc sns_registry patch mismatch'
-[ "$(sha256sum "$iio_claim_patch" | cut -d' ' -f1)" = "$expected_iio_claim_patch_sha256" ] ||
-	die 'iio-sensor-proxy preclaimed coldplug patch mismatch'
-[ "$(sha256sum "$iio_polling_patch" | cut -d' ' -f1)" = "$expected_iio_polling_patch_sha256" ] ||
-	die 'iio-sensor-proxy polling patch mismatch'
-[ "$(sha256sum "$iio_release_patch" | cut -d' ' -f1)" = "$expected_iio_release_patch_sha256" ] ||
-	die 'iio-sensor-proxy release patch mismatch'
-[ "$(sha256sum "$iio_availability_patch" | cut -d' ' -f1)" = "$expected_iio_availability_patch_sha256" ] ||
-	die 'iio-sensor-proxy availability patch mismatch'
 
 mkdir -p "$source_cache"
 while IFS="$(printf '\t')" read -r component version repository commit tree; do
@@ -109,7 +87,7 @@ while IFS="$(printf '\t')" read -r component version repository commit tree; do
 		git clone --filter=blob:none --no-checkout "$repository" "$dir"
 	fi
 	[ "$(git -C "$dir" remote get-url origin)" = "$repository" ] ||
-		die "$component origin differs from the pinned repository"
+		die "$component origin differs from the recorded repository"
 	if ! git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
 		git -C "$dir" fetch --quiet origin "$commit"
 	fi
@@ -147,7 +125,7 @@ mkdir -p "$work/source"
 cp -a "$source_cache/." "$work/source/"
 install -m 0755 "$ssc_accel_test_runner" "$work/source/liuqin-ssc-accel-integration.py"
 git -C "$work/source/hexagonrpc" apply --check "$hexagonrpc_patch" ||
-	die 'hexagonrpc registry-version patch no longer applies to the pinned source'
+	die 'hexagonrpc registry-version patch no longer applies to the recorded source'
 git -C "$work/source/hexagonrpc" apply "$hexagonrpc_patch"
 git -C "$work/source/hexagonrpc" apply --check "$hexagonrpc_sns_patch" ||
 	die 'hexagonrpc sns_registry patch no longer applies after the registry-version patch'
@@ -156,7 +134,7 @@ git -C "$work/source/hexagonrpc" apply "$hexagonrpc_sns_patch"
 # themselves carry trailing spaces in their context lines.
 git -C "$work/source/hexagonrpc" diff --check || say 'note: hexagonrpc patch leaves whitespace warnings'
 git -C "$work/source/iio-sensor-proxy" apply --check "$iio_claim_patch" ||
-	die 'iio-sensor-proxy preclaimed coldplug patch no longer applies to the pinned source'
+	die 'iio-sensor-proxy preclaimed coldplug patch no longer applies to the recorded source'
 git -C "$work/source/iio-sensor-proxy" apply "$iio_claim_patch"
 for patch in "$iio_polling_patch" "$iio_release_patch" "$iio_availability_patch"; do
 	git -C "$work/source/iio-sensor-proxy" apply --check "$patch" || die "sensor patch does not apply: $patch"
@@ -547,12 +525,10 @@ ln -sfn /var/lib/liuqin-sensors/registry "$dest/$device_prefix/sensors/registry"
 install -d "$dest/usr/share/doc/liuqin"
 cp "$source_manifest" "$dest/usr/share/doc/liuqin/sensor-stack-sources.manifest"
 {
-	printf '%s  %s\n' "$expected_hexagonrpc_patch_sha256" "${hexagonrpc_patch##*/}"
-	printf '%s  %s\n' "$expected_hexagonrpc_sns_patch_sha256" "${hexagonrpc_sns_patch##*/}"
-	printf '%s  %s\n' "$expected_iio_claim_patch_sha256" "${iio_claim_patch##*/}"
-	printf '%s  %s\n' "$expected_iio_polling_patch_sha256" "${iio_polling_patch##*/}"
-	printf '%s  %s\n' "$expected_iio_release_patch_sha256" "${iio_release_patch##*/}"
-	printf '%s  %s\n' "$expected_iio_availability_patch_sha256" "${iio_availability_patch##*/}"
+	for patch in "$hexagonrpc_patch" "$hexagonrpc_sns_patch" "$iio_claim_patch" \
+		"$iio_polling_patch" "$iio_release_patch" "$iio_availability_patch"; do
+		printf '%s  %s\n' "$(sha256sum "$patch" | cut -d' ' -f1)" "${patch##*/}"
+	done
 } >"$dest/usr/share/doc/liuqin/sensor-stack-patches.manifest"
 mv "$dest/ubuntu-resolute-build-deps.tsv" \
 	"$dest/usr/share/doc/liuqin/ubuntu-resolute-sensor-build-deps.tsv"

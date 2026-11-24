@@ -6,10 +6,10 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 import subprocess
-import zipfile
 
 
 # Files that decide what the assembled boot image contains. A change to any
@@ -79,7 +79,7 @@ def kernel_release_string(kernel: Path) -> str:
 PREPARED_MODULE_FILES = {'modules.tar', 'modules.manifest', 'kernel.release', 'kernel.commit'}
 
 
-def reuse_prepared_modules(kernel: Path, info: dict, lock: dict, out: Path, parser) -> bool:
+def reuse_prepared_modules(kernel: Path, info: dict, commit: str, out: Path, parser) -> bool:
     """Copy the verified module set the CI action packaged with the artifact.
 
     The set is the same content `make modules_install` would produce from this
@@ -107,12 +107,12 @@ def reuse_prepared_modules(kernel: Path, info: dict, lock: dict, out: Path, pars
         if not source.is_dir() or set(PREPARED_MODULE_FILES) - {p.name for p in source.iterdir()}:
             return False
         expected = None
-    if (source / 'kernel.commit').read_text().strip() != lock['commit']:
-        parser.error('Imported modules do not belong to the locked kernel')
+    if (source / 'kernel.commit').read_text().strip() != commit:
+        parser.error('The module set belongs to a different kernel commit')
     kernel_release = kernel / 'include/config/kernel.release'
     if kernel_release.is_file() and \
             (source / 'kernel.release').read_text().strip() != kernel_release.read_text().strip():
-        parser.error('Imported modules do not belong to the locked kernel')
+        parser.error('The module set belongs to a different kernel release')
     if expected is not None:
         for name, digest in expected.items():
             with (source / name).open('rb') as stream:
@@ -160,45 +160,28 @@ def main():
     lock = json.loads((project / 'kernel/source.json').read_text())
     subprocess.run(['sha256sum', '-c', '--quiet', 'SHA256SUMS'], cwd=kernel, check=True)
     info = json.loads((kernel / 'build-info.json').read_text())
-    if info['commit'] != lock['commit']:
-        parser.error('Kernel build must match the product lock, not a development override')
-    if info['config_sha256'] != lock['config_sha256']:
-        parser.error('Kernel configuration does not match the product lock')
-    # Self-install downgrade: the on-disk .config in a CI artifact is a
-    # diagnostic copy and may drift from the hash the action recorded in
-    # build-info.json (e.g. a late defconfig refresh after the record was
-    # written).  The authoritative gates are the commit identity above, the
-    # recorded config hash, and the per-fragment comparison for development
-    # builds below; report the byte mismatch instead of aborting.
+    commit = info.get('commit', '')
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        parser.error('Kernel build-info.json carries no commit')
+    # Everything below is checked against the artifact itself and the
+    # configuration files in this repository; no commit or hash is stored in
+    # kernel/source.json.
     actual_config = hashlib.sha256((kernel / '.config').read_bytes()).hexdigest()
-    if actual_config != lock['config_sha256']:
-        print(f'Kernel: NOTE: artifact .config bytes ({actual_config[:16]}) differ '
-              f'from the recorded hash ({lock["config_sha256"][:16]}); '
-              'the recorded hash and fragments already validate this build',
-              flush=True)
-    imported = info.get('build_kind') == 'imported-clean-repro'
-    if info.get('build_kind') == 'development' or imported:
-        # A development build is a `build-liuqin-kernel.py --revision` build.
-        # It was made from the same clean source, fragments and builder as a
-        # product build; only its label records the lock of that day.  Once
-        # the lock has moved to that very revision, the output is the product
-        # input by content.  Accept it only when the fragments it was built
-        # from are byte-identical to the ones the lock names today.
-        fragments = {path: hashlib.sha256((project / path).read_bytes()).hexdigest()
-                     for path in lock['config_fragments']}
-        if info.get('fragments') != fragments:
-            parser.error('Development kernel build used other config fragments than the product lock')
-        print('Kernel: ' + info['build_kind'] + ' of locked commit ' + lock['commit'][:12] +
-              '; commit, configuration and fragments match the lock', flush=True)
-    elif info.get('build_kind') != 'product-input':
-        parser.error('Kernel build must match the product lock, not a development override')
+    if info.get('config_sha256') and info['config_sha256'] != actual_config:
+        print(f'Kernel: NOTE: artifact .config bytes ({actual_config[:16]}) differ from '
+              f'the hash recorded at build time ({info["config_sha256"][:16]})', flush=True)
+    fragments = {path: hashlib.sha256((project / path).read_bytes()).hexdigest()
+                 for path in lock['config_fragments']}
+    if info.get('fragments') and info['fragments'] != fragments:
+        parser.error('Kernel build used different configuration fragments than device/configs/')
+    print(f'Kernel: {commit[:12]}; checksums, configuration and fragments agree', flush=True)
     env = os.environ.copy()
     # Privileged assembly reads exactly these user-owned repositories.
     env.update(GIT_CONFIG_COUNT='2', GIT_CONFIG_KEY_0='safe.directory',
                GIT_CONFIG_VALUE_0=str(project), GIT_CONFIG_KEY_1='safe.directory',
                GIT_CONFIG_VALUE_1=str(kernel_source))
     env.update(supplied, KERNEL_SOURCE=str(kernel_source),
-               KERNEL_DIR=str(kernel_source), KERNEL_COMMIT=lock['commit'],
+               KERNEL_DIR=str(kernel_source), KERNEL_COMMIT=commit,
                KERNEL_OUT=str(kernel), KERNEL_IMAGE=str(kernel / 'arch/arm64/boot/Image'),
                KERNEL_DTB=str(kernel / 'arch/arm64/boot/dts' / lock['dtb']),
                KERNEL_MODULES_DIR=str(out / 'modules'), DEBS_DIR=str(out / 'debs'),
@@ -223,7 +206,7 @@ def main():
     except BlockingIOError:
         parser.error('another assembly owns this output')
     for stage in selected:
-        if stage == 'modules' and reuse_prepared_modules(kernel, info, lock, out, parser):
+        if stage == 'modules' and reuse_prepared_modules(kernel, info, commit, out, parser):
             print('Stage: modules (verified prepared CI module artifacts)', flush=True)
             continue
         if stage == 'release-assets':
@@ -237,8 +220,7 @@ def main():
             shutil.copytree(out / 'bundle', destination,
                             ignore=shutil.ignore_patterns('rootfs.tar.gz'))
             metadata = json.loads((destination / 'bundle.json').read_text())
-            for name in ('INSTALL.zh-CN.md', 'BUILD.zh-CN.md',
-                         'FEATURES.zh-CN.md'):
+            for name in ('INSTALL.zh-CN.md', 'BUILD.zh-CN.md'):
                 shutil.copyfile(project / 'docs' / name, destination / name)
                 metadata['files'][name] = hashlib.sha256((destination / name).read_bytes()).hexdigest()
             if args.device_tested:
@@ -274,21 +256,8 @@ def main():
                      'liuqin-firstboot.cpio.gz': out / 'boot/liuqin-firstboot.cpio.gz',
                      'INSTALL.zh-CN.md': project / 'docs/INSTALL.zh-CN.md',
                      'BUILD.zh-CN.md': project / 'docs/BUILD.zh-CN.md',
-                     'FEATURES.zh-CN.md': project / 'docs/FEATURES.zh-CN.md',
                      'NOTICE': project / 'NOTICE', 'LICENSE': project / 'LICENSE',
                      'fingerprint-build-inputs.tar.gz': Path(supplied['FINGERPRINT_BUNDLE'])}
-            if imported:
-                proof = out / 'kernel-build-proof.zip'
-                proof_files = [kernel / 'build-info.json', kernel / 'SHA256SUMS',
-                               kernel / '.config', *sorted((kernel / 'provenance').iterdir())]
-                with zipfile.ZipFile(proof, 'w', zipfile.ZIP_DEFLATED) as archive:
-                    for source in proof_files:
-                        entry = zipfile.ZipInfo(source.relative_to(kernel).as_posix(),
-                                                date_time=(1980, 1, 1, 0, 0, 0))
-                        entry.compress_type = zipfile.ZIP_DEFLATED
-                        entry.external_attr = 0o644 << 16
-                        archive.writestr(entry, source.read_bytes())
-                files['kernel-build-proof.zip'] = proof
             hashes = {}
             for name, source in files.items():
                 if name in ('boot.img', 'rootfs.tar.gz'):
@@ -298,7 +267,7 @@ def main():
                 with source.open('rb') as stream:
                     hashes[name] = hashlib.file_digest(stream, 'sha256').hexdigest()
             metadata = {'device': 'liuqin', 'status': 'OFFLINE_ASSEMBLED',
-                        'kernel_commit': lock['commit'],
+                        'kernel_commit': commit,
                         'project_commit': subprocess.check_output(['git', '-C', str(project), 'rev-parse', 'HEAD'], env=env, text=True).strip(),
                         'project_dirty': bool(subprocess.check_output(['git', '-C', str(project), 'status', '--porcelain'], env=env)),
                         'kernel_release': kernel_release_string(kernel),

@@ -15,28 +15,10 @@ BOARD_KEY = (
     "bus=pci,vendor=17cb,device=1103,subsystem-vendor=17cb,"
     "subsystem-device=0108,qmi-chip-id=18,qmi-board-id=255"
 )
-ENCODER_SHA = "4a2181d16d6ff35d60773b75aaa1bbe349afea7f03d4d2d97a596b81636a9e87"
-BOARD_SHA = "15811f0b799fc26a881bce02e282834cd41b77c2812443ffd931012552a7c1f9"
-INPUTS = {
-    # amss20.bin measured from this tablet's V14.0.9.0.TMYCNXM extraction;
-    # the other three match the historical pins.
-    "amss20.bin": "52558e5061f8e589a50070341add61482115104d2b467a3eddba67e580659b7e",
-    "m3.bin": "6938b4bba268a02659ee5e16992971aa0e2fab103a4f60cbccf65e4bd8ac9836",
-    "regdb.bin": "06810e85c94c8f412c4e72cb38546cac90db7fdbadd45aae00f977f862d38a7b",
-    "bd_m81gf.elf": "aa8ae92d781e09db8cffa960b00c9606e4bb65d9c7a89f9b32df1bd24aee8573",
-}
-
-
-def report(path, expected=None):
-    """Log an input's actual hash. Content pins exist for release-line
-    reproducibility, not for a personal install: every input is already
-    determined by where it came from. Print and continue."""
+def report(path):
+    """Print the input's actual hash so a build can be identified later."""
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
-    if expected is not None and actual != expected:
-        print(f"note: {path.name} differs from the historical pin "
-              f"(actual {actual[:16]}, had {expected[:16]})")
-    else:
-        print(f"{path.name}: {actual}")
+    print(f"{path.name}: {actual}")
     return actual
 
 
@@ -49,10 +31,10 @@ def main():
     parser.add_argument("--out", type=Path, default=Path("out/wlan"))
     args = parser.parse_args()
     args.bdencoder = args.bdencoder.resolve()
-    report(args.bdencoder, ENCODER_SHA)
+    report(args.bdencoder)
     report(args.base_board)
-    for name, digest in INPUTS.items():
-        report(args.vendor / name, digest)
+    for name in ("amss20.bin", "m3.bin", "regdb.bin", "bd_m81gf.elf"):
+        report(args.vendor / name)
     if args.out.exists():
         raise SystemExit("Output already exists; choose a fresh directory")
 

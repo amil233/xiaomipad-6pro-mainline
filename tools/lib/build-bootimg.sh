@@ -77,11 +77,14 @@ analysis_dir=${STOCK_ANALYSIS_DIR:-"$project_root/tools/local/roms/liuqin/$stock
 # accepted DTB, so private checks see exactly what they demonstrably accepted.
 if [ "${ABL_DTB02_IDS:-0}" = 1 ]; then
 	stock_soc_dtb=${STOCK_SOC_DTB:-"$analysis_dir/vendor_boot/dtbs/dtb-02.dtb"}
-	stock_soc_dtb_sha256=${STOCK_SOC_DTB_SHA256:-70efcea37552a85d5f6d25421bbf199f3a998a19a8a6c8486461ba8667943224}
-	if ! printf '%s  %s\n' "$stock_soc_dtb_sha256" "$stock_soc_dtb" | sha256sum -c --quiet -; then
-		echo "error: stock dtb-02.dtb does not match the pinned hash" >&2
+	[ -f "$stock_soc_dtb" ] || {
+		echo "error: stock dtb-02.dtb is unavailable: $stock_soc_dtb" >&2
 		exit 1
-	fi
+	}
+	[ "$(dd if="$stock_soc_dtb" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = d00dfeed ] || {
+		echo "error: stock dtb-02.dtb is not a device tree: $stock_soc_dtb" >&2
+		exit 1
+	}
 	python3 "$project_root/tools/lib/abl-dtb-ids.py" \
 		--boot-dtb "$boot_dtb" \
 		--stock-dtb "$stock_soc_dtb" \
@@ -258,7 +261,7 @@ if ! grep -q "^kernel_size: $image_gz_size\$" "$info" || \
 	! grep -q "^ramdisk size: $ramdisk_size\$" "$info" || \
 	! grep -q "^dtb size: $boot_dtb_size\$" "$info" || \
 	! grep -q '^dtb address: 0x0000000001f00000$' "$info"; then
-	echo "error: unpacked boot image layout does not match the liuqin v2 contract" >&2
+	echo "error: unpacked boot image layout does not match the liuqin v2 layout" >&2
 	exit 1
 fi
 
