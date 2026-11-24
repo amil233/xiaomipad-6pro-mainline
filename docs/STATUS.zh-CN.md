@@ -85,8 +85,7 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 - 音频：48 kHz / 4 声道 / 24-bit / 4×32-bit slot 的 TDM，四颗 CS35L41 各占
   一个 slot；`speaker-test -c 4` 与桌面播放均出声（见 `AUDIO.zh-CN.md`）。
 - 桌面：GNOME 可用；USB 网络救援（initramfs telnet 2323）、持久 root/home。
-- 恢复：安装时 `--backup` 的原厂 boot_a/boot_b/persist/GPT 备份；
-  `out/boot_a.img` 留档，产品 ramdisk 在 `out/ramdisk`。
+- 恢复：原厂 V14 快刷（`flash_all.sh`）；`out/boot_a.img` 留档。
 - 内核 deb：756 `.ko` + `/boot/{vmlinuz,initrd,dtb}`，纯文件包。
 
 **未验证（不要写成可用）**
@@ -111,7 +110,7 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 8 | 接电脑 USB 掉电 | SDP 上 `input_current_limit` 100 mA，原厂靠 gadget 枚举抬到 500 mA；树里没有该补丁 |
 | 9 | 电压/电流计数值 | c03e10 上机已正常；v0.8.0 相关改动已回退，不要重引入 |
 | 10 | 用户态版本落差 | 见 §3；合并与否待决策 |
-| 11 | 安装器槽位 | 本分支已把 linux-only 目标改为 A；双系统路径已禁用。**下一次全新安装要复核 `--set-active=a` 与 `boot_a` 回读** |
+| 11 | 安装器槽位 | 安装器流程已按新政策作废（不区分产品/开发，全新安装走"装配 → fastboot flash boot_a"新流程）。**下一次全新安装走 `repack/<sha>-boot` → `fastboot flash boot_a`**，无需再复核 installer。 |
 | 12 | 固件集已对齐 V14（无需刷机） | 2026-11-18 从 V14 `super.img`/`NON-HLOS.bin`/`BTFM.bin` 重提取；设备已装 rootfs 的 `native.contract` 与其中 5 个固件逐字节相同，说明实机本来就在用这组文件，见 §7 |
 | 13 | 安装器不再用 256GB 样例做预览 | 确认页现按设备 `userdata` 实际大小计算 `linux_root`/`linux_home`；`STOCK_TABLE` 只剩合成测试用，`--check` 不再打印虚构分区表 |
 | 14 | 用户态 P0 已装机，contract 已更新 | 2026-11-18 的 `liuqin-device-support` 重编了 wlan-mac/power-keyd，旧 initramfs contract 拒绝挂载；已更新 `native.contract` 并重打 `repack/9a81b1a-contract-boot/`。新 boot 与新 device-support 成对使用；待冷启动验证 Wi‑Fi、登录音频、GNOME 输入、指纹 |
@@ -173,13 +172,14 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 10 | 触控统一写"Novatek `nt36523`（SPI）"；面板驱动文件是 `panel-novatek-nt36532.c` |
 | 11 | 上游 = 内核仓 `linux` remote（torvalds/linux）；`sm8450-mainline` 只是历史来源；不再保留 `linux/` checkout |
 | 12 | 集成仓新工作放在 `liuqin-7.3` 分支；`main` 保留 v0.6.0 历史 |
+| 13 | **2026-11 起新策略**：不区分产品/开发，删 `installer.img` / `17abc-boot-prodrd/` / `out/ramdisk`；全新安装走"装配 boot img → fastboot flash boot_a"；更新走"新内核装配 → flash，或新 deb 覆盖安装" |
 
 ## 9. 文档索引
 
 | 文档 | 内容 |
 |---|---|
 | `STATUS.zh-CN.md` | **本文**，唯一状态源 |
-| `INSTALL.zh-CN.md` | 本机安装/重装/恢复：128G、A 槽单系统、安装器 + 手动修正 |
+| `INSTALL.zh-CN.md` | 本机安装/更新/恢复：128G、A 槽单系统、装配 boot img → fastboot flash boot_a；rootfs 刷入或内核 deb 覆盖更新 |
 | `BUILD.zh-CN.md` | CI-only 内核构建、artifact 契约、本机装配与打包 |
 | `FEATURES.zh-CN.md` | 指纹/相机/快充/Waydroid 的设备特定细节（状态以本文为准） |
 | `display.md` | 显示点亮：结论、黄金值、判读陷阱 |
@@ -200,9 +200,10 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 
 - **内核只在 CI 编译**；本机只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配和
   `dpkg-deb` 打包。详见 `BUILD.zh-CN.md`。
-- **initramfs 两个来源，别混**：
-  - `out/ramdisk`：产品版（从设备 boot_a 取出，40,326,354 B，sha256 `a04d2b25…`）；
+- **initramfs 单一来源，别混**：
   - `xiaomipad-6pro-mainline/out/initramfs-liuqin/liuqin-firstboot.cpio.gz`：
-    2026-11-07 重建版（30,930,155 B，sha256 `1690e9ec…`），`17abc-boot` 与
-    `c03e10-boot` 用的都是它。
+    post-contract（30,945,812 B，sha256 `935226d6…`）；旧 pre-contract
+    （`liuqin-firstboot.cpio.gz.before-contract`，30,930,155 B，`1690e9ec…`）
+    仅供历史对照（`17abc-boot` / `c03e10-boot`）。旧产品版 `out/ramdisk`
+    （40,326,354 B，`a04d2b25…`）已按新政策删除。
 - `ci/` 只保留最新两套 artifact；`repack/` 只保留当前、对照、回滚镜像。

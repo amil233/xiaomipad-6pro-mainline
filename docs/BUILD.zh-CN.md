@@ -36,8 +36,10 @@ ci/liuqin-kernel-<40 位 SHA>/
 2. `sha256sum -c SHA256SUMS` 两目录都过。
 
 `build-info.json` 里的 `product_kernel_commit` 是**构建当时的
-`kernel/source.json` 锁值**，用于区分 development 与 product-input 构建；
-它不是当前运行内核的提交，不要拿它当 tip。
+`kernel/source.json` 锁值**（产物可重复性锚点）；它不是当前运行内核的
+提交，也不是"development vs product"的产品标签。本项目**不区分产品与
+开发**：只做一致性校验（构建产物 commit / 锁值一致才放行），不采用
+参考项目的硬编码 sha 产品锁。
 
 ## 3. 本机装配 boot 镜像
 
@@ -54,9 +56,11 @@ DTC=/usr/bin/dtc FDTOVERLAY=/usr/bin/fdtoverlay \
 - 脚本内置 round-trip 校验（`cmp` Image/dtb/ramdisk、header cmdline、v2 layout），
   失败即装配有问题。
 - 刷入：`fastboot flash boot_a`（A 槽直启）；试跑：`fastboot boot`。
-- 两个 ramdisk 不要混：`out/ramdisk`（产品版，40,326,354 B，`a04d2b25…`）
-  与 `xiaomipad-6pro-mainline/out/initramfs-liuqin/liuqin-firstboot.cpio.gz`
-  （重建版，30,930,155 B，`1690e9ec…`）。
+- ramdisk **只有一套**：`xiaomipad-6pro-mainline/out/initramfs-liuqin/liuqin-firstboot.cpio.gz`
+  （post-contract，30,945,812 B，sha256 `935226d6…`）；旧 pre-contract
+  （`liuqin-firstboot.cpio.gz.before-contract`，30,930,155 B，`1690e9ec…`）
+  仅供历史对照（`17abc` / `c03e10`）。旧产品版 `out/ramdisk`（40,326,354 B，
+  `a04d2b25…`）已按新政策删除（不区分产品/开发）。
 
 ## 4. 系统镜像与安装包（可选，需专用主机）
 

@@ -15,7 +15,7 @@ Xiaomi Pad 6 Pro（liuqin，**128G**）上的 Ubuntu 26.04 arm64 单系统、
 | 文档 | 内容 |
 |---|---|
 | [`docs/STATUS.zh-CN.md`](docs/STATUS.zh-CN.md) | **唯一状态源**：设备、内核、已工作/未验证、待办、决策 |
-| [`docs/INSTALL.zh-CN.md`](docs/INSTALL.zh-CN.md) | 安装/重装/恢复：128G、A 槽单系统、安装器 + 手动修正 |
+| [`docs/INSTALL.zh-CN.md`](docs/INSTALL.zh-CN.md) | 安装/更新/恢复：128G、A 槽单系统、装配 boot img → fastboot flash boot_a；rootfs 刷入或内核 deb 覆盖更新 |
 | [`docs/BUILD.zh-CN.md`](docs/BUILD.zh-CN.md) | 只允许 CI 编译内核；artifact 契约、本机装配、打包 |
 | [`docs/FEATURES.zh-CN.md`](docs/FEATURES.zh-CN.md) | 指纹/相机/快充/Waydroid 细节 |
 | [`docs/display.md`](docs/display.md) | 显示结论与判读陷阱 |

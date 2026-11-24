@@ -1,108 +1,69 @@
-# 安装、重装与恢复（128G / A 槽单系统）
+# 安装 / 更新 / 恢复 —— 全新安装 Ubuntu 26.04 arm64（128G，A 槽单系统）
 
-适用：Xiaomi Pad 6 Pro（liuqin，**128G**，SM8475），单系统 Ubuntu 26.04，
-**无 Android**。不适用于其他容量/改过分区的设备；不要照抄参考项目
-（`liuqin-6.17test`，256GB、B 槽、双系统）的安装说明。
+适用设备：Xiaomi Pad 6 Pro（liuqin，SM8475，**128G**，天马 `m81_36_02_0a`），
+运行本工作区自建、附加了树外驱动的 Linux 7.3 内核（`liuqin-7.3`），
+**从 A 槽直接启动**，设备上**没有 Android**，也没有任何旧内核。
 
-> 本机实际经历：用本仓库安装器的 `--layout linux-only` 安装（它写入
-> `boot_b` 并 `--set-active=b`），之后手动 `fastboot flash boot_a` +
-> `fastboot --set-active=a`，所以现在从 **A 槽**启动。`boot_b` 里留有那次
-> 安装写入的 Ubuntu 副本，但**不从 B 启动**。本分支已把安装器的 linux-only
-> 目标槽改为 A，新安装不再需要这一步手动修正。
+> **新流程（2026-11 决策，取代旧安装器流程）**
+>
+> 本仓库**不再实现**参考项目式的"设备端安装器"
+> （`installer.img` / `install.py` / `bundle.json` / 分区方案 / 设备侧
+> `install-layout.sh` / `install-root.sh`）。实际设备内核工作流程只有一条：
+>
+> 1. **内核开发 → CI 编译 → ci/ 下载 → 本机装配完整 boot 镜像 → fastboot 刷入**
+>    push 内核仓 `liuqin-7.3` → CI 出 artifact → 在本机 `ci/` 取
+>    `ci/liuqin-kernel-<sha>/kernel` → `tools/lib/build-bootimg.sh` 装配完整
+>    img（`repack/<sha>-boot/boot-liuqin-firstboot.img`）→ `fastboot flash boot_a`
+>    （试跑 `fastboot boot`）。
+> 2. **内核就绪 → 组装 rootfs → 刷入完整用户空间 / 或构建新内核 deb → 覆盖更新**
+>    全新安装：装配出 rootfs（Ubuntu Base squashfs + 设备层），刷入完整
+>    用户空间 Ubuntu 26.04 arm64（全新安装）；或构建新的内核 deb
+>    （`tools/build-liuqin-debs.sh`）→ 在**现有系统**上覆盖安装更新
+>    （`dpkg -i` / 等价更新），不再完全参照参考项目的安装脚本实现。
+>
+> **产品 / 开发不再区分**：我们不采纳参考项目里的"硬编码 sha 产品锁"，
+> 只做一致性校验（CI artifact 与 `kernel/source.json` / `build-info` 锁定
+> commit 一致才装配）。没有"产品版"与"开发版"两套 ramdisk / 镜像；唯一
+> ramdisk 是 post-contract 版
+> （`xiaomipad-6pro-mainline/out/initramfs-liuqin/liuqin-firstboot.cpio.gz`）。
 
-## 1. 前置条件
+## 1. 全新安装（新流程）
 
-- Bootloader 已解锁；平板进入 Fastboot；电量 ≥ 30%。
-- 原厂 **`V14.0.9.0.TMYCNXM`** 线刷包（唯一支持版本），并知道如何用它恢复原厂。
-- 个人文件已备份到平板以外；安装会清空/缩小 `userdata`。
-- 主机：Linux、Python 3.11+、Android platform-tools、正常 USB 网络。
-- 安装包：`boot.img`、`installer.img`、`rootfs.tar.gz`、`bundle.json`、
-  `install.py`、`liuqin_layout.py` 必须同版本；未验收包需 `--allow-unverified`。
-
-安装器在设备侧核对（容量单位为 **512 字节扇区**）：
-
-| 项目 | 允许值 |
-|---|---|
-| userdata 分区名 | `userdata`，唯一，位于第一颗 UFS（sda） |
-| sda 逻辑块大小 | 4096 |
-| userdata 扇区数 | ≥ 33554432（16 GiB） |
-| Fastboot 身份 | `product: liuqin`、`unlocked: yes` |
-
-安装器不会修改 `persist`，不会重新锁定 Bootloader。型号/身份不符时必须停止，
-不要绕过检查。
-
-## 2. 备份
-
-`--backup DIR` 会在改分区表前保存并校验 `boot_a`、`boot_b`、`persist`
-与 GPT 主备两份。备份目录必须是新目录、放在安装包目录之外，并保持私密。
-已经装好、只重装系统时可用 `--keep-home`；`--no-backup` 只允许已有受支持
-布局的重装，不允许首次安装或恢复分区表。
-
-## 3. 安装（单系统）
+### 1.1 装配完整 boot 镜像并刷入
 
 ```sh
-python3 install.py --bundle . --serial DEVICE_SERIAL \
-  --backup /path/to/new-private-backup --erase-userdata --layout linux-only
+A=ci/liuqin-kernel-<sha>/kernel
+KERNEL_OUT="$PWD/$A" OUT_DIR="$PWD/repack/<sha>-boot" \
+DTC=/usr/bin/dtc FDTOVERLAY=/usr/bin/fdtoverlay \
+  sh xiaomipad-6pro-mainline/tools/lib/build-bootimg.sh
+fastboot flash boot_a repack/<sha>-boot/boot-liuqin-firstboot.img
 ```
 
-- `--layout linux-only`：删除 `userdata`，在磁盘尾部建 `linux_root`（默认 32G）
-  与 `linux_home`（剩余全部）；不再保留 Android。
-- 交互确认需输入 `YES`；脚本环境显式加 `--yes`。
-- 安装器会临时启动 `installer.img`，等 USB 网络，备份、改表、格式化、
-  安装 rootfs、写入本机校准与地址，最后写 boot 并重启。
-- **不要**使用 `--layout dual`、`--rom-dir`、`--android-size`、`--android-boot`：
-  本分支已禁用 Android/双系统路径，传入会直接报错。
+- 装配参数（`DTC` / `FDTOVERLAY` / `HEADER_CMDLINE` / `partition_size` /
+  `gzip -n -9` / ABL 校验 / round-trip）见 `docs/BUILD.zh-CN.md` §3；
+  脚本内置 round-trip 校验，失败即中止装配。
+- 刷入后冷启动验证（显示、触控、音频、Wi-Fi、GNOME 输入、指纹…），
+  见 `docs/STATUS.zh-CN.md`。
 
-### 3.1 旧安装器的 A 槽修正（本机做过一次）
+### 1.2 组装 rootfs 并刷入完整用户空间
 
-旧版 `linux-only` 把 boot 写到 `boot_b` 并 `--set-active=b`。要在 A 槽启动，
-在 Fastboot 下执行（镜像必须零填充到 192 MiB 分区大小，即 201326592 B）：
+- 全新安装：从已装配的 CI artifact / 本机输入组装 rootfs，
+  刷入完整 Ubuntu 26.04 arm64 用户空间（全新用户态）。
+- 更新：构建新的内核 deb → 在现有系统上覆盖安装更新。
 
-```sh
-cp /path/to/boot.img boot-padded.img
-truncate -s 201326592 boot-padded.img
-fastboot -s DEVICE_SERIAL flash boot_a boot-padded.img
-fastboot -s DEVICE_SERIAL --set-active=a
-```
+### 1.3 恢复原厂
 
-回读核对后再重启。`boot_b` 可以保留原副本，但不要依赖它启动。
-本分支的安装器已改为直接写 `boot_a`/`--set-active=a`，新装不需要这步。
+- 原厂恢复路径：V14 线刷包（`V14.0.9.0.TMYCNXM`）`flash_all.sh`，
+  见 `docs/STATUS.zh-CN.md` §7。
 
-## 4. 重装与调整分区
+## 2. 更新（内核 ready → 装配 → flash，或 deb → 覆盖安装）
 
-- 保留 `/home` 重装：`--keep-home`（不可与 `--android-size`/`--root-size` 同用）。
-  会先核对 `liuqin_home` 的 `LIUQIN_HOME` 卷标并 `e2fsck -p`，不符即停止。
-- 调整切分比例：先恢复出厂分区表，再完整重装：
+- **新内核**：push → CI → ci/ → 装配 → `fastboot flash boot_a` → 冷启动验证。
+- **新用户空间**：同上组装 rootfs；或新 deb 覆盖安装。
 
-```sh
-python3 install.py --bundle . --serial DEVICE_SERIAL \
-  --restore-partition-table /path/to/private-backup
-```
+## 3. 故障排查
 
-恢复出厂表后设备上没有可用系统，需继续完整安装或用 V14 原厂包清刷。
-
-## 5. 救援与已知问题
-
-- 安装时加 `--enable-rescue` 可从首启开放救援通道；默认关闭。
-  平板上可 `sudo liuqin-rescue on/off/status`，开启后 `192.168.7.2:2323`
-  提供免认证 root，只能用于可信直连 USB，不要转发到网络。
-- 部分机器启动 SLPI 会复位：`sudo touch /etc/liuqin-slpi-disabled` 后重启，
-  期间自动旋转不可用；删除标记并重启恢复。不要改
-  `/etc/systemd/system/liuqin-slpi.service`（boot 会校验）。
-- 亮度和关机充电的已知问题见 `STATUS.zh-CN.md` §6。
-
-## 6. 恢复原厂 / 回到 Android
-
-本机没有 Android，也不提供"重启到 Android"。要回原厂，只能用
-**V14.0.9.0.TMYCNXM** 的完整 Fastboot 清刷流程（会清除 Ubuntu 与
-`linux_root`/`linux_home`）：
-
-```sh
-# 在解包后的 V14 原厂包目录
-sh flash_all.sh
-```
-
-- 不要用 `OS2.0.6.0` 或其他 ROM 的包；那是参考项目的 ROM。
-- 不要用 `flash_all_lock.sh` 或保留数据的变体，除非你明确要重新上锁/保留数据。
-- 不要恢复其他平板的 `persist`；校准与设备地址必须来自本机。
-- 清刷后 Bootloader 状态、分区表都回到原厂；重新安装 Ubuntu 走 §3。
+- initramfs 内 USB 网络救援：telnet 2323（见 STATUS §2）。
+- 刷机前先看 `repack/<sha>-boot/boot-liuqin-firstboot.info`（cmdline、ramdisk、
+  ABL 元数据）。
+- 已知问题与待办：`docs/STATUS.zh-CN.md` §6。
