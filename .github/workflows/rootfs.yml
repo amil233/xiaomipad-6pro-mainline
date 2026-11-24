@@ -62,6 +62,11 @@ jobs:
           GH_TOKEN: ${{ secrets.PAT_GET_KERNEL }}
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PAT_GET_KERNEL is empty: add it as a repository secret in" >&2
+            echo "Settings -> Secrets and variables -> Actions (not an environment secret)." >&2
+            exit 1
+          fi
           repo="${{ github.repository_owner }}/linux-sm8450-liuqin"
           branch="${{ steps.kernel.outputs.branch }}"
           run_id=$(gh run list -R "$repo" --workflow liuqin.yml \
