@@ -23,7 +23,7 @@ GitHub Actions ──▶ ci/liuqin-kernel-<sha>/        锁：kernel/source.json
                       │
         ┌─────────────┴──────────────────┐
         ▼                                ▼
-  装配 boot.img                     整机装配（CI）
+  装配 boot.img                     整机装配（构建机）
   Image + DTB + initramfs           Ubuntu + 设备/内核 deb
   + ABL overlay                            │
         │                                  ▼
@@ -52,19 +52,23 @@ GitHub Actions ──▶ ci/liuqin-kernel-<sha>/        锁：kernel/source.json
 ## 三条命令（开发机 + 刷机主机）
 
 ```sh
-# 开发机：内核。CI artifact 放进 ci/ 后，一条命令装配 boot.img（含配对检查）
+# 开发机（arm64）：内核。CI artifact 放进 ci/ 后，一条命令装配 boot.img
 sh tools/build-liuqin-boot.sh          # 加 --deb 同时打出配套的内核 deb
 
-# 刷机主机：用户态。把整机装配产出的 rootfs.tar.gz 变成可刷的 ext4 镜像
-sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist
+# 构建机（另一台 arm64，root，≥40 GiB）：整机 rootfs，产出 out/image/bundle
+sudo sh tools/build-liuqin-rootfs.sh
+
+# 刷机主机：bundle 里的 rootfs.tar.gz → 可刷的 ext4
+sudo sh tools/build-liuqin-rootfs-image.sh --rootfs <bundle>/rootfs.tar.gz --out out/dist
 
 # 刷机主机：连平板
-fastboot flash boot_a    repack/<sha6>-boot/boot-liuqin-firstboot.img
+fastboot flash boot_a    <bundle>/boot.img
 fastboot flash userdata out/dist/rootfs.img
 ```
 
-日常循环只有第 1 条（约 15 秒，不编译内核）。第 2、3 条只在首次安装、重装
-rootfs 或用户态更新时用；首启后的一次性 provision 与验收见
+日常循环只有第 1 条（约 15 秒，不编译内核）。第 2 条在构建机，只在首次安装、
+重装 rootfs 或用户态更新时用；第 3、4 条在刷机主机。首启后的一次性 provision
+与验收见
 [`docs/INSTALL.zh-CN.md`](docs/INSTALL.zh-CN.md)。
 
 ## 先读

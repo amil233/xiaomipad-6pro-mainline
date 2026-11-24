@@ -19,7 +19,8 @@
 | 对照/回滚 | `repack/17abc-boot/`（`17abc027f75f`）、`repack/730fix-boot/`（`db08160915e3`）；`repack/9a81b1a-contract-boot/` 是待刷的契约修复版。**它们都只配旧布局/旧 rootfs**，迁移到单数据分区后不能再拿来启动新根（契约不符） |
 | 内核包 | `out/liuqin-debs/liuqin-kernel_0.1_arm64.deb`（release `7.3.0-gc03e1015c71d`，756 `.ko`） |
 | 集成仓分支 | **`liuqin-install`**（本分支；与内核仓的 `liuqin-7.3` 区分；`main` 只保留参考项目 v0.6.0 的历史骨架） |
-| 工作机 | 本机 2 核/11 GB：只做源码、装配、打包，**不编译内核** |
+| 工作机 | Ubuntu 26.04.1 **arm64**，2 核/11 GB：只做 boot.img、打包与离线校验，**不编译内核**；整机 rootfs 不在这跑 |
+| 构建机 | 另一台 arm64，≥40 GiB 空闲：`sudo sh tools/build-liuqin-rootfs.sh` 产出整机 bundle |
 | 刷机主机 | 树莓派（fastboot、`mke2fs` 生成 rootfs 镜像、保存备份） |
 
 ## 1. 与参考项目的关系（防止再混淆）
@@ -214,7 +215,7 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
   │    校验 artifact 锁 / 校验和 / ramdisk 内嵌契约
   │    → repack/<sha6>-boot/boot-liuqin-firstboot.img
   │    → 树莓派 fastboot boot（试跑）/ fastboot flash boot_a
-  └─ 换用户态：整机装配 bundle（boot.img + rootfs.tar.gz）
+  └─ 换用户态：构建机 sudo tools/build-liuqin-rootfs.sh → bundle
        → 刷机主机 tools/build-liuqin-rootfs-image.sh → rootfs.img
        → fastboot flash userdata
        → 冷启动 → provision-liuqin-from-persist → resize2fs → 验收
@@ -222,8 +223,8 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
           （与新 boot.img 成对，顺序见 INSTALL §3）
 ```
 
-- **内核只在 CI 编译**；本机只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配、`mke2fs`
-  和 `dpkg-deb`。详见 `BUILD.zh-CN.md`。
+- **内核只在 CI 编译**；开发机只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配和
+  `dpkg-deb`；整机 rootfs 在构建机装配，刷机主机跑 `mke2fs`。详见 `BUILD.zh-CN.md`。
 - **契约只锁用户态设备文件**：换内核契约不变，可以只换 boot.img；换用户态契约
   会变，boot.img 与 rootfs 必须成对换。
 - **initramfs 单一来源，别混**：

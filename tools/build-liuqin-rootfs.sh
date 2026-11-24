@@ -1,0 +1,185 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Assemble the Ubuntu root filesystem on the build machine.
+#
+# The desktop root, its chroot and the archive need tens of gigabytes; the
+# development machine does not have them (it keeps only the kernel boot image,
+# which is seconds of dtc/mkbootimg work).  This is the single command the build
+# machine runs: it prepares the inputs (cached slow builds included) and then
+# assembles boot.img + rootfs.tar.gz into out/image/bundle.
+#
+# Requirements, checked by --check:
+#   * root (chroot, ownership, tar xattrs)
+#   * aarch64 host, or qemu-aarch64 binfmt with the P flag on another arch
+#   * about 40 GiB free (ISO + casper + desktop root + assembled root + tar)
+#   * the V14-derived inputs under tools/local, the pinned Ubuntu ISO, and the
+#     CI kernel artifact of kernel/source.json
+#
+# usage:
+#   sudo sh tools/build-liuqin-rootfs.sh --check     # report readiness only
+#   sudo sh tools/build-liuqin-rootfs.sh             # prepare, then assemble
+#   sudo sh tools/build-liuqin-rootfs.sh --kernel ci/liuqin-kernel-<sha>/kernel
+set -eu
+
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+workspace_root=$(CDPATH= cd -- "$project_root/.." && pwd)
+lock=$project_root/kernel/source.json
+base_dir=$project_root/tools/local/ubuntu-desktop-26.04-arm64
+base_root=$base_dir/rootfs
+base_manifest=$base_dir/rootfs.manifest
+inputs_json=$project_root/out/image-inputs.local.json
+
+die() { printf 'build-liuqin-rootfs: %s\n' "$*" >&2; exit 1; }
+say() { printf 'build-liuqin-rootfs: %s\n' "$*"; }
+
+usage() {
+	cat <<'EOF'
+usage: build-liuqin-rootfs.sh [--check] [--kernel DIR] [--out DIR]
+
+  --kernel DIR   artifact root or its kernel/ directory; defaults to
+                 ci/liuqin-kernel-<commit from kernel/source.json>/kernel
+  --out DIR      assembly output inside out/; defaults to out/image
+  --check        print the readiness report and exit; write nothing
+EOF
+}
+
+kernel=
+out_dir=$project_root/out/image
+check_only=0
+while [ $# -gt 0 ]; do
+	case $1 in
+	--kernel) [ $# -ge 2 ] || die '--kernel needs a value'; kernel=$2; shift 2 ;;
+	--out) [ $# -ge 2 ] || die '--out needs a value'; out_dir=$2; shift 2 ;;
+	--check) check_only=1; shift ;;
+	-h | --help) usage; exit 0 ;;
+	*) die "unknown argument: $1" ;;
+	esac
+done
+
+[ -f "$lock" ] || die "kernel lock is missing: $lock"
+out_dir=$(realpath -m -- "$out_dir")
+commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$lock")
+[ -n "$kernel" ] || kernel=$workspace_root/ci/liuqin-kernel-$commit
+
+failures=0
+report() { # report OK|MISSING|WARN description
+	case $1 in
+	OK) printf '  ok      %s\n' "$2" ;;
+	MISSING) failures=$((failures + 1)); printf '  MISSING %s\n' "$2" ;;
+	WARN) printf '  warn    %s\n' "$2" ;;
+	esac
+}
+
+say 'build host'
+arch=$(uname -m)
+if [ "$arch" = aarch64 ]; then
+	report OK "arch aarch64 (native chroot, no qemu)"
+elif grep -qs P /proc/sys/fs/binfmt_misc/qemu-aarch64; then
+	report OK "arch $arch with qemu-aarch64 binfmt"
+else
+	report MISSING "arch $arch without qemu-aarch64 binfmt (need an aarch64 host or binfmt)"
+fi
+if [ "$(id -u)" = 0 ]; then report OK 'running as root'; else report MISSING 'root (run with sudo)'; fi
+free_gb=$(df -Pm "$project_root" | awk 'NR == 2 { print int($4 / 1024) }')
+if [ "${free_gb:-0}" -ge 40 ]; then
+	report OK "free space ${free_gb} GiB on $project_root"
+else
+	report MISSING "free space ${free_gb:-0} GiB (need about 40 GiB)"
+fi
+for tool in python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 alsatplg zstd patch; do
+	command -v "$tool" >/dev/null 2>&1 || report MISSING "tool: $tool"
+done
+if command -v gcc >/dev/null 2>&1 && [ "$(gcc -dumpmachine 2>/dev/null)" != "${arch}-linux-gnu" ] &&
+	[ "$arch" = aarch64 ]; then
+	report WARN "host gcc reports $(gcc -dumpmachine), expected aarch64-linux-gnu"
+fi
+if [ -d "$base_root" ] && [ -f "$base_manifest" ]; then
+	report OK "Ubuntu desktop base: $base_dir"
+else
+	report WARN "Ubuntu desktop base missing; the first run downloads and extracts it (~4.1 GiB ISO)"
+	command -v 7z >/dev/null 2>&1 || report MISSING 'tool: 7z (needed to extract the Ubuntu ISO; package 7zip)'
+fi
+
+say 'kernel artifact'
+if [ -d "$kernel/kernel" ] && [ ! -f "$kernel/build-info.json" ]; then
+	kernel_dir=$(CDPATH= cd -- "$kernel/kernel" 2>/dev/null && pwd) || kernel_dir=
+else
+	kernel_dir=$(CDPATH= cd -- "$kernel" 2>/dev/null && pwd) || kernel_dir=
+fi
+if [ -z "$kernel_dir" ] || [ ! -f "$kernel_dir/build-info.json" ]; then
+	report MISSING "kernel artifact $kernel (copy ci/liuqin-kernel-$commit here or pass --kernel)"
+else
+	artifact_commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$kernel_dir/build-info.json")
+	if [ "$artifact_commit" = "$commit" ]; then
+		report OK "artifact $artifact_commit matches kernel/source.json"
+	else
+		report MISSING "artifact $artifact_commit does not match kernel/source.json ($commit)"
+	fi
+fi
+
+say 'inputs'
+if [ -d "$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/etc/sensors" ]; then
+	report OK 'V14 vendor extraction (sensors/firmware)'
+else
+	report MISSING 'V14 vendor extraction (run tools/extract-v14-vendor.sh)'
+fi
+if [ -f "$project_root/out/wlan/hw2.0/board-2.bin" ]; then
+	report OK 'WLAN HSP2 tuple: out/wlan'
+else
+	report MISSING 'WLAN HSP2 tuple out/wlan (run tools/build-liuqin-wlan.py)'
+fi
+if [ -d "$project_root/tools/local/firmware-liuqin" ]; then report OK 'firmware pool: tools/local/firmware-liuqin'; else report MISSING 'firmware pool tools/local/firmware-liuqin'; fi
+if [ -d "$project_root/tools/local/aosp-mkbootimg" ] && [ -x "$project_root/tools/local/busybox-arm64/usr/bin/busybox" ]; then
+	report OK 'busybox + mkbootimg tools'
+else
+	report MISSING 'busybox/mkbootimg under tools/local (fetch-aosp-mkbootimg.sh, fetch-busybox-arm64.sh)'
+fi
+if [ -f "$project_root/../audioreach-topology/audioreach/audioreach.m4" ] ||
+	[ -f "$project_root/tools/local/audioreach-topology/audioreach/audioreach.m4" ]; then
+	report OK 'AudioReach topology sources'
+else
+	report MISSING 'AudioReach topology checkout (audioreach-topology 2af1f1e)'
+fi
+
+if [ "$check_only" = 1 ]; then
+	if [ "$failures" = 0 ]; then
+		say 'check PASS: ready to assemble'
+		exit 0
+	fi
+	say "check FAIL: $failures requirement(s) missing"
+	exit 1
+fi
+[ "$failures" = 0 ] || die "$failures requirement(s) missing; run --check for the report"
+[ "$(id -u)" = 0 ] || die 'run as root (sudo)'
+command -v 7z >/dev/null 2>&1 || [ -d "$base_root" ] ||
+	die '7z is required to extract the Ubuntu ISO (install the 7zip package)'
+
+# --- prepare the Ubuntu base (first run only) -------------------------------
+
+if [ ! -d "$base_root" ] || [ ! -f "$base_manifest" ]; then
+	say 'preparing the Ubuntu 26.04 desktop base (download, casper, extract)'
+	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" download
+	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" casper
+	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" extract
+fi
+
+# --- slow inputs (sensors stack, power panel, firmware, topology, WLAN) -----
+
+say 'preparing inputs'
+python3 "$project_root/tools/prepare-image-inputs.py" run
+[ -f "$inputs_json" ] || die "input preparation produced no $inputs_json"
+
+# --- assemble ---------------------------------------------------------------
+
+say 'assembling rootfs and boot image'
+python3 "$project_root/tools/build-liuqin-image.py" \
+	--inputs "$inputs_json" --kernel-out "$kernel_dir" --out "$out_dir"
+
+bundle=$out_dir/bundle
+[ -d "$bundle" ] || die "assembly produced no bundle: $bundle"
+say "bundle: $bundle"
+say "boot:   $bundle/boot.img"
+say "rootfs: $bundle/rootfs.tar.gz"
+say "hashes: $bundle/native-root.hashes"
+say "next:   copy the bundle to the flashing host, then INSTALL section 2"

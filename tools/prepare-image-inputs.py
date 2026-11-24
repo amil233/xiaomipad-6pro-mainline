@@ -3,9 +3,9 @@
 """Prepare the inputs build-liuqin-image.py consumes, reusing slow artifacts.
 
 The image builder (tools/build-liuqin-image.py) takes a JSON object of
-prepared-input paths.  Two of those inputs are produced by QEMU-chroot builds
-that take tens of minutes yet change only when a small, hashable set of
-sources changes:
+prepared-input paths.  Two of those inputs are produced by chroot builds that
+take tens of minutes yet change only when a small, hashable set of sources
+changes (native on an aarch64 build host, qemu-aarch64 elsewhere):
 
   sensor-stack.tar        tools/build-liuqin-sensors-stack.sh
   gnome-control-center    tools/build-liuqin-settings.py (native power panel)
@@ -21,7 +21,7 @@ Usage:
   python3 tools/prepare-image-inputs.py check   # report reuse/rebuild, no work
   python3 tools/prepare-image-inputs.py run     # build what's stale, then
                                                 # write out/image-inputs.local.json
-Rebuilds invoke the official builders under sudo; run `sudo -v` first.
+Rebuilds invoke the official builders as root (via sudo when not already root).
 """
 from __future__ import annotations
 
@@ -34,6 +34,11 @@ import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+
+# The build machine runs this as root; the development machine (and CI) use
+# sudo.  Building without privileges is not supported because the chroot owns
+# the files it creates.
+AS_ROOT = [] if os.geteuid() == 0 else ['sudo', '-n']
 
 PROJECT = Path(__file__).resolve().parents[1]
 CACHE_DIR = PROJECT / 'tools/local/artifacts-cache'
@@ -68,7 +73,7 @@ def sensors_fingerprint() -> dict:
     if not rom.is_dir():
         raise SystemExit(
             f'V14 vendor sensors extraction is missing: {rom}\n'
-            '       extract vendor_a from the V14 super image first '
+            '       run tools/extract-v14-vendor.sh first '
             '(super.img -> vendor_a EROFS -> /etc/sensors)')
     return {
         'device/sensors': tree_hash('device/sensors'),
@@ -137,7 +142,7 @@ def rebuild_sensors(out_dir: Path) -> Path:
     # variables are routed through the command line instead: UPDATE_APT
     # refreshes the chroot's package indexes (the extracted root ships none)
     # and OUT_DIR lands the artifacts in this run's work directory.
-    subprocess.run(['sudo', '-n', 'env', 'UPDATE_APT=1', f'OUT_DIR={out_dir}',
+    subprocess.run([*AS_ROOT, 'env', 'UPDATE_APT=1', f'OUT_DIR={out_dir}',
                     'sh', 'tools/build-liuqin-sensors-stack.sh'],
                    cwd=PROJECT, check=True)
     return tar
@@ -148,12 +153,13 @@ def rebuild_settings(out_dir: Path) -> Path:
     # source stamp) into --out; run it directly there so the artifact path
     # below is the one the cache and build-liuqin-image.py both consume.
     out_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(['sudo', '-n', 'env', f'OUT={out_dir}',
+    subprocess.run([*AS_ROOT, 'env', f'OUT={out_dir}',
                     'python3', 'tools/build-liuqin-settings.py',
                     '--out', str(out_dir),
                     '--jobs', str(os.cpu_count() or 8)], cwd=PROJECT, check=True)
-    subprocess.run(['sudo', '-n', 'chown', '-R',
-                    f'{os.getuid()}:{os.getgid()}', str(out_dir)], check=True)
+    if os.geteuid() != 0:
+        subprocess.run(['sudo', '-n', 'chown', '-R',
+                        f'{os.getuid()}:{os.getgid()}', str(out_dir)], check=True)
     binary = out_dir / 'gnome-control-center'
     if not binary.is_file():
         raise SystemExit(f'settings builder produced no binary: {binary}')

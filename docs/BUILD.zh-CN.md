@@ -1,18 +1,21 @@
 # 从源码到可刷产物
 
-**铁律：内核只在 GitHub Actions 编译。** 开发机 2 核 / 11 GB、无 ccache，只做
-`dtc`/`fdtoverlay`/`mkbootimg` 装配和 `dpkg-deb`；刷机主机再跑 `mke2fs`。
-详见根 `AGENTS.md` §0.1。
+**铁律：内核只在 GitHub Actions 编译。**
+
+本文的角色：**开发机** = 本工作区这台 Ubuntu 26.04.1 arm64（2 核 / 11 GB），
+只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配和 `dpkg-deb`；**构建机** = 另一台
+arm64（≥40 GiB 空闲），装配整机 rootfs（§4）；**刷机主机** = 连平板的树莓派，
+把 tar 变成 ext4（§5）；**平板** = liuqin 本体。详见根 `AGENTS.md` §0.1。
 
 ## 1. 产物与锁
 
 | 产物 | 内容 | 谁产出 |
 |---|---|---|
 | `ci/liuqin-kernel-<sha>/` | `kernel/`：Image、`sm8475-xiaomi-liuqin.dtb`、`.config`、`vmlinux`、`System.map`、`SHA256SUMS`、`build-info.json`；`kernel-modules/`：`modules.tar`、`modules.manifest`、`kernel.release`、`kernel.commit`、`SHA256SUMS` | 内核仓 CI |
-| `boot.img` | Image + DTB + initramfs + ABL overlay，刷到 `boot_a` | 本机 `tools/build-liuqin-boot.sh`（日常），或整机装配（成对） |
-| `rootfs.tar.gz` | Ubuntu 26.04 桌面 + 设备/内核 deb；路径相对 `/`，保留属主、ACL、xattr | 整机装配（CI） |
+| `boot.img` | Image + DTB + initramfs + ABL overlay，刷到 `boot_a` | 开发机 `tools/build-liuqin-boot.sh`（日常），或整机装配（成对） |
+| `rootfs.tar.gz` | Ubuntu 26.04 桌面 + 设备/内核 deb；路径相对 `/`，保留属主、ACL、xattr | 整机装配（构建机或 CI） |
 | `rootfs.img` | 上面那个 tar 的 ext4 版本，树放在 `native-root/` 下，刷到原厂 `userdata` | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
-| `liuqin-kernel_*.deb` | `/usr/lib/modules/<release>` + `/boot` 载荷 + `/usr/share/liuqin/kernel.release` | 本机 `tools/build-liuqin-debs.sh` |
+| `liuqin-kernel_*.deb` | `/usr/lib/modules/<release>` + `/boot` 载荷 + `/usr/share/liuqin/kernel.release` | 开发机 `tools/build-liuqin-debs.sh` |
 
 `kernel/source.json` 是**唯一内核锁**：`commit`、`config_sha256`、10 个配置分片、
 `dtb` 名。换内核 = 内核仓分支推进 + 把这里的 `commit` 改成新 tip；配置分片变了，
@@ -32,7 +35,7 @@ python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' \
 (cd ci/liuqin-kernel-<sha>/kernel-modules && sha256sum -c SHA256SUMS)
 ```
 
-本机**不要**运行 `tools/build-liuqin-kernel.py`——它是 CI 的构建入口。
+开发机**不要**运行 `tools/build-liuqin-kernel.py`——它是 CI 的构建入口。
 
 ## 3. 装配 boot.img（日常，约 15 秒）
 
@@ -61,34 +64,59 @@ sh tools/build-liuqin-boot.sh --check    # 只做下面三道检查，不生成�
 底层是 `tools/lib/build-bootimg.sh`（dtc + fdtoverlay + mkbootimg，内置
 round-trip 校验），wrapper 只补前后两道身份检查。
 
-## 4. 整机装配：boot.img + rootfs.tar.gz
+## 4. 整机装配（在构建机上）
 
-入口 `.github/workflows/image.yml`，跑在自托管 x86-64 runner
-（`liuqin-images`，手动触发，或仓库变量 `LIUQIN_IMAGE_CI=enabled`）：
+Ubuntu desktop root 解出来就有 6–8 GiB，加上 casper、chroot、装配树和
+`rootfs.tar.gz`，整机装配需要约 40 GiB 空闲。**开发机不跑这一步**（它只做
+boot.img 和打包）；整机装配在另一台 arm64 构建机上完成。
 
 ```sh
-sudo python3 tools/build-liuqin-image.py --inputs <inputs.json> --kernel-out <内核构建目录>
+sudo sh tools/build-liuqin-rootfs.sh --check   # 只报告就绪状态
+sudo sh tools/build-liuqin-rootfs.sh           # 准备输入，然后装配
 ```
 
-- 阶段可续跑：`modules → debs → copy → install → assemble → manifest → boot →
-  pack → bundle`，`--stage <名字>` 从某一步继续；`--out` 必须在 `out/` 下。
-- 输入清单不手写：镜像宿主机上先 `python3 tools/prepare-image-inputs.py check`
-  看哪些慢产物能复用，再 `sudo python3 tools/prepare-image-inputs.py run`，
-  它写出 `out/image-inputs.local.json`（`--inputs` 直接指向它）。runner 上则用
-  `/opt/liuqin/inputs.json`；两者格式相同。
-- runner 需要 root、ARM64 binfmt（非 arm64 主机上跑 chroot）、GNU tar/ACL/xattr、
-  squashfs-tools、`dpkg-deb`；`LIUQIN_IMAGE_CI=enabled` 是仓库变量。
-- **不在本机、更不在平板上跑**：需要 root、ARM64 chroot（apt/dpkg）、
-  GNU tar/ACL/xattr、squashfs；2 核笔记本不具备这个条件，平板只接收镜像。
-  这是与参考项目安装器最大的不同：rootfs 在设备外装配，设备端不做构建。
-- 产物是 `out/image/bundle/`：`boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
-  `liuqin-firstboot.cpio.gz`、`bundle.json`、`SHA256SUMS`，加上安装/构建/功能
-  文档和指纹构建输入。
-  `native-root.hashes` 是 boot.img 内嵌契约的来源清单，`liuqin-firstboot.cpio.gz`
-  是携带该契约的 initramfs。刷完这套镜像后把这两个文件拷到开发机的
-  `out/native-root/native-root.hashes` 和
-  `out/initramfs-liuqin/liuqin-firstboot.cpio.gz`，下一轮只换内核的装配就能用
-  它们核对“新 Image + 实机 root”（BUILD §3）。
+`--check` 逐项报告：架构（aarch64 原生，或 qemu-aarch64 binfmt）、root、
+空闲空间、所需命令、Ubuntu 基础系统、内核 artifact、V14 提取树、WLAN tuple、
+固件池、busybox/mkbootimg、AudioReach 源码。缺什么就报什么，不猜。
+
+正式运行做三件事：
+
+1. 首次运行下载并解出 Ubuntu 26.04 desktop base（`build-liuqin-ubuntu-desktop-rootfs.sh`
+   的 download/casper/extract）；
+2. `prepare-image-inputs.py run` 重建慢输入（传感器栈、GNOME 设置程序、
+   音频拓扑、固件树），按指纹缓存复用；
+3. `build-liuqin-image.py` 依次跑 `modules → debs → copy → install → assemble →
+   manifest → boot → pack → bundle`，产出 `out/image/bundle/`。
+
+bundle 内容：`boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
+`liuqin-firstboot.cpio.gz`、`bundle.json`、`SHA256SUMS`，以及安装/构建/功能
+文档和指纹构建输入。
+
+构建机需要的东西：
+
+| 项 | 要求 |
+|---|---|
+| 架构 | aarch64（原生 chroot）；x86 需要 qemu-aarch64 + binfmt 的 P 标志 |
+| 权限 | root（chroot、属主、tar 的 ACL/xattr） |
+| 磁盘 | 约 40 GiB 空闲 |
+| 命令 | `dpkg-deb`、GNU `tar`、`unsquashfs`、`7z`、`m4`、`alsatplg`、`zstd`、`patch`、`git`、`curl`、`chroot`/`mount`/`unshare` |
+| 输入 | `tools/local`（固件池、ABL analysis、busybox/mkbootimg、WLAN tuple）、V14 提取树（`tools/extract-v14-vendor.sh` 重建或整目录拷贝）、AudioReach 源码、Ubuntu ISO（首次自动下载）、内核 artifact |
+
+Ubuntu 26.04 构建机可以一次装齐：
+
+```sh
+sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
+  patch build-essential git curl dpkg-dev
+```
+
+CI 的 `.github/workflows/image.yml` 是等价路径（自托管 x86-64 runner，手动触发
+或仓库变量 `LIUQIN_IMAGE_CI=enabled`）；两条路径用的是同一组脚本，产物相同。
+CI 上内核在同一个 job 里现编，手动路径用 `ci/` 里现成的 artifact。
+
+`--stage <名字>` 可从某一步续跑；`--out` 必须在 `out/` 下。输入清单也可以手工
+分步生成：`python3 tools/prepare-image-inputs.py check` 看复用/重建，
+`sudo python3 tools/prepare-image-inputs.py run` 写出
+`out/image-inputs.local.json`，再把它交给 `build-liuqin-image.py --inputs`。
 
 rootfs 与内核是怎么对上的：
 
@@ -104,19 +132,23 @@ rootfs 与内核是怎么对上的：
 整机装配的输入可以全部从 **V14 线刷包 + 公开上游 + 本仓库脚本**得到，不需要额外
 提供原料；只有最后一行是例外：
 
-| 原料 | 来源 | 本机状态 |
+| 原料 | 来源 | 状态 |
 |---|---|---|
 | Ubuntu 26.04 desktop arm64 ISO | cdimage.ubuntu.com，脚本钉 size/sha256（4,161,089,536 B） | 未下载，网络可取 |
-| 触摸/GPU/VPU/传感器配置 | `super.img` → `vendor_a`（EROFS）的 `/firmware`、`/etc/sensors` | 线刷包在本机；`extracted/` 需重建 |
-| WLAN qca6490 组（amss20/m3/regdb/bd_m81gf 等） | `NON-HLOS.bin`（modem FAT）的 `/qca6490/` | 线刷包在本机；用 mtools 取 |
-| FPC 指纹固件（`fpcliu.mdt` + `b00..b08`） | 同一 FAT 的根目录 | 线刷包在本机；用 mtools 取 |
-| 蓝牙固件（89 件） | `BTFM.bin`（FAT） | 线刷包在本机 |
+| 触摸/GPU/VPU/传感器配置 | `super.img` → `vendor_a`（EROFS）的 `/firmware`、`/etc/sensors` | `sh tools/extract-v14-vendor.sh`（开发机已跑过） |
+| WLAN qca6490 组（amss20/m3/regdb/bd_m81gf 等） | `NON-HLOS.bin`（modem FAT）的 `/qca6490/` | 已在固件池；可用 mtools 重取 |
+| FPC 指纹固件（`fpcliu.mdt` + `b00..b08`） | 同一 FAT 的根目录 | 可用 mtools 取；预编译 bundle 见下 |
+| 蓝牙固件（89 件） | `BTFM.bin`（FAT） | 线刷包在开发机 |
 | ABL overlay / 基 DTB | `dtbo.img`、`vendor_boot.img` | 已提取到 `tools/local/roms/.../analysis` |
 | WLAN 上游 board-2.bin.zst | linux-firmware（sha256 `495d877c…`） | 网络 |
 | bdencoder | qca-swiss-army-knife `6df4dae3…`（Python） | 网络 |
 | 音频拓扑 | audioreach-topology `2af1f1eb…` | 网络；`out/audio-topology` 已生成 |
 | GNOME 设置 / 传感器源码 | archive.ubuntu.com + `device/` | 网络 |
 | 每机校准（WLAN MAC、蓝牙地址、CS35L41 校准、传感器 registry） | **平板自己的 `persist` 分区** | **拿不到，也不该进镜像**：首启 provision 从设备读取 |
+
+构建机第一次用时，除了拷贝本仓和 `ci/`，还要准备 `tools/local`（固件池、
+ABL analysis、busybox/mkbootimg、WLAN tuple）并在有 `super.img` 的地方跑一次
+`sh tools/extract-v14-vendor.sh`；`--check` 会告诉你还缺哪一项。
 
 注意两点：
 
@@ -168,7 +200,7 @@ initramfs 在 boot.img 里。更新内核时它与新 boot.img 一起上机：
 ## 7. 发布与验收
 
 **本项目目前没有公开发布包。** bundle 的 `bundle.json` 默认
-`OFFLINE_ASSEMBLED`，只有本机完整安装、冷启动、功能复核之后才能标
+`OFFLINE_ASSEMBLED`，只有平板完整安装、冷启动、功能复核之后才能标
 `DEVICE_TESTED`（`--stage release-assets --device-tested`）。安装路径相关文件
 一变，就必须重新真机验收——这是 `build-liuqin-image.py` 里的构建期断言，
 不是文档约定。

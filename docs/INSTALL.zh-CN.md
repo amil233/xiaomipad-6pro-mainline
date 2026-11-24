@@ -42,7 +42,7 @@ rootfs.img  ──fastboot flash──▶ userdata   唯一数据分区（ext4�
 
 ## 2. 首次安装 / 重装 rootfs
 
-刷机主机上（产物来自同一个 CI bundle）：
+刷机主机上（产物来自同一个整机 bundle：构建机或 CI 产出）：
 
 ```sh
 fastboot flash boot_a   bundle/boot.img
@@ -111,7 +111,7 @@ fastboot reboot
 用户态一改，boot.img 里的契约就过期，必须**成对**换：
 
 1. **先备份 `/home`**（单数据分区的代价）：整块 `userdata` 会被重写；
-2. CI 出新的整机 bundle：`boot.img` + `rootfs.tar.gz`；
+2. 构建机出新的整机 bundle：`boot.img` + `rootfs.tar.gz`（CI 等价）；
 3. 刷机主机生成 `rootfs.img`（BUILD §5）；
 4. `fastboot flash boot_a bundle/boot.img`，再
    `fastboot flash userdata out/dist/rootfs.img`；

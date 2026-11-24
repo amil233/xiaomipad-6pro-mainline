@@ -59,7 +59,7 @@ download_iso() {
 
 extract_casper() {
 	verify_iso
-	command -v 7z >/dev/null || die '7z is required (p7zip); isoinfo silently truncates files >2GiB'
+	command -v 7z >/dev/null || die '7z is required (Ubuntu 26.04 package: 7zip); isoinfo silently truncates files >2GiB'
 	mkdir -p "$input_dir/iso/casper"
 	for layer in minimal minimal.standard; do
 		out=$input_dir/iso/casper/$layer.squashfs
