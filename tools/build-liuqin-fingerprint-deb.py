@@ -159,8 +159,11 @@ def build(bundle, out, version):
         control = root / "DEBIAN"
         control.mkdir()
         abi = info["target_libfprint_package"]
+        # The bundle records the libfprint/TOD version it was built against.
+        # Patch-level Ubuntu revisions are ABI-compatible, so require at least
+        # that version instead of pinning the exact revision.
         dependencies = [f"liuqin-kernel (= {version})", "python3", "python3-gi",
-            f"libfprint-2-2 (= {abi})", f"libfprint-2-tod1 (= {abi})",
+            f"libfprint-2-2 (>= {abi})", f"libfprint-2-tod1 (>= {abi})",
             "fprintd (>= 1.94.5)", "libpam-fprintd (>= 1.94.5)", "libc6 (>= 2.34)",
             "libglib2.0-0t64", "libpolkit-gobject-1-0", "libpam0g", "libpam-modules",
             "libssl3t64", "libkeyutils1", "systemd", "udev", "kmod", "mount", "polkitd", "dbus"]
