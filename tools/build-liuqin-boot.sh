@@ -102,6 +102,21 @@ fi
 [ -f "$kernel_dir/arch/arm64/boot/dts/$dtb_rel" ] || die "artifact carries no $dtb_rel"
 say "release:  $release"
 
+# The device runs the kernel from the deb that was installed on it; the local
+# deb in out/liuqin-debs is the best proxy we have.  Warn when the image and
+# that deb disagree, because the modules would not load.
+if [ "$with_deb" = 0 ]; then
+	deb=$(ls "$project_root"/out/liuqin-debs/liuqin-kernel_*.deb 2>/dev/null | head -n 1)
+	if [ -n "$deb" ]; then
+		deb_release=$(dpkg-deb --fsys-tarfile "$deb" 2>/dev/null |
+			tar -xO ./usr/share/liuqin/kernel.release 2>/dev/null | tr -d '\n')
+		if [ -n "$deb_release" ] && [ "$deb_release" != "$release" ]; then
+			say "note: kernel deb on hand is $deb_release, this image is $release"
+			say '      install the matching deb before flashing, or run with --deb'
+		fi
+	fi
+fi
+
 # --- root identity -----------------------------------------------------------
 
 [ -n "$hashes" ] || hashes=$project_root/out/native-root/native-root.hashes

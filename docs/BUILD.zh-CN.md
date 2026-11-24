@@ -62,6 +62,9 @@ sh tools/build-liuqin-boot.sh --check    # 只检查，不生成
 和版本号由新的内核 deb 更新。动了用户态，清单会变，boot.img 和 rootfs 要
 一起重新生成。
 
+脚本还会读 `out/liuqin-debs` 里内核 deb 的版本：如果它和这次 Image 的版本
+不一致，会提示先装配套的 deb，或者加 `--deb` 让两半一起生成。
+
 ## 4. 装配整机（构建机）
 
 ```sh
