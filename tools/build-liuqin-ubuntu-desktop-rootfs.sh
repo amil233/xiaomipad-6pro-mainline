@@ -30,7 +30,7 @@ die() { printf 'build-liuqin-ubuntu-desktop-rootfs: %s\n' "$*" >&2; exit 1; }
 fetch_sums() {
 	mkdir -p "$input_dir"
 	if command -v curl >/dev/null 2>&1; then
-		curl --fail --silent --show-error --location --output "$sums_file.part" "$sums_url" &&
+		curl --fail --silent --location --output "$sums_file.part" "$sums_url" &&
 			mv "$sums_file.part" "$sums_file" && return 0
 		rm -f "$sums_file.part"
 	fi
@@ -40,7 +40,7 @@ fetch_sums() {
 
 iso_sha256() {
 	name=${iso##*/}
-	hash=$(awk -v name="$name" '$2 == name { print $1 }' "$sums_file")
+	hash=$(awk -v name="$name" '{ f = $2; sub(/^\*/, "", f); if (f == name) print $1 }' "$sums_file")
 	[ -n "$hash" ] || die "SHA256SUMS has no entry for $name"
 	printf '%s\n' "$hash"
 }
