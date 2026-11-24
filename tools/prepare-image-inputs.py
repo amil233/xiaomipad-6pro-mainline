@@ -48,6 +48,11 @@ CACHE_JSON = CACHE_DIR / 'cache.json'
 PREPARED = PROJECT / 'out/prepared-inputs'
 OUTPUT_JSON = PROJECT / 'out/image-inputs.local.json'
 
+# The builders run as root in CI while the checkout is owned by the runner.
+os.environ['GIT_CONFIG_COUNT'] = '1'
+os.environ['GIT_CONFIG_KEY_0'] = 'safe.directory'
+os.environ['GIT_CONFIG_VALUE_0'] = str(PROJECT)
+
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()

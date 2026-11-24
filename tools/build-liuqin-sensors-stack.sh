@@ -140,6 +140,7 @@ dest=$work/dest
 # never silently absorb or drop a sensor contract.
 rm -rf "$work/source"
 mkdir -p "$work/source"
+fetch_sources
 cp -a "$source_cache/." "$work/source/"
 install -m 0755 "$ssc_accel_test_runner" "$work/source/liuqin-ssc-accel-integration.py"
 git -C "$work/source/hexagonrpc" apply --check "$hexagonrpc_patch" ||
