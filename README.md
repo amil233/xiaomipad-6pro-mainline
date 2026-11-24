@@ -66,7 +66,7 @@ fastboot flash userdata out/dist/rootfs.img
 
 ## 规则
 
-1. 内核只在内核仓的 GitHub Actions 编译；开发机不做 `make`，集成仓不跑 Actions。
+1. 编译放在 GitHub Actions 或构建机上做；开发机只做装配、打包和离线检查，不在本机编译。
 2. 不执行 `git push`；本地提交后把提交号和命令交给维护者。
 3. ROM 只用 `V14.0.9.0.TMYCNXM`。
 4. 文档只维护中文。

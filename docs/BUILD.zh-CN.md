@@ -1,6 +1,9 @@
 # 从源码到可刷产物
 
-内核只在 GitHub Actions 编译。这里的四台机器各干各的：
+内核在 GitHub Actions 编译，整机 rootfs 在构建机或集成仓的自托管 runner 上装配。
+开发机不在本地编译，是因为 CI 更快、磁盘和时间更省，不是这台机器做不了。
+
+这里的四台机器各干各的：
 
 | 角色 | 做什么 |
 |---|---|
@@ -107,8 +110,9 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 构建机不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
 版本和校验和），`dtc`/`fdtoverlay` 用系统包。
 
-集成仓不启用 GitHub Actions，整机装配只在构建机上跑；内核仓的 CI 只负责
-编译内核和产出 `ci/` 里的 artifact。
+集成仓的 `.github/workflows/image.yml` 是同一套脚本的另一条入口（自托管
+x86-64 runner，需要 `LIUQIN_IMAGE_CI=enabled`），产物和构建机一致；
+`.github/workflows/build.yml` 在集成仓 push 时也能编译内核。
 
 ## 5. 把 rootfs 变成可刷镜像（刷机主机）
 

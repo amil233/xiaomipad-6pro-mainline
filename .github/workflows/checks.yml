@@ -1,0 +1,52 @@
+name: Integration checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python and shell syntax
+        run: |
+          python3 - <<'PY'
+          import ast
+          import subprocess
+          from pathlib import Path
+          for path in Path('tools').rglob('*.py'):
+              ast.parse(path.read_text(), filename=str(path))
+          for path in sorted(Path('device/gnome-overlay/usr/local/libexec').iterdir()):
+              if path.is_file() and path.read_bytes().startswith(b'#!/usr/bin/env python3'):
+                  ast.parse(path.read_text(), filename=str(path))
+          for path in Path('tools').rglob('*.sh'):
+              subprocess.run(['sh', '-n', str(path)], check=True)
+          PY
+      - name: Rootfs archive offline checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gdisk
+          sudo python3 tests/rootfs-archive.py
+      - name: Persistent-root fail-closed policy
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y busybox-static
+          sh tests/persistent-root.sh
+      - name: GNOME storage guard policy
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y busybox-static
+          sh tests/storage-guard.sh
+      - name: Boot and rootfs image assembly offline checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y e2fsprogs
+          python3 tests/boot-assembly.py
+          python3 tests/rootfs-image.py
+      - name: Sensor startup policy
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y bubblewrap
+          sudo python3 tests/sensor-startup.py
