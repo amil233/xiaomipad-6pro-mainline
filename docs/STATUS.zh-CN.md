@@ -17,7 +17,7 @@
 | 集成仓分支 | `liuqin-install` |
 | 开发机 | Ubuntu 26.04.1 arm64，2 核 / 11 GB：做 boot.img、内核 deb、离线检查 |
 | 构建机 | 另一台 arm64，磁盘要能同时放下 ISO、casper 层、解出的 root 和 tar；具体见 BUILD 第 4 节 |
-| 刷机主机 | 树莓派：fastboot，把 `rootfs.tar.gz` 转成 ext4 镜像 |
+| 刷机主机 | 通过 USB 连接平板：`fastboot`，把 `rootfs.tar.gz` 转成 ext4 镜像 |
 
 ## 安装与更新
 

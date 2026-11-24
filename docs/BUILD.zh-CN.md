@@ -9,7 +9,7 @@
 |---|---|
 | 开发机 | 本工作区这台 Ubuntu 26.04.1 arm64（2 核 / 11 GB）：装配 boot.img、打内核 deb、离线检查 |
 | 构建机 | 另一台 arm64，约 20 GB 空闲：装配整机 rootfs（开发机也是 10 GB 级空闲，放不下 ISO + root + tar） |
-| 刷机主机 | 树莓派：把 `rootfs.tar.gz` 转成 ext4 镜像，fastboot 刷机 |
+| 刷机主机 | 通过 USB 连接平板：把 `rootfs.tar.gz` 转成 ext4 镜像，`fastboot` 刷入 |
 | 平板 | liuqin 本体，只接收镜像 |
 
 仓库里**不保存内核 commit、配置哈希或镜像哈希**。用到的每个文件都由脚本在
