@@ -1,104 +1,132 @@
-# 构建与 CI（只允许 CI 编译内核）
+# 从源码到可刷产物
 
-**铁律：内核、镜像不在本机编译。** 本机 2 核/11 GB、无 ccache；唯一构建
-通道是 GitHub Actions。本机只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配与
-`dpkg-deb` 打包。详见根 `AGENTS.md` §0.1。
+**铁律：内核只在 GitHub Actions 编译。** 开发机 2 核 / 11 GB、无 ccache，只做
+`dtc`/`fdtoverlay`/`mkbootimg` 装配和 `dpkg-deb`；刷机主机再跑 `mke2fs`。
+详见根 `AGENTS.md` §0.1。
 
-## 1. 上游与分支
+## 1. 产物与锁
 
-- 唯一上游：内核仓的 `linux` remote（`https://github.com/torvalds/linux.git`）。
-  7.3 基座从 `v7.3` tag 合并，7.4 也从它来；tag 已同步在内核仓，工作区不再
-  单独保留 `linux/` checkout。`sm8450-mainline/linux` 只是历史来源，不是上游。
-- 内核仓 `linux-sm8450-liuqin` 的设备分支：**`liuqin-7.3`**，
-  当前 tip `c03e1015c71d`（`7.3.0-gc03e1015c71d`）。
-- 集成仓 `xiaomipad-6pro-mainline` 的本机工作分支：**`liuqin-7.3`**；
-  `main` 只保留参考项目 v0.6.0 的历史骨架，不再更新。
+| 产物 | 内容 | 谁产出 |
+|---|---|---|
+| `ci/liuqin-kernel-<sha>/` | `kernel/`：Image、`sm8475-xiaomi-liuqin.dtb`、`.config`、`vmlinux`、`System.map`、`SHA256SUMS`、`build-info.json`；`kernel-modules/`：`modules.tar`、`modules.manifest`、`kernel.release`、`kernel.commit`、`SHA256SUMS` | 内核仓 CI |
+| `boot.img` | Image + DTB + initramfs + ABL overlay，刷到 `boot_a` | 本机 `tools/build-liuqin-boot.sh`（日常），或整机装配（成对） |
+| `rootfs.tar.gz` | Ubuntu 26.04 桌面 + 设备/内核 deb；路径相对 `/`，保留属主、ACL、xattr | 整机装配（CI） |
+| `rootfs.img` | 上面那个 tar 的 ext4 版本，树放在 `native-root/` 下 | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
+| `liuqin-kernel_*.deb` | `/usr/lib/modules/<release>` + `/boot` 载荷 + `/usr/share/liuqin/kernel.release` | 本机 `tools/build-liuqin-debs.sh` |
 
-## 2. 内核 CI 与 artifact 契约
+`kernel/source.json` 是**唯一内核锁**：`commit`、`config_sha256`、10 个配置分片、
+`dtb` 名。换内核 = 内核仓分支推进 + 把这里的 `commit` 改成新 tip；配置分片变了，
+把新 artifact `build-info.json` 里的 `config_sha256` 抄进来。装配脚本只认这把锁。
 
-推内核仓 `liuqin-7.3` 触发 `linux-sm8450-liuqin/.github/workflows/liuqin.yml`
-（`runs-on: ubuntu-24.04-arm`，原生 arm64）。它 checkout 集成仓
-`liuqin-7.3` 的 `.github/actions/kernel` 共享 action，不需要跨仓写 token。
+## 2. 内核：只走 CI
 
-产物由用户放进工作区根的 `ci/`，**agent 不下载**：
-
-```
-ci/liuqin-kernel-<40 位 SHA>/
-├── kernel/          Image、sm8475-xiaomi-liuqin.dtb、.config、vmlinux、
-│                    System.map、SHA256SUMS、build-info.json
-└── kernel-modules/  modules.tar、modules.manifest、kernel.release、
-                     kernel.commit、SHA256SUMS
-```
-
-使用前必须：
-
-1. `build-info.json.commit` 与目录名一致；
-2. `sha256sum -c SHA256SUMS` 两目录都过。
-
-`build-info.json` 里的 `product_kernel_commit` 是**构建当时的
-`kernel/source.json` 锁值**（产物可重复性锚点）；它不是当前运行内核的
-提交，也不是"development vs product"的产品标签。本项目**不区分产品与
-开发**：只做一致性校验（构建产物 commit / 锁值一致才放行），不采用
-参考项目的硬编码 sha 产品锁。
-
-## 3. 本机装配 boot 镜像
+- 推内核仓 `liuqin-7.3` → `linux-sm8450-liuqin/.github/workflows/liuqin.yml`
+  （`ubuntu-24.04-arm`，原生 arm64）。
+- artifact 由用户放进工作区根的 `ci/`，**agent 不下载**。
+- 使用前两条校验，缺一不可：
 
 ```sh
-A=ci/liuqin-kernel-<sha>/kernel
-KERNEL_OUT="$PWD/$A" OUT_DIR="$PWD/repack/<sha>-boot" \
-DTC=/usr/bin/dtc FDTOVERLAY=/usr/bin/fdtoverlay \
-  sh xiaomipad-6pro-mainline/tools/lib/build-bootimg.sh
+python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["commit"])' \
+  ci/liuqin-kernel-<sha>/kernel/build-info.json     # 必须等于 kernel/source.json
+(cd ci/liuqin-kernel-<sha>/kernel && sha256sum -c SHA256SUMS)
+(cd ci/liuqin-kernel-<sha>/kernel-modules && sha256sum -c SHA256SUMS)
 ```
 
-- **必须显式传 `DTC`/`FDTOVERLAY`**：脚本默认到 artifact 里找 `scripts/dtc/`，
-  CI 产物不含构建工具。
-- CMDLINE 与 ramdisk 决定行为；换内核时若两者不变，差异只在 Image/DTB，便于对照。
-- 脚本内置 round-trip 校验（`cmp` Image/dtb/ramdisk、header cmdline、v2 layout），
-  失败即装配有问题。
-- 刷入：`fastboot flash boot_a`（A 槽直启）；试跑：`fastboot boot`。
-- ramdisk **只有一套**：`xiaomipad-6pro-mainline/out/initramfs-liuqin/liuqin-firstboot.cpio.gz`
-  （post-contract，30,945,812 B，sha256 `935226d6…`）；旧 pre-contract
-  （`liuqin-firstboot.cpio.gz.before-contract`，30,930,155 B，`1690e9ec…`）
-  仅供历史对照（`17abc` / `c03e10`）。旧产品版 `out/ramdisk`（40,326,354 B，
-  `a04d2b25…`）已按新政策删除（不区分产品/开发）。
+本机**不要**运行 `tools/build-liuqin-kernel.py`——它是 CI 的构建入口。
 
-## 4. 系统镜像与安装包（可选，需专用主机）
-
-`tools/build-liuqin-image.py` 是 CI 装配入口，消费已完成的 kernel 构建与
-准备好的输入，不重编第三方依赖；`--stage` 可续跑。它需要
-root、GNU tar、ACL/xattr、squashfs-tools、cpio、ARM64 binfmt；整包 CI
-使用自托管 x86-64 runner（`liuqin-images`），默认手动触发。
-
-**Android/双系统打包已整体移除**：不再生成 `liuqin_boot_ubuntu-*.zip` 或
-`dualboot-tools.zip`，bundle 里不再带 KernelSU/切换工具；安装器与 `--layout dual`
-路径随安装器一并删除。
-
-输入来源必须是本机 **V14.0.9.0.TMYCNXM**：
-
-- 原版 Ubuntu 桌面 base：脚本下载固定 ISO、校验后提取；
-- 设备固件：`tools/build-liuqin-firmware-prep.sh`（输入池、
-  `V14.../extracted`、音频拓扑、WLAN tuple）；
-- ABL overlay/DTB：`V14.../analysis`（38 DTBO + 11 base DTB）；
-- 音频拓扑：`tools/build-liuqin-audio-topology.sh`；
-- 传感器：`tools/build-liuqin-sensors-stack.sh`（V14 提取物）。
-
-> `device/firmware/` 已于 2026-11-18 按 V14 重提取（173 文件 + 4 符号链接），
-> 且设备已装 rootfs 本来就在用同组固件（`native.contract` 对照），
-> 不需要为换固件再刷镜像。OS2 是参考项目的 ROM，不混用。
-
-## 5. 内核 deb 与模块
+## 3. 装配 boot.img（日常，约 15 秒）
 
 ```sh
-sh xiaomipad-6pro-mainline/tools/build-liuqin-debs.sh kernel
+sh tools/build-liuqin-boot.sh            # 取锁对应的 artifact，装配到 repack/<sha6>-boot
+sh tools/build-liuqin-boot.sh --check    # 只做下面三道检查，不生成镜像
+```
+
+它检查三件事，失败就停：
+
+1. artifact 的 commit 等于 `kernel/source.json`，两个 `SHA256SUMS` 都通过；
+2. ramdisk 内嵌的 `etc/liuqin-native-root.contract` 等于由
+   `out/native-root/native-root.hashes` 重新生成的契约；
+3. `dtc`/`fdtoverlay` 可用。
+
+输出目录含 `boot-liuqin-firstboot.img`、`Image.gz`、合并后的 ABL DTB、
+`boot-liuqin-firstboot.info`（cmdline、ramdisk、ABL 元数据）。
+**已有同名目录不会被覆盖**，换版本用 `--out` 换个名字，旧镜像自然留作回滚。
+
+为什么只换内核时可以复用现成 ramdisk：契约只锁**用户态设备文件**（systemd 单元、
+固件、辅助程序）；`/usr/lib/modules/*` 和 `/usr/share/liuqin/kernel.release`
+属于内核包，**故意不在契约里**，否则每次内核升级都会被 initramfs 拒绝。所以换内核
+时 boot.img 只换 Image/DTB/initramfs，模块和 release 由内核 deb 更新（§6）。
+
+底层是 `tools/lib/build-bootimg.sh`（dtc + fdtoverlay + mkbootimg，内置
+round-trip 校验），wrapper 只补前后两道身份检查。
+
+## 4. 整机装配：boot.img + rootfs.tar.gz
+
+入口 `.github/workflows/image.yml`，跑在自托管 x86-64 runner
+（`liuqin-images`，手动触发，或仓库变量 `LIUQIN_IMAGE_CI=enabled`）：
+
+```sh
+sudo python3 tools/build-liuqin-image.py --inputs <inputs.json> --kernel-out <内核构建目录>
+```
+
+- 阶段可续跑：`modules → debs → copy → install → assemble → manifest → boot →
+  pack → bundle`，`--stage <名字>` 从某一步继续；`--out` 必须在 `out/` 下。
+- **不在本机跑**：需要 root、ARM64 chroot（apt/dpkg）、GNU tar/ACL/xattr、
+  squashfs，2 核笔记本不具备这个条件。
+- 产物是 `out/image/bundle/`：`boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
+  `liuqin-firstboot.cpio.gz`、`bundle.json`、`SHA256SUMS`，加上安装/构建/功能
+  文档和指纹构建输入。
+  `native-root.hashes` 是 boot.img 内嵌契约的来源清单，`liuqin-firstboot.cpio.gz`
+  是携带该契约的 initramfs。刷完这套镜像后把这两个文件拷到开发机的
+  `out/native-root/native-root.hashes` 和
+  `out/initramfs-liuqin/liuqin-firstboot.cpio.gz`，下一轮只换内核的装配就能用
+  它们核对“新 Image + 实机 root”（BUILD §3）。
+
+rootfs 与内核是怎么对上的：
+
+1. deb 里的 `.ko` 来自同一个 artifact（`modules` 阶段直接复用 CI 打包好的模块集）；
+2. `manifest` 阶段把设备文件哈希写成 `native-root.hashes`，
+   `build-root-contract.py` 再把它变成 initramfs 内嵌的契约；
+3. `boot` 阶段同时检查 root 的 `kernel.release` 等于 Image 的 release。
+
+所以**同一 bundle 里的 boot.img 与 rootfs.tar.gz 是一对**，不要跨 bundle 混用。
+
+## 5. 把 rootfs 变成可刷镜像（刷机主机）
+
+```sh
+sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist
+# 连 /home 也重装时（会清空 /home）：
+sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist --home-size 8G
+```
+
+- **为什么需要这一步**：fastboot 写块设备；initramfs 把
+  `<linux_root>/native-root` 绑定成 `/`，所以树必须放在这个子目录。
+- 工具做什么：解包（`rootfs-archive.sh`，保留属主/ACL/xattr）→ 校验 marker 与
+  模块目录 → 补 `/etc/fstab` 的 `LABEL=LIUQIN_HOME /home`（这是布局，不属于
+  共享 rootfs）→ `mke2fs -d` → `e2fsck`/`dumpe2fs` 验证。
+- 默认大小 = 树 + 25%（至少 6G）。刷进分区后可以
+  `resize2fs /dev/disk/by-partlabel/linux_root` 长到整分区。
+- 只适用于**已存在** `linux_root`（以及可选的 `linux_home`）的设备；分区表是
+  一次性前提，见 `INSTALL.zh-CN.md` §1。
+
+## 6. 内核 deb：更新内核的另一半
+
+```sh
+sh tools/build-liuqin-debs.sh kernel
 # → out/liuqin-debs/liuqin-kernel_0.1_arm64.deb
 ```
 
-纯文件包（无维护脚本、无 `Depends`）：756 `.ko` + `/boot/{vmlinuz,initrd,dtb}`。
-装到平板后 `depmod`/`update-initramfs` 由用户态处理；不要与不同内核的
-Image/DTB 混用。
+纯文件包：`/usr/lib/modules/<release>`（自带 `modules.dep`）、
+`/boot/{vmlinuz,initrd,dtb}-<release>`、`/usr/share/liuqin/kernel.release`。
+没有维护脚本，装机后不需要 `depmod`；`/boot/initrd` 也不参与启动——启动用的
+initramfs 在 boot.img 里。更新内核时它与新 boot.img 一起上机：
+**deb 换模块与 release，boot.img 换 Image/DTB/initramfs**；契约不变。
+上机顺序见 `INSTALL.zh-CN.md` §3。
 
-## 6. 发布
+## 7. 发布与验收
 
-**本项目目前没有公开发布包。** 不要使用 `yzddmr6` 的 Releases 或
-`OS2.0.6.0` 的物料；参考项目的 v0.6.0 只是用户态起点，已经归档。
-只有在本机完整安装、冷启动、功能复核后，才能把 bundle 标为 `DEVICE_TESTED`。
+**本项目目前没有公开发布包。** bundle 的 `bundle.json` 默认
+`OFFLINE_ASSEMBLED`，只有本机完整安装、冷启动、功能复核之后才能标
+`DEVICE_TESTED`（`--stage release-assets --device-tested`）。安装路径相关文件
+一变，就必须重新真机验收——这是 `build-liuqin-image.py` 里的构建期断言，
+不是文档约定。

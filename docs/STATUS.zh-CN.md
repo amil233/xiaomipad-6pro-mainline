@@ -1,4 +1,4 @@
-# 当前整体状态（2026-11-18）
+# 当前整体状态（2026-11-24）
 
 **这是唯一的状态源。** 其它文档里出现的提交号、镜像哈希、分区槽、ROM 版本、
 固件来源若与本文冲突，以本文为准。历史取值与旧文档见 `docs/archive/`
@@ -15,11 +15,11 @@
 | ROM | 原厂 `V14.0.9.0.TMYCNXM`（Android 13）——**唯一 ROM 输入** |
 | 内核 | `liuqin-7.3` @ `c03e1015c71d`（`7.3.0-gc03e1015c71d`），已推送、CI 已构建 |
 | 当前镜像 | `repack/c03e10-boot/`（50,065,408 B，sha256 `8977f56a…`），已上机点亮、电量正常 |
-| 对照/回滚 | `repack/17abc-boot/`（`17abc027f75f`）、`repack/730fix-boot/`（`db08160915e3`） |
+| 对照/回滚 | `repack/17abc-boot/`（`17abc027f75f`）、`repack/730fix-boot/`（`db08160915e3`）；`repack/9a81b1a-contract-boot/` 是待刷的契约修复版 |
 | 内核包 | `out/liuqin-debs/liuqin-kernel_0.1_arm64.deb`（release `7.3.0-gc03e1015c71d`，756 `.ko`） |
 | 集成仓分支 | **`liuqin-7.3`**（本分支；`main` 只保留参考项目 v0.6.0 的历史骨架，不再更新） |
 | 工作机 | 本机 2 核/11 GB：只做源码、装配、打包，**不编译内核** |
-| 刷机主机 | 树莓派（只跑 fastboot 与保存备份/镜像） |
+| 刷机主机 | 树莓派（fastboot、`mke2fs` 生成 rootfs 镜像、保存备份） |
 
 ## 1. 与参考项目的关系（防止再混淆）
 
@@ -42,12 +42,15 @@ v0.6.0 搭了用户态骨架，此后设备事实（ROM、槽位、内核、构�
 - 之后做了**手动修正**：`fastboot flash boot_a`（零填充到 192 MiB 分区）+
   `fastboot --set-active=a`，所以现在从 A 槽启动；`boot_b` 里仍是那次安装写入的
   Ubuntu 副本，只作为残留备份，**不参与启动**。
-- **安装器已随新流程整体移除**：2026-11 起本仓库不再实现参考项目式的安装器
-  （`tools/install-liuqin.py` / `tools/lib/liuqin_layout.py` 等随流程废弃并删除），
-  只保留"装配 boot 镜像 → fastboot flash boot_a"的新装配刷机路径。
+- **安装器已整体移除**：2026-11 起本仓库不再实现参考项目式的安装器
+  （`tools/install-liuqin.py` / `tools/lib/liuqin_layout.py` 等随流程删除）。
+  现在的上机路径只有两条 fastboot：`boot.img → boot_a`、
+  `rootfs.img → linux_root`；rootfs 镜像由刷机主机从 `rootfs.tar.gz` 生成
+  （`tools/build-liuqin-rootfs-image.sh`，见 `INSTALL.zh-CN.md` §2）。
+- **分区表是一次性前提**：`linux_root`/`linux_home` 不存在时本流程不负责创建；
+  安装器删除后没有等价的设备端分区工具，属登记缺口（§6 #11）。
 - **Android/双系统路径已移除**：Android 资产、KernelSU 回切模块、`liuqin-switch`
-  及其桌面入口/polkit 动作、打包脚本都已删除；安装器对 `--layout dual` 直接报错。
-  安装手册里"双系统切换""重启到 Android"整章作废。
+  及其桌面入口/polkit 动作、打包脚本都已删除，没有双系统安装路径。
 
 ## 3. 用户态：停在参考项目 v0.6.0
 
@@ -97,6 +100,8 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 相机 | 🧪 未验证 | 只在 `fastboot boot` 的相机内核上验证过；本项目完整镜像未带相机启动，且需去掉 `/etc/modprobe.d/liuqin-camcc.conf` 后再验 |
 | 自动亮度 | ❌ 不支持 | 参考项目 v0.6.1+ 才有，未合并 |
 | 连接器温度 | ❌ 树里没有 | v0.7.0 新增，随已丢弃分支 |
+| 整机重装 rootfs | 🧪 工具就绪 | 2026-11-24 新增 `tools/build-liuqin-rootfs-image.sh` + `tests/rootfs-image.py`；离线测试通过，尚未在平板上刷过一次 |
+| 首启 provision | 🧪 未在 7.3 完整镜像上重跑 | `tools/provision-liuqin-from-persist.sh` 支持在已启动的桌面里对 `/` 运行，但 7.3 完整镜像尚未实测 |
 
 ## 6. 已知问题 / 待办
 
@@ -111,9 +116,9 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 8 | 接电脑 USB 掉电 | SDP 上 `input_current_limit` 100 mA，原厂靠 gadget 枚举抬到 500 mA；树里没有该补丁 |
 | 9 | 电压/电流计数值 | c03e10 上机已正常；v0.8.0 相关改动已回退，不要重引入 |
 | 10 | 用户态版本落差 | 见 §3；合并与否待决策 |
-| 11 | 安装器槽位 | 安装器流程已按新政策作废（不区分产品/开发，全新安装走"装配 → fastboot flash boot_a"新流程）。**下一次全新安装走 `repack/<sha>-boot` → `fastboot flash boot_a`**，无需再复核 installer。 |
+| 11 | 分区表重建 | 安装器删除后没有设备端分区工具：已有 `linux_root`/`linux_home` 时按 INSTALL §2 刷镜像；分区表缺失或需要重建时仍是缺口，需要时单独立项（旧安装器只作历史取证，见 `archive/`）。 |
 | 12 | 固件集已对齐 V14（无需刷机） | 2026-11-18 从 V14 `super.img`/`NON-HLOS.bin`/`BTFM.bin` 重提取；设备已装 rootfs 的 `native.contract` 与其中 5 个固件逐字节相同，说明实机本来就在用这组文件，见 §7 |
-| 13 | 安装器不再用 256GB 样例做预览 | 确认页现按设备 `userdata` 实际大小计算 `linux_root`/`linux_home`；`STOCK_TABLE` 只剩合成测试用，`--check` 不再打印虚构分区表 |
+| 13 | （作废）安装器预览 | 安装器已删除，本行只保留编号，避免其它文档的 `§6 #13` 引用错位 |
 | 14 | 用户态 P0 已装机，contract 已更新 | 2026-11-18 的 `liuqin-device-support` 重编了 wlan-mac/power-keyd，旧 initramfs contract 拒绝挂载；已更新 `native.contract` 并重打 `repack/9a81b1a-contract-boot/`。新 boot 与新 device-support 成对使用；待冷启动验证 Wi‑Fi、登录音频、GNOME 输入、指纹 |
 
 **已撤销的登记（编号留空，避免其它文档的 `§5 #N` 引用错位）**
@@ -155,9 +160,9 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
   **漂移提示**（不一致时打印 note），不是发布/产品锁。没有新增任何产品 SHA
   门禁，也不会因为换 ROM 而阻塞构建。
 - 原 Android 双系统用的 `liuqin-rom-images.json`（OS2 校验表）已随 dual 路径
-  删除，安装器改用设备常量 `PINNED_BOOT_BYTES = 192 MiB`。
+  删除。
 
-## 8. 2026-11-18 决策记录
+## 8. 决策记录（2026-11-18，2026-11-24 追加 14–15）
 
 | 编号 | 决策 |
 |---|---|
@@ -174,14 +179,16 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 | 11 | 上游 = 内核仓 `linux` remote（torvalds/linux）；`sm8450-mainline` 只是历史来源；不再保留 `linux/` checkout |
 | 12 | 集成仓新工作放在 `liuqin-7.3` 分支；`main` 保留 v0.6.0 历史 |
 | 13 | **2026-11 起新策略**：不区分产品/开发，删 `installer.img` / `17abc-boot-prodrd/` / `out/ramdisk`；全新安装走"装配 boot img → fastboot flash boot_a"；更新走"新内核装配 → flash，或新 deb 覆盖安装" |
+| 14 | 上机流程收敛为两条 fastboot：`boot.img → boot_a`、`rootfs.img → linux_root`；rootfs 镜像在刷机主机上由 `rootfs.tar.gz` 生成，不引入设备端安装器 |
+| 15 | 日常内核循环收成一条命令 `tools/build-liuqin-boot.sh`：自动取锁对应的 artifact，校验 commit/校验和，并核对 ramdisk 内嵌契约与 `out/native-root/native-root.hashes` 一致；不覆盖已有镜像目录 |
 
 ## 9. 文档索引
 
 | 文档 | 内容 |
 |---|---|
 | `STATUS.zh-CN.md` | **本文**，唯一状态源 |
-| `INSTALL.zh-CN.md` | 本机安装/更新/恢复：128G、A 槽单系统、装配 boot img → fastboot flash boot_a；rootfs 刷入或内核 deb 覆盖更新 |
-| `BUILD.zh-CN.md` | CI-only 内核构建、artifact 契约、本机装配与打包 |
+| `INSTALL.zh-CN.md` | 刷机与更新：分区前提、两条 fastboot（boot_a、linux_root）、首启 provision、冷启动验收、回滚 |
+| `BUILD.zh-CN.md` | 从源码到可刷产物：CI artifact 契约、boot.img 一条命令装配、整机 bundle、rootfs.img、内核 deb |
 | `FEATURES.zh-CN.md` | 指纹/相机/快充/Waydroid 的设备特定细节（状态以本文为准） |
 | `display.md` | 显示点亮：结论、黄金值、判读陷阱 |
 | `AUDIO.zh-CN.md` | 外放 TDM：数据通路、内核改动、诊断、复测 |
@@ -192,19 +199,29 @@ v0.6.0 共 111 个文件、+6573/−532。是否补、补哪些仍是决策项�
 ## 10. 构建 / 刷机工作流
 
 ```
-内核源码改动 → 推 GitHub liuqin-7.3 → CI 出 artifact → ci/liuqin-kernel-<sha>/
-  → 本机装配 boot 镜像：CI Image + dtb + initramfs + ABL overlay
-    （repack/<sha>-boot/，放在工作区根目录）
-  → 传到树莓派 → fastboot boot（试跑） / fastboot flash boot_a
-模块：CI 的 modules.tar + Image + dtb → liuqin-kernel deb → 平板上 dpkg -i
+内核源码改动 → 推内核仓 liuqin-7.3 → CI 出 artifact → ci/liuqin-kernel-<sha>/
+  ├─ 日常（只换内核）：tools/build-liuqin-boot.sh
+  │    校验 artifact 锁 / 校验和 / ramdisk 内嵌契约
+  │    → repack/<sha6>-boot/boot-liuqin-firstboot.img
+  │    → 树莓派 fastboot boot（试跑）/ fastboot flash boot_a
+  └─ 换用户态：整机装配 bundle（boot.img + rootfs.tar.gz）
+       → 刷机主机 tools/build-liuqin-rootfs-image.sh → rootfs.img
+       → fastboot flash linux_root
+       → 冷启动 → provision-liuqin-from-persist → 验收
+内核 deb：CI modules.tar + Image + dtb → liuqin-kernel deb → 平板上 dpkg -i
+          （与新 boot.img 成对，顺序见 INSTALL §3）
 ```
 
-- **内核只在 CI 编译**；本机只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配和
-  `dpkg-deb` 打包。详见 `BUILD.zh-CN.md`。
+- **内核只在 CI 编译**；本机只做 `dtc`/`fdtoverlay`/`mkbootimg` 装配、`mke2fs`
+  和 `dpkg-deb`。详见 `BUILD.zh-CN.md`。
+- **契约只锁用户态设备文件**：换内核契约不变，可以只换 boot.img；换用户态契约
+  会变，boot.img 与 rootfs 必须成对换。
 - **initramfs 单一来源，别混**：
   - `xiaomipad-6pro-mainline/out/initramfs-liuqin/liuqin-firstboot.cpio.gz`：
     post-contract（30,945,812 B，sha256 `935226d6…`）；旧 pre-contract
     （`liuqin-firstboot.cpio.gz.before-contract`，30,930,155 B，`1690e9ec…`）
     仅供历史对照（`17abc-boot` / `c03e10-boot`）。旧产品版 `out/ramdisk`
     （40,326,354 B，`a04d2b25…`）已按新政策删除。
+  - `tools/build-liuqin-boot.sh` 会核对 ramdisk 内嵌契约与
+    `out/native-root/native-root.hashes`，不一致直接拒绝装配。
 - `ci/` 只保留最新两套 artifact；`repack/` 只保留当前、对照、回滚镜像。

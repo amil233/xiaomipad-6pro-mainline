@@ -102,7 +102,7 @@ hashes 是参考仓 `liuqin-6.17test` 的提交。
 | `63bedc8` | GNOME Shell 50 null-actor 键盘 guard | Ubuntu 26.04 是 GNOME 50；触摸释放时的 null 异常与输入体验相关 | 低 |
 | `664c6c0` + `52136c8` | 登录界面/会话音频等 compositor 就绪再启动 | 首会话 PipeWire 抢设备的时序问题，通用 | 低 |
 | `e121682` | initramfs 在可写挂载前检查持久 ext4 | 掉电/坏根时的启动安全，纯 initramfs 脚本 | 低 |
-| `6464b15` + `e6575b7` | keep-home 保留时区/主机名；只等本机 Fastboot | 安装器体验/安全，逻辑与 ROM 无关 | 低到中 |
+| `6464b15` + `e6575b7` | keep-home 保留时区/主机名；只等本机 Fastboot | 安装器已删除，keep-home 没有消费者；只有 fastboot 等待逻辑可单独看 | 低 |
 | `58a4f49` | 指纹按当前运行内核加载 FPC 控制模块 | 我们指纹仍是 🧪；模块版本错配是常见失败点 | 中 |
 
 ### 7.2 值得做，但要成套重建/单独验证
@@ -125,7 +125,7 @@ hashes 是参考仓 `liuqin-6.17test` 的提交。
 ### 7.4 顺序建议
 
 1. 先做 7.1 的 `wlan-mac`、deb unit、OSK guard、音频就绪（这四项互不依赖）；
-2. 再做 initramfs fsck 与安装器 keep-home 两项；
+2. 再做 initramfs fsck（keep-home 随安装器删除，不再有消费者）；
 3. 指纹按 🧪 复测时顺带取 `58a4f49`；
 4. 电源键/挂起类（7.2）单独一批，上机验证；
 5. 传感器与充电仍按 §1–§3 的批次决策，不混入前四项。
