@@ -137,6 +137,12 @@ sudo sh tools/build-liuqin-rootfs.sh --rootfs-only
 # out/image/root/rootfs.tar.gz + native-root.hashes
 ```
 
+CI 用 `ubuntu-24.04-arm`：先装 `7zip`、`squashfs-tools`、`alsa-utils`、`m4`、
+`zstd`、`patch`、`build-essential`、`git`、`curl`、`dpkg-dev`、`file`、
+`binutils`，再跑 `--check` 预检，最后才下载 ISO。传感器栈的
+coldplug 竞态测试在 CI 上允许跳过（`SSC_ALLOW_COLDPLUG_SKIP=1`），其他测试
+仍然必须通过；本地不设这个变量。
+
 
 ## 5. 把 rootfs 变成可刷镜像（刷机主机）
 

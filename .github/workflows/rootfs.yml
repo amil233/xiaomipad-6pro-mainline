@@ -42,8 +42,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd patch \
-            build-essential git curl dpkg-dev
+            7zip squashfs-tools alsa-utils m4 zstd patch build-essential \
+            git curl dpkg-dev file binutils
 
       - name: Fetch busybox
         run: sh project/tools/fetch-busybox-arm64.sh
@@ -58,6 +58,7 @@ jobs:
           git -C project/tools/local/audioreach-topology log -1 --format='%H %cs %s'
 
       - name: Download kernel artifact
+        id: kernel_artifact
         env:
           GH_TOKEN: ${{ secrets.PAT_GET_KERNEL }}
         run: |
@@ -79,13 +80,19 @@ jobs:
           [ -n "$artifact" ] || { echo "kernel artifact was not downloaded" >&2; exit 1; }
           echo "artifact: $artifact"
           cat "$artifact/kernel-modules/kernel.release"
+          echo "dir=$artifact" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight
+        run: |
+          sudo env sh project/tools/build-liuqin-rootfs.sh --check --rootfs-only \
+            --kernel "${{ steps.kernel_artifact.outputs.dir }}" \
+            --out "$PWD/project/out/image"
 
       - name: Assemble rootfs
         run: |
-          set -euo pipefail
-          artifact=$(find "$PWD/ci" -maxdepth 1 -type d -name 'liuqin-kernel-*' | head -n 1)
           sudo env DROP_ISO=1 SSC_ALLOW_COLDPLUG_SKIP=1 sh project/tools/build-liuqin-rootfs.sh \
-            --rootfs-only --kernel "${artifact%/}" \
+            --rootfs-only \
+            --kernel "${{ steps.kernel_artifact.outputs.dir }}" \
             --out "$PWD/project/out/image"
 
       - name: Split the tar for upload
