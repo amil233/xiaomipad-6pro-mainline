@@ -88,7 +88,7 @@ if [ "${free_gb:-0}" -ge "$need_gb" ]; then
 else
 	report MISSING "free space ${free_gb:-0} GiB (need about $need_gb GiB)"
 fi
-tools='python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 alsatplg zstd patch'
+tools='python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare 7z unsquashfs file readelf gcc m4 alsatplg zstd patch'
 for tool in $tools; do
 	command -v "$tool" >/dev/null 2>&1 || report MISSING "tool: $tool"
 done
@@ -100,7 +100,6 @@ if [ -d "$base_root" ] && [ -f "$base_manifest" ]; then
 	report OK "Ubuntu desktop base: $base_dir"
 else
 	report WARN "Ubuntu desktop base missing; the first run downloads and extracts it (~4.1 GiB ISO)"
-	command -v 7z >/dev/null 2>&1 || report MISSING 'tool: 7z (needed to extract the Ubuntu ISO; package 7zip)'
 fi
 
 say 'kernel artifact'
