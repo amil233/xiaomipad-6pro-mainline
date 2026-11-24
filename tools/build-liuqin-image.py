@@ -3,7 +3,6 @@
 """Assemble matching device packages, rootfs and boot from prepared inputs."""
 import argparse
 import fcntl
-import fnmatch
 import hashlib
 import json
 import os
@@ -13,21 +12,23 @@ import subprocess
 import zipfile
 
 
-# Files that decide what the installer writes to the tablet's storage: the
-# partition layout engine, the host driver and the two device-side scripts.
-# A change to any of them invalidates every earlier device test, because the
-# next bundle will lay the disk out differently from the one that was tested.
-INSTALLER_PATHS = ('tools/install-liuqin.py', 'tools/lib/liuqin_layout.py')
-INSTALLER_GLOB = 'tools/lib/install-*.sh'
+# Files that decide what the assembled boot image contains. A change to any
+# of them invalidates an earlier device-tested install path, because the next
+# release must be re-validated on the tablet.
+INSTALL_SOURCE_PATHS = ('tools/lib/build-bootimg.sh', 'tools/lib/build-initramfs.sh',
+                        'tools/lib/build-liuqin-native-boot.sh', 'tools/build-liuqin-debs.sh',
+                        'tools/build-liuqin-native-root.sh')
 
 
 def installation_path_changes(project, env):
-    """List the installation-path files that changed since the last release tag.
+    """List the assembly inputs that changed since the last release tag.
 
-    Approach 4 of the dual-boot plan: a layout change must go through a full
-    attended installation, never an incremental one.  The rule is a build-time
-    assertion rather than a note in a document, because a note cannot fail a
-    release.
+    The install path is defined by the assembled boot image and the assembled
+    user-space image: which kernel/cmdline/ramdisk combination ships to the
+    tablet, and which user-space image it carries. A change to any of them must
+    go through a full attended installation, never an incremental one. The rule
+    is a build-time assertion rather than a note in a document, because a note
+    cannot fail a release.
     """
     described = subprocess.run(['git', '-C', str(project), 'describe', '--tags', '--abbrev=0'],
                                env=env, capture_output=True, text=True)
@@ -35,7 +36,7 @@ def installation_path_changes(project, env):
     if described.returncode != 0:
         # No release tag yet: nothing has been published, so nothing can be an
         # increment on top of a tested bundle.  Require the mark explicitly.
-        changed.update(INSTALLER_PATHS)
+        changed.update(INSTALL_SOURCE_PATHS)
     else:
         tag = described.stdout.strip()
         listed = subprocess.check_output(
@@ -44,7 +45,7 @@ def installation_path_changes(project, env):
             ['git', '-C', str(project), 'status', '--porcelain', '--'], env=env, text=True)
         listed += ''.join(line[3:] + '\n' for line in dirty.splitlines())
         for path in listed.split():
-            if path in INSTALLER_PATHS or fnmatch.fnmatch(path, INSTALLER_GLOB):
+            if path in INSTALL_SOURCE_PATHS:
                 changed.add(path)
     return sorted(changed)
 
@@ -84,8 +85,8 @@ def main():
                         default=project.parent / 'linux-sm8450-liuqin')
     parser.add_argument('--out', type=Path, default=project / 'out/image')
     parser.add_argument('--stage', choices=['all', 'modules', 'debs', 'copy', 'install',
-                                          'assemble', 'manifest', 'boot', 'runtime', 'installer',
-                                          'pack', 'bundle', 'release-assets'], default='all')
+                                          'assemble', 'manifest', 'boot', 'pack', 'bundle',
+                                          'release-assets'], default='all')
     parser.add_argument('--device-tested', action='store_true',
                         help='Mark release assets after completing device installation tests')
     args = parser.parse_args()
@@ -158,9 +159,6 @@ def main():
         'assemble': ('build-liuqin-native-root.sh', ['assemble'], out / 'root'),
         'manifest': ('build-liuqin-native-root.sh', ['manifest'], out / 'root'),
         'boot': ('build-liuqin-native-boot.sh', [], out / 'boot'),
-        'runtime': ('lib/build-installer-runtime.py', ['--root', supplied['UBUNTU_DESKTOP_ROOT'],
-                                                     '--out', str(out / 'installer-runtime')], out / 'installer-runtime'),
-        'installer': ('build-liuqin-native-boot.sh', [], out / 'installer'),
         'pack': ('build-liuqin-native-root.sh', ['pack'], out / 'root'),
     }
     selected = [*stages, 'bundle'] if args.stage == 'all' else [args.stage]
@@ -262,10 +260,7 @@ def main():
             # Android/dual-boot packaging was removed on the liuqin-7.3
             # branch: this device is single-system and boots slot A.
             files = {'boot.img': out / 'boot/boot-liuqin-native.img',
-                     'installer.img': out / 'installer/boot-liuqin-native.img',
                      'rootfs.tar.gz': out / 'root/rootfs.tar.gz',
-                     'install.py': project / 'tools/install-liuqin.py',
-                     'liuqin_layout.py': project / 'tools/lib/liuqin_layout.py',
                      'INSTALL.zh-CN.md': project / 'docs/INSTALL.zh-CN.md',
                      'BUILD.zh-CN.md': project / 'docs/BUILD.zh-CN.md',
                      'FEATURES.zh-CN.md': project / 'docs/FEATURES.zh-CN.md',
@@ -285,7 +280,7 @@ def main():
                 files['kernel-build-proof.zip'] = proof
             hashes = {}
             for name, source in files.items():
-                if name in ('boot.img', 'installer.img', 'rootfs.tar.gz'):
+                if name in ('boot.img', 'rootfs.tar.gz'):
                     os.link(source, destination / name)
                 else:
                     shutil.copyfile(source, destination / name)
@@ -306,12 +301,6 @@ def main():
         script, arguments, destination = stages[stage]
         print('Stage: ' + stage, flush=True)
         stage_env = dict(env, OUT_DIR=str(destination))
-        if stage == 'installer':
-            stage_env['INSTALLER_RUNTIME'] = str(out / 'installer-runtime')
-            # Retired-flow-only override: the installer RAM image must not hold
-            # the charger while it runs from RAM.  The new install/update flow
-            # leaves the hold on (LIUQIN_CHARGER_MODE=auto).
-            stage_env['LIUQIN_CHARGER_MODE'] = '0'
         subprocess.run(['python3' if script.endswith('.py') else 'sh',
                         str(project / 'tools' / script), *arguments], env=stage_env, check=True)
     print('Selected assembly stages completed; device validation is separate')

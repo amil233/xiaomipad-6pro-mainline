@@ -108,8 +108,6 @@ else
 fi
 # New install/update flow: a persistent GNOME/native root holds the charger
 # while it runs; LIUQIN_CHARGER_MODE=auto resolves to 1 in build-initramfs.sh.
-# The retired installer RAM image used to force the hold off here, through this
-# INSTALLER_RUNTIME branch; that branch is gone with the installer flow.
 charger_mode=${LIUQIN_CHARGER_MODE:-auto}
 mkdir -p "$out_dir"
 

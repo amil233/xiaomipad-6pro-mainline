@@ -9,7 +9,9 @@
 - 内核改动在内核仓 `linux-sm8450-liuqin` 的 `liuqin-7.3` 分支；本仓库只放
   设备配置、用户态适配、构建/安装工具、initramfs 与文档。
 - **不要提交 Android/双系统相关内容**：Android 资产、KernelSU 回切模块、
-  `liuqin-switch` 已移除；安装器的 `--layout dual` 已禁用。
+  `liuqin-switch` 已移除；参考项目式的安装器（`installer.img` / `install.py` /
+  `--layout dual`）已整体移除，不再实现任何安装流程；只保留装配 boot 镜像 →
+  fastboot flash boot_a 的装配刷机路径。
 - ROM 输入只用 `V14.0.9.0.TMYCNXM`；不要引入 `OS2.0.6.0` 或其他版本的
   数值、固件或校验值。
 - 文档只维护中文；英文版已删除。

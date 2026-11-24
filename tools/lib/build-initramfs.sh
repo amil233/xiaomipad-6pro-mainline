@@ -139,8 +139,7 @@ auto)
 0|1) ;;
 *) echo "error: LIUQIN_CHARGER_MODE must be auto, 0 or 1" >&2; exit 1 ;;
 esac
-# The explicit installer branch switches the final image to read-only RAM mode.
-if [ "$root_profile" != legacy ] && [ "$charger_mode" != 1 ] && [ -z "${INSTALLER_RUNTIME:-}" ]; then
+if [ "$root_profile" != legacy ] && [ "$charger_mode" != 1 ]; then
 	echo "error: a persistent GNOME/native image must include charger-mode hold" >&2
 	exit 1
 fi
@@ -596,22 +595,6 @@ for applet in basename blockdev cat chmod chroot cp cttyhack cut dmesg findfs \
 	ln -s busybox "$staging/bin/$applet"
 done
 ln -s ../bin/busybox "$staging/sbin/mdev"
-
-if [ -n "${INSTALLER_RUNTIME:-}" ]; then
-	[ -x "$INSTALLER_RUNTIME/usr/bin/tar" ] && [ -x "$INSTALLER_RUNTIME/usr/sbin/mkfs.ext4" ] &&
-		[ -x "$INSTALLER_RUNTIME/usr/sbin/e2fsck" ] && [ -x "$INSTALLER_RUNTIME/usr/sbin/sgdisk" ] ||
-		{ echo 'installer runtime is incomplete' >&2; exit 1; }
-	cp -a "$INSTALLER_RUNTIME"/. "$staging"/
-	mkdir -p "$staging/usr/lib/liuqin"
-	cp "$project_root/tools/lib/install-root.sh" "$staging/usr/lib/liuqin/install-root.sh"
-	cp "$project_root/tools/lib/install-layout.sh" "$staging/usr/lib/liuqin/install-layout.sh"
-	cp "$project_root/tools/provision-liuqin-from-persist.sh" "$staging/usr/lib/liuqin/provision.sh"
-	printf 'readonly\n' >"$staging/etc/liuqin-storage-mode"
-	printf 'liuqin\n' >"$staging/etc/liuqin-installer"
-	chmod 0644 "$staging/etc/liuqin-storage-mode" "$staging/etc/liuqin-installer"
-	# GNU tar invokes gzip externally; do not depend on ash's applet dispatch.
-	ln -s busybox "$staging/bin/gzip"
-fi
 
 find "$staging" -exec touch -h -d "@$source_epoch" {} +
 

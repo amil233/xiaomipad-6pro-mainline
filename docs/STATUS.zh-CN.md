@@ -42,8 +42,9 @@ v0.6.0 搭了用户态骨架，此后设备事实（ROM、槽位、内核、构�
 - 之后做了**手动修正**：`fastboot flash boot_a`（零填充到 192 MiB 分区）+
   `fastboot --set-active=a`，所以现在从 A 槽启动；`boot_b` 里仍是那次安装写入的
   Ubuntu 副本，只作为残留备份，**不参与启动**。
-- 本分支已把安装器 `linux-only` 的目标槽改为 **A**（`LINUX_ONLY_UBUNTU_SLOT='a'`），
-  新安装不再需要手动改槽；`boot_b` 不再写入。
+- **安装器已随新流程整体移除**：2026-11 起本仓库不再实现参考项目式的安装器
+  （`tools/install-liuqin.py` / `tools/lib/liuqin_layout.py` 等随流程废弃并删除），
+  只保留"装配 boot 镜像 → fastboot flash boot_a"的新装配刷机路径。
 - **Android/双系统路径已移除**：Android 资产、KernelSU 回切模块、`liuqin-switch`
   及其桌面入口/polkit 动作、打包脚本都已删除；安装器对 `--layout dual` 直接报错。
   安装手册里"双系统切换""重启到 Android"整章作废。
