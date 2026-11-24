@@ -23,8 +23,28 @@ if [ -z "$slot_cc" ]; then
 		slot_cc=aarch64-linux-gnu-gcc
 	fi
 fi
-dtc=${DTC:-$kernel_out/scripts/dtc/dtc}
-fdtoverlay=${FDTOVERLAY:-$kernel_out/scripts/dtc/fdtoverlay}
+# A kernel build tree carries its own dtc/fdtoverlay; an artifact-only build
+# machine does not, so fall back to the host tools before giving up.
+dtc=${DTC:-}
+if [ -z "$dtc" ] || [ ! -x "$dtc" ]; then
+	if [ -x "$kernel_out/scripts/dtc/dtc" ]; then
+		dtc=$kernel_out/scripts/dtc/dtc
+	elif command -v dtc >/dev/null 2>&1; then
+		dtc=$(command -v dtc)
+	else
+		die 'dtc is unavailable: install device-tree-compiler or set DTC'
+	fi
+fi
+fdtoverlay=${FDTOVERLAY:-}
+if [ -z "$fdtoverlay" ] || [ ! -x "$fdtoverlay" ]; then
+	if [ -x "$kernel_out/scripts/dtc/fdtoverlay" ]; then
+		fdtoverlay=$kernel_out/scripts/dtc/fdtoverlay
+	elif command -v fdtoverlay >/dev/null 2>&1; then
+		fdtoverlay=$(command -v fdtoverlay)
+	else
+		die 'fdtoverlay is unavailable: install device-tree-compiler or set FDTOVERLAY'
+	fi
+fi
 image=${KERNEL_IMAGE:-$kernel_out/arch/arm64/boot/Image}
 raw_dtb=${KERNEL_DTB:-$kernel_out/arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dtb}
 cmdline=$(cat "$project_root/device/native-bootargs.txt")

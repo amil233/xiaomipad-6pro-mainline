@@ -76,6 +76,57 @@ def kernel_release_string(kernel: Path) -> str:
                      f'{primary} nor {packaged} exists')
 
 
+PREPARED_MODULE_FILES = {'modules.tar', 'modules.manifest', 'kernel.release', 'kernel.commit'}
+
+
+def reuse_prepared_modules(kernel: Path, info: dict, lock: dict, out: Path, parser) -> bool:
+    """Copy the verified module set the CI action packaged with the artifact.
+
+    The set is the same content `make modules_install` would produce from this
+    build, and it is what lets the image be assembled on a machine that holds
+    the artifact but no kernel tree (the build machine).  A product artifact
+    records the set in build-info.json; older actions only leave the sibling
+    kernel-modules/ directory, which is verified directly.
+
+    Returns False when the artifact carries no module set at all, so the caller
+    can fall back to running Kbuild from a real kernel OUT.
+    """
+    prepared = info.get('prepared_modules') or {}
+    if prepared:
+        if (prepared.get('directory') not in ('kernel-modules', 'prepared-modules') or
+                set(prepared.get('files', {})) != PREPARED_MODULE_FILES):
+            parser.error('Kernel build lacks its prepared module set; rerun the CI action')
+        source = kernel.parent / prepared['directory']
+        if not source.is_dir():
+            source = kernel / prepared['directory']
+        if not source.is_dir():
+            parser.error('Prepared module directory is missing: ' + str(source))
+        expected = prepared['files']
+    else:
+        source = kernel.parent / 'kernel-modules'
+        if not source.is_dir() or set(PREPARED_MODULE_FILES) - {p.name for p in source.iterdir()}:
+            return False
+        expected = None
+    if (source / 'kernel.commit').read_text().strip() != lock['commit']:
+        parser.error('Imported modules do not belong to the locked kernel')
+    kernel_release = kernel / 'include/config/kernel.release'
+    if kernel_release.is_file() and \
+            (source / 'kernel.release').read_text().strip() != kernel_release.read_text().strip():
+        parser.error('Imported modules do not belong to the locked kernel')
+    if expected is not None:
+        for name, digest in expected.items():
+            with (source / name).open('rb') as stream:
+                if hashlib.file_digest(stream, 'sha256').hexdigest() != digest:
+                    parser.error('Imported module artifact mismatch: ' + name)
+    else:
+        sums = source / 'SHA256SUMS'
+        if not sums.is_file():
+            parser.error('Prepared module set carries no checksums; rerun the CI action')
+        subprocess.run(['sha256sum', '-c', '--quiet', 'SHA256SUMS'], cwd=source, check=True)
+    shutil.copytree(source, out / 'modules')
+    return True
+
+
 def main():
     project = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -172,57 +223,7 @@ def main():
     except BlockingIOError:
         parser.error('another assembly owns this output')
     for stage in selected:
-        if stage == 'modules' and (imported or info.get('build_kind') == 'development'):
-            # Reuse the prepared module tree the CI action already packaged
-            # (build-info prepared_modules). Never run Kbuild inside a
-            # frozen proof OUT. A development build carries the same
-            # prepared set; the commit and fragment gates above already
-            # proved it belongs to the locked kernel, so local assembly
-            # needs no kernel build tree at all.
-            prepared = info.get('prepared_modules') or {}
-            names = {'modules.tar', 'modules.manifest', 'kernel.release', 'kernel.commit'}
-            if prepared:
-                if (prepared.get('directory') not in ('kernel-modules', 'prepared-modules') or
-                        set(prepared.get('files', {})) != names):
-                    parser.error('Kernel build lacks its prepared module set; rerun the CI action')
-                # The CI artifact layout places kernel-modules/ next to kernel/;
-                # the legacy prepared-modules/ form sat inside it. Accept either.
-                source = kernel.parent / prepared['directory']
-                if not source.is_dir():
-                    source = kernel / prepared['directory']
-                if not source.is_dir():
-                    parser.error('Prepared module directory is missing: ' + str(source))
-                expected_files = prepared['files']
-            else:
-                # Older CI actions did not register the prepared module set in
-                # build-info.json.  Fall back to the sibling kernel-modules/
-                # directory and verify it directly: file set, the recorded
-                # commit, the kernel release, and the packaged SHA256SUMS.
-                source = kernel.parent / 'kernel-modules'
-                if not source.is_dir():
-                    parser.error('Prepared module directory is missing: ' + str(source))
-                if set(names) - {p.name for p in source.iterdir()}:
-                    parser.error('Kernel build lacks its prepared module set; rerun the CI action')
-                expected_files = None
-            if (source / 'kernel.commit').read_text().strip() != lock['commit']:
-                parser.error('Imported modules do not belong to the locked kernel')
-            kernel_release = kernel / 'include/config/kernel.release'
-            if kernel_release.is_file() and \
-                    (source / 'kernel.release').read_text().strip() != kernel_release.read_text().strip():
-                parser.error('Imported modules do not belong to the locked kernel')
-            if expected_files is not None:
-                for name, expected in expected_files.items():
-                    with (source / name).open('rb') as stream:
-                        if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
-                            parser.error('Imported module artifact mismatch: ' + name)
-            else:
-                sums = source / 'SHA256SUMS'
-                if sums.is_file():
-                    subprocess.run(['sha256sum', '-c', '--quiet', 'SHA256SUMS'],
-                                   cwd=source, check=True)
-                else:
-                    parser.error('Prepared module set carries no checksums; rerun the CI action')
-            shutil.copytree(source, out / 'modules')
+        if stage == 'modules' and reuse_prepared_modules(kernel, info, lock, out, parser):
             print('Stage: modules (verified prepared CI module artifacts)', flush=True)
             continue
         if stage == 'release-assets':

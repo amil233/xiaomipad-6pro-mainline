@@ -109,6 +109,10 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
   patch build-essential git curl dpkg-dev
 ```
 
+构建机**不需要内核源码**：`modules` 阶段直接验证并复用 artifact 里的
+`kernel-modules/`（内容与 `make modules_install` 相同），`dtc`/`fdtoverlay`
+用系统包。这样一台只有仓库、`tools/local` 和 `ci/` 的机器就能装配。
+
 CI 的 `.github/workflows/image.yml` 是等价路径（自托管 x86-64 runner，手动触发
 或仓库变量 `LIUQIN_IMAGE_CI=enabled`）；两条路径用的是同一组脚本，产物相同。
 CI 上内核在同一个 job 里现编，手动路径用 `ci/` 里现成的 artifact。

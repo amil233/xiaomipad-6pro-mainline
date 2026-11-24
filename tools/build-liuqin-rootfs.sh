@@ -116,6 +116,14 @@ else
 	else
 		report MISSING "artifact $artifact_commit does not match kernel/source.json ($commit)"
 	fi
+	for modules in "$kernel_dir/../kernel-modules" "$kernel_dir/kernel-modules" "$kernel_dir/prepared-modules"; do
+		[ -f "$modules/modules.tar" ] && { found_modules=$modules; break; }
+	done
+	if [ -n "${found_modules:-}" ]; then
+		report OK 'artifact carries the prepared module set'
+	else
+		report MISSING 'artifact has no kernel-modules/ (the build machine has no kernel tree)'
+	fi
 fi
 
 say 'inputs'
