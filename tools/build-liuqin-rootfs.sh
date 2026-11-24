@@ -34,12 +34,13 @@ say() { printf 'build-liuqin-rootfs: %s\n' "$*"; }
 
 usage() {
 	cat <<'EOF'
-usage: build-liuqin-rootfs.sh [--check] [--rootfs-only] [--kernel DIR] [--out DIR]
+usage: build-liuqin-rootfs.sh [--check] [--rootfs-only] [--fingerprint] [--kernel DIR] [--out DIR]
 
   --kernel DIR    artifact root or its kernel/ directory; defaults to the
                   newest artifact under ci/
   --out DIR       assembly output inside out/; defaults to out/image
   --rootfs-only   assemble rootfs.tar.gz only (tracked firmware, no boot.img)
+  --fingerprint   also include the optional fingerprint package
   --check         print the readiness report and exit; write nothing
 EOF
 }
@@ -48,9 +49,11 @@ kernel=
 out_dir=$project_root/out/image
 check_only=0
 rootfs_only=0
+with_fingerprint=0
 while [ $# -gt 0 ]; do
 	case $1 in
 	--rootfs-only) rootfs_only=1; shift ;;
+	--fingerprint) with_fingerprint=1; shift ;;
 	--kernel) [ $# -ge 2 ] || die '--kernel needs a value'; kernel=$2; shift 2 ;;
 	--out) [ $# -ge 2 ] || die '--out needs a value'; out_dir=$2; shift 2 ;;
 	--check) check_only=1; shift ;;
@@ -193,7 +196,9 @@ fi
 
 if [ "$rootfs_only" = 1 ]; then
 	say 'preparing rootfs inputs'
-	python3 "$project_root/tools/prepare-image-inputs.py" run --rootfs
+	fingerprint_arg=
+	[ "$with_fingerprint" = 1 ] && fingerprint_arg=--fingerprint
+	python3 "$project_root/tools/prepare-image-inputs.py" run --rootfs $fingerprint_arg
 	[ -f "$inputs_json" ] || die "input preparation produced no $inputs_json"
 	say 'assembling rootfs'
 	python3 "$project_root/tools/build-liuqin-image.py" \
@@ -211,7 +216,9 @@ fi
 # --- slow inputs (sensors stack, power panel, firmware, topology, WLAN) -----
 
 say 'preparing inputs'
-python3 "$project_root/tools/prepare-image-inputs.py" run
+fingerprint_arg=
+[ "$with_fingerprint" = 1 ] && fingerprint_arg=--fingerprint
+python3 "$project_root/tools/prepare-image-inputs.py" run $fingerprint_arg
 [ -f "$inputs_json" ] || die "input preparation produced no $inputs_json"
 
 # --- assemble ---------------------------------------------------------------

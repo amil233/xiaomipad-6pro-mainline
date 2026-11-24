@@ -57,7 +57,6 @@ INPUTS = {
     'WLAN_HSP2_TUPLE', 'STOCK_OVERLAY_DIR', 'STOCK_BASE_DIR',
     'SENSOR_STACK_TAR', 'POWER_SETTINGS_BINARY',
     'POWER_SETTINGS_MANIFEST', 'BUSYBOX', 'MKBOOTIMG_DIR',
-    'FINGERPRINT_BUNDLE',
 }
 
 # Rootfs assembly does not touch the boot image, the ABL overlays or the WLAN
@@ -65,7 +64,7 @@ INPUTS = {
 ROOTFS_INPUTS = {
     'UBUNTU_DESKTOP_ROOT', 'DESKTOP_ROOTFS_MANIFEST', 'FIRMWARE_TREE',
     'SENSOR_STACK_TAR', 'POWER_SETTINGS_BINARY', 'POWER_SETTINGS_MANIFEST',
-    'BUSYBOX', 'FINGERPRINT_BUNDLE',
+    'BUSYBOX',
 }
 
 
@@ -189,6 +188,7 @@ def main():
     env.update(GIT_CONFIG_COUNT='2', GIT_CONFIG_KEY_0='safe.directory',
                GIT_CONFIG_VALUE_0=str(project), GIT_CONFIG_KEY_1='safe.directory',
                GIT_CONFIG_VALUE_1=str(kernel_source))
+    env.setdefault('FINGERPRINT_BUNDLE', '')
     env.update(supplied, KERNEL_SOURCE=str(kernel_source),
                KERNEL_DIR=str(kernel_source), KERNEL_COMMIT=commit,
                KERNEL_OUT=str(kernel), KERNEL_IMAGE=str(kernel / 'arch/arm64/boot/Image'),
@@ -268,8 +268,10 @@ def main():
                      'liuqin-firstboot.cpio.gz': out / 'boot/liuqin-firstboot.cpio.gz',
                      'INSTALL.zh-CN.md': project / 'docs/INSTALL.zh-CN.md',
                      'BUILD.zh-CN.md': project / 'docs/BUILD.zh-CN.md',
-                     'NOTICE': project / 'NOTICE', 'LICENSE': project / 'LICENSE',
-                     'fingerprint-build-inputs.tar.gz': Path(supplied['FINGERPRINT_BUNDLE'])}
+                     'NOTICE': project / 'NOTICE', 'LICENSE': project / 'LICENSE'}
+            fingerprint = supplied.get('FINGERPRINT_BUNDLE')
+            if fingerprint:
+                files['fingerprint-build-inputs.tar.gz'] = Path(fingerprint)
             hashes = {}
             for name, source in files.items():
                 if name in ('boot.img', 'rootfs.tar.gz'):

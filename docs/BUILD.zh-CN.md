@@ -206,7 +206,7 @@ sudo python3 tools/prepare-image-inputs.py run
 | 固件池、传感器配置 | V14 `super.img` 的 vendor 分区；已提取为 `device/firmware-pool`、`device/sensors/rom` |
 | WLAN qca6490 固件 | V14 `NON-HLOS.bin`（modem 分区的 FAT）里的 `/qca6490/` |
 | 指纹固件 | 同一个 FAT 根目录的 `fpcliu.*` |
-| 指纹用户态 | `device/fingerprint/oem/` 的源码；默认另下载参考项目 v0.6.0 发布包里的预编译输入（解压时核对包内 `SHA256.json`），可用 `FINGERPRINT_BUNDLE` 换成本地重建的包 |
+| 指纹用户态 | 可选，默认不装；源码在 `device/fingerprint/oem/`，按 [`FINGERPRINT.zh-CN.md`](FINGERPRINT.zh-CN.md) 自建 |
 | 蓝牙固件 | V14 `BTFM.bin` |
 | ABL 覆盖层和基设备树 | V14 `dtbo.img`、`vendor_boot.img` |
 | WLAN tuple | 已提取为 `device/wlan-tuple`（V14 qca6490 + 上游 board） |

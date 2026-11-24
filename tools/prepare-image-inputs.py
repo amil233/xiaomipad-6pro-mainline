@@ -34,7 +34,6 @@ import json
 import os
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 
 # The build machine runs this as root; the development machine (and CI) use
@@ -193,22 +192,20 @@ def rebuild_firmware(out_dir: Path, topology: Path, wlan_tuple: Path) -> None:
 
 
 def fingerprint_build_input() -> Path:
-    """Point at the public binary/source input; it contains no OEM TA bytes.
+    """Return the explicitly supplied fingerprint build-input archive.
 
-    The archive's own SHA256.json is verified when the fingerprint package is
-    built, so no archive hash is stored here.  FINGERPRINT_BUNDLE can point at
-    a locally built replacement."""
-    candidate = Path(os.environ.get('FINGERPRINT_BUNDLE',
-        PROJECT / 'tools/local/downloads/fingerprint/v0.6.0/fingerprint-build-inputs.tar.gz'))
-    if not candidate.exists():
-        if 'FINGERPRINT_BUNDLE' in os.environ:
-            raise SystemExit(f'FINGERPRINT_BUNDLE is missing: {candidate}')
-        candidate.parent.mkdir(parents=True, exist_ok=True)
-        url = ('https://github.com/yzddmr6/xiaomipad-6pro-mainline/releases/download/'
-               'v0.6.0/fingerprint-build-inputs.tar.gz')
-        temporary = candidate.with_suffix('.download')
-        urllib.request.urlretrieve(url, temporary)
-        temporary.rename(candidate)
+    The generic image does not include fingerprint by default.  A caller that
+    asks for it must supply the archive built from this repository and the
+    current kernel module; the old v0.6.0 prebuilt bundle is not a fallback.
+    """
+    value = os.environ.get('FINGERPRINT_BUNDLE')
+    if not value:
+        raise SystemExit(
+            'fingerprint is optional and not included by default; build it with '
+            'tools/build-liuqin-fingerprint-self.sh and set FINGERPRINT_BUNDLE')
+    candidate = Path(value)
+    if not candidate.is_file():
+        raise SystemExit(f'FINGERPRINT_BUNDLE is missing: {candidate}')
     return candidate.resolve()
 
 
@@ -227,7 +224,7 @@ def gather() -> dict:
     return cache, plan
 
 
-def cmd_check(rootfs: bool) -> None:
+def cmd_check(rootfs: bool, fingerprint: bool) -> None:
     _, plan = gather()
     for name, item in plan.items():
         state = 'reuse (fingerprint unchanged, artifact verified)' if item['hit'] \
@@ -239,9 +236,10 @@ def cmd_check(rootfs: bool) -> None:
             print(f'{name}:', 'tracked' if path.is_dir() else f'MISSING {path}')
         busybox = PROJECT / 'tools/local/busybox-arm64/usr/bin/busybox'
         print('busybox:', 'present' if busybox.is_file() else 'will fetch')
+    print('fingerprint:', 'included' if fingerprint else 'excluded')
 
 
-def cmd_run(rootfs: bool) -> None:
+def cmd_run(rootfs: bool, fingerprint: bool) -> None:
     cache, plan = gather()
 
     sensors_work = PROJECT / 'out/prepared-inputs/sensors'
@@ -303,8 +301,9 @@ def cmd_run(rootfs: bool) -> None:
         'POWER_SETTINGS_BINARY': str(settings_bin),
         'POWER_SETTINGS_MANIFEST': str(settings_manifest),
         'BUSYBOX': str(busybox),
-        'FINGERPRINT_BUNDLE': str(fingerprint_build_input()),
     }
+    if fingerprint:
+        common['FINGERPRINT_BUNDLE'] = str(fingerprint_build_input())
     if rootfs:
         inputs = common
     else:
@@ -331,9 +330,11 @@ def main() -> None:
     parser.add_argument('action', choices=['check', 'run'])
     parser.add_argument('--rootfs', action='store_true',
                         help='prepare only the inputs rootfs assembly consumes')
+    parser.add_argument('--fingerprint', action='store_true',
+                        help='include the optional fingerprint package inputs')
     args = parser.parse_args()
-    {'check': lambda: cmd_check(args.rootfs),
-     'run': lambda: cmd_run(args.rootfs)}[args.action]()
+    {'check': lambda: cmd_check(args.rootfs, args.fingerprint),
+     'run': lambda: cmd_run(args.rootfs, args.fingerprint)}[args.action]()
 
 
 if __name__ == '__main__':
