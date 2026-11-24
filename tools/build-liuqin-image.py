@@ -308,6 +308,10 @@ def main():
         stage_env = dict(env, OUT_DIR=str(destination))
         if stage == 'installer':
             stage_env['INSTALLER_RUNTIME'] = str(out / 'installer-runtime')
+            # Retired-flow-only override: the installer RAM image must not hold
+            # the charger while it runs from RAM.  The new install/update flow
+            # leaves the hold on (LIUQIN_CHARGER_MODE=auto).
+            stage_env['LIUQIN_CHARGER_MODE'] = '0'
         subprocess.run(['python3' if script.endswith('.py') else 'sh',
                         str(project / 'tools' / script), *arguments], env=stage_env, check=True)
     print('Selected assembly stages completed; device validation is separate')

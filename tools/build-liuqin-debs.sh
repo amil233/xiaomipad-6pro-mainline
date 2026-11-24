@@ -380,7 +380,9 @@ build_kernel() {
 	printf '%s\n' "$release" >"$work/kernel.release"
 	install -D -m 0644 "$work/kernel.release" "$root/usr/share/liuqin/kernel.release"
 	mkdir -p "$root/DEBIAN"
-	# The installer owns boot partition updates; this package only supplies files.
+	# The assembled boot image (kernel + initramfs + dtb) is flashed to the
+	# boot partition via fastboot in the new install/update flow (boot_a); this
+	# package only supplies files onto an existing system.
 	pack "$pkg" arm64 '' \
 		'Xiaomi Pad 6 Pro (liuqin) kernel modules and boot payload'
 }

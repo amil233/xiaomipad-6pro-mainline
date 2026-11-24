@@ -106,8 +106,11 @@ else
 	source_epoch=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('source_date_epoch', 0))" "$kernel_info")
 	[ -n "$source_epoch" ] || source_epoch=0
 fi
-charger_mode=auto
-if [ -n "${INSTALLER_RUNTIME:-}" ]; then charger_mode=0; fi
+# New install/update flow: a persistent GNOME/native root holds the charger
+# while it runs; LIUQIN_CHARGER_MODE=auto resolves to 1 in build-initramfs.sh.
+# The retired installer RAM image used to force the hold off here, through this
+# INSTALLER_RUNTIME branch; that branch is gone with the installer flow.
+charger_mode=${LIUQIN_CHARGER_MODE:-auto}
 mkdir -p "$out_dir"
 
 python3 "$project_root/tools/lib/build-root-contract.py" --profile native \
