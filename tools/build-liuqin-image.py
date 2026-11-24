@@ -16,8 +16,9 @@ import zipfile
 # of them invalidates an earlier device-tested install path, because the next
 # release must be re-validated on the tablet.
 INSTALL_SOURCE_PATHS = ('tools/lib/build-bootimg.sh', 'tools/lib/build-initramfs.sh',
-                        'tools/lib/build-liuqin-native-boot.sh', 'tools/build-liuqin-debs.sh',
-                        'tools/build-liuqin-native-root.sh')
+                        'tools/build-liuqin-native-boot.sh', 'tools/build-liuqin-debs.sh',
+                        'tools/build-liuqin-native-root.sh',
+                        'tools/build-liuqin-rootfs-image.sh')
 
 
 def installation_path_changes(project, env):
@@ -261,6 +262,15 @@ def main():
             # branch: this device is single-system and boots slot A.
             files = {'boot.img': out / 'boot/boot-liuqin-native.img',
                      'rootfs.tar.gz': out / 'root/rootfs.tar.gz',
+                     # The device-file manifest the boot contract was derived
+                     # from.  Shipping it lets the next kernel-only assembly
+                     # check its ramdisk against this very root instead of
+                     # trusting whatever copy the development host last had.
+                     'native-root.hashes': out / 'root/native-root.hashes',
+                     # The initramfs that carries that contract.  Together with
+                     # the manifest it is what a later kernel-only assembly
+                     # needs to rebuild boot.img for this exact root.
+                     'liuqin-firstboot.cpio.gz': out / 'boot/liuqin-firstboot.cpio.gz',
                      'INSTALL.zh-CN.md': project / 'docs/INSTALL.zh-CN.md',
                      'BUILD.zh-CN.md': project / 'docs/BUILD.zh-CN.md',
                      'FEATURES.zh-CN.md': project / 'docs/FEATURES.zh-CN.md',

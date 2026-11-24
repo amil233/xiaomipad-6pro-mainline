@@ -39,6 +39,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y busybox-static
           sh tests/storage-guard.sh
+      - name: Boot and rootfs image assembly offline checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y e2fsprogs
+          python3 tests/boot-assembly.py
+          python3 tests/rootfs-image.py
       - name: Sensor startup policy
         run: |
           sudo apt-get update
