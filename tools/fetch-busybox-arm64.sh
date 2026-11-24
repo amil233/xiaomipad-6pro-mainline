@@ -1,31 +1,36 @@
 #!/bin/sh
 # Fetch the static ARM64 BusyBox used by the initramfs.
 #
-# No hash is stored in the repository: the package is identified by its
-# dpkg fields and its AArch64/static binary shape, and the extracted files are
-# recorded in tools/local/busybox-arm64/SHA256SUMS for later comparison.
+# The package comes from the Ubuntu archive through apt, which checks it
+# against the signed package metadata; no hash is stored or generated here.
+# Only the AArch64/static shape the initramfs needs is checked afterwards.
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-download_dir="$project_root/tools/local/downloads"
-extract_dir="$project_root/tools/local/busybox-arm64"
-package=busybox-static_1.36.1-6ubuntu3.1_arm64.deb
-url="http://ports.ubuntu.com/pool/main/b/busybox/$package"
+download_dir=${DOWNLOAD_DIR:-"$project_root/tools/local/downloads"}
+extract_dir=${EXTRACT_DIR:-"$project_root/tools/local/busybox-arm64"}
+
+die() { printf 'fetch-busybox-arm64: %s\n' "$*" >&2; exit 1; }
 
 mkdir -p "$download_dir" "$extract_dir"
+command -v apt-get >/dev/null 2>&1 || die 'apt-get is required (Ubuntu build host)'
 
-if [ ! -f "$download_dir/$package" ]; then
-	curl --fail --location "$url" --output "$download_dir/$package.part"
-	mv "$download_dir/$package.part" "$download_dir/$package"
-fi
-dpkg-deb --field "$download_dir/$package" Package Version Architecture
-if [ "$(dpkg-deb --field "$download_dir/$package" Architecture)" != arm64 ]; then
-	printf 'fetch-busybox-arm64: package architecture is not arm64\n' >&2
-	exit 1
-fi
-dpkg-deb --extract "$download_dir/$package" "$extract_dir"
-file "$extract_dir/usr/bin/busybox" | grep -q 'ELF 64-bit LSB.*ARM aarch64' ||
+# Refresh nothing here: the caller's package lists decide the version, and apt
+# verifies the download against their signed metadata.
+(cd "$download_dir" && apt-get download busybox-static)
+package=$(ls -t "$download_dir"/busybox-static_*_arm64.deb 2>/dev/null | head -n 1)
+[ -n "$package" ] || die 'apt-get download produced no busybox-static arm64 package'
+
+dpkg-deb --field "$package" Package Version Architecture
+[ "$(dpkg-deb --field "$package" Architecture)" = arm64 ] ||
+	die 'package architecture is not arm64'
+dpkg-deb --extract "$package" "$extract_dir"
+
+binary=$extract_dir/usr/bin/busybox
+[ -x "$binary" ] || die "extracted BusyBox is missing: $binary"
+file "$binary" | grep -q 'ELF 64-bit LSB.*ARM aarch64' ||
 	die 'the extracted busybox is not an AArch64 executable'
-(cd "$extract_dir" && find usr -type f -print0 | LC_ALL=C sort -z |
-	xargs -0 sha256sum >SHA256SUMS)
-printf 'busybox: %s\n' "$(sha256sum "$extract_dir/usr/bin/busybox" | cut -d' ' -f1)"
+if readelf -l "$binary" | grep -q INTERP; then
+	die 'the extracted busybox is dynamically linked'
+fi
+printf 'busybox: %s (%s bytes)\n' "$binary" "$(stat -c %s "$binary")"

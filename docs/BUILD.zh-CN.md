@@ -155,6 +155,12 @@ sh tools/build-liuqin-boot.sh --deb
 | GNOME 设置、传感器、fprintd 源码 | Ubuntu 源和 `device/` |
 | 每机校准（MAC、蓝牙地址、喇叭校准、传感器数据） | 平板自己的 `persist` 分区，第一次启动时导入，不进镜像 |
 
+外部文件只核对**发布方给的**校验值：Ubuntu ISO 对 Canonical 的
+`SHA256SUMS`，Ubuntu 软件包交给 apt 的签名元数据，AOSP 工具用 git 传输时的
+对象校验，指纹包用它自带的 `SHA256.json`。没有发布方校验值的下载（例如
+WLAN bdencoder 的 tarball）只记录来源和实际哈希用于识别，不自己生成一个
+“校验值”再比对；那只能发现本地文件变了，不能证明下载可信。
+
 镜像里**不放**每机校准。线刷包里的 `persist.img` 是通用数据，用了会把别的
 机器的 MAC 和校准带进来。
 

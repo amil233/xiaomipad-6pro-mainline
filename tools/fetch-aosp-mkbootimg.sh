@@ -1,29 +1,30 @@
 #!/bin/sh
 # Fetch AOSP mkbootimg/unpack_bootimg at a release tag.
 #
-# The +archive tarball carries generation timestamps, so the tarball bytes vary
-# between downloads; integrity lands on the extracted files, recorded in the
-# extract directory's SHA256SUMS.
+# The repository is cloned with git, so the files are the tag's real tree and
+# git checks the object hashes during the transfer; no separate checksum is
+# generated here.
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-download_dir="$project_root/tools/local/downloads"
-extract_dir="$project_root/tools/local/aosp-mkbootimg"
-tag=android-16.0.0_r4
-archive="aosp-mkbootimg-$tag.tar.gz"
-url="https://android.googlesource.com/platform/system/tools/mkbootimg/+archive/refs/tags/$tag.tar.gz"
+extract_dir=${EXTRACT_DIR:-"$project_root/tools/local/aosp-mkbootimg"}
+tag=${MBOOTIMG_TAG:-android-16.0.0_r4}
+url=${MBOOTIMG_URL:-https://android.googlesource.com/platform/system/tools/mkbootimg}
 
-mkdir -p "$download_dir" "$extract_dir"
+die() { printf 'fetch-aosp-mkbootimg: %s\n' "$*" >&2; exit 1; }
 
-if [ ! -f "$download_dir/$archive" ]; then
-	curl --fail --location "$url" --output "$download_dir/$archive.part"
-	mv "$download_dir/$archive.part" "$download_dir/$archive"
+if [ -f "$extract_dir/mkbootimg.py" ] && [ -f "$extract_dir/unpack_bootimg.py" ]; then
+	printf 'mkbootimg: using existing checkout %s\n' "$extract_dir"
+	python3 "$extract_dir/mkbootimg.py" --help >/dev/null
+	python3 "$extract_dir/unpack_bootimg.py" --help >/dev/null
+	exit 0
 fi
+[ ! -e "$extract_dir" ] ||
+	die "existing directory is not a complete checkout: $extract_dir (remove it)"
 
-tar -xzf "$download_dir/$archive" -C "$extract_dir"
-(cd "$extract_dir" && find . -maxdepth 1 -type f -name '*.py' -print0 |
-	LC_ALL=C sort -z | xargs -0 sha256sum >SHA256SUMS)
-
-printf 'AOSP tag: %s\n' "$tag"
+command -v git >/dev/null 2>&1 || die 'git is required'
+git clone --quiet --depth 1 --branch "$tag" "$url" "$extract_dir"
+commit=$(git -C "$extract_dir" rev-parse HEAD)
+printf 'AOSP tag: %s\ncommit: %s\n' "$tag" "$commit"
 python3 "$extract_dir/mkbootimg.py" --help >/dev/null
 python3 "$extract_dir/unpack_bootimg.py" --help >/dev/null
