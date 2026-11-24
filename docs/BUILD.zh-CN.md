@@ -1,6 +1,6 @@
 # 从源码到可刷产物
 
-内核在 GitHub Actions 编译，整机 rootfs 在构建机或集成仓的自托管 runner 上装配。
+内核在内核仓的 GitHub Actions 编译，整机 rootfs 在集成仓的 `rootfs` workflow 上装配。
 开发机不在本地编译，是因为 CI 更快、磁盘和时间更省，不是这台机器做不了。
 
 这里的四台机器各干各的：
@@ -8,7 +8,7 @@
 | 角色 | 做什么 |
 |---|---|
 | 开发机 | 本工作区这台 Ubuntu 26.04.1 arm64（2 核 / 11 GB）：装配 boot.img、打内核 deb、离线检查 |
-| 构建机 | 另一台 arm64，约 20 GB 空闲：装配整机 rootfs（开发机也是 10 GB 级空闲，放不下 ISO + root + tar） |
+| GitHub Actions | `rootfs` workflow，`ubuntu-24.04-arm`：装配整机 rootfs（runner 145 GiB，清理后约 118 GiB 可用） |
 | 刷机主机 | 通过 USB 连接平板：把 `rootfs.tar.gz` 转成 ext4 镜像，`fastboot` 刷入 |
 | 平板 | liuqin 本体，只接收镜像 |
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | `ci/liuqin-kernel-<commit>/` | `kernel/`：Image、设备树、`.config`、`build-info.json`、`SHA256SUMS`；`kernel-modules/`：模块包和版本文件 | 内核仓 CI |
 | `boot.img` | Image + 设备树 + initramfs + ABL overlay，刷到 `boot_a` | 开发机 `tools/build-liuqin-boot.sh`，或整机装配 |
-| `rootfs.tar.gz` | Ubuntu 26.04.1 桌面加设备/内核 deb，路径相对 `/`，保留属主、ACL、xattr | 构建机 `tools/build-liuqin-rootfs.sh` |
+| `rootfs.tar.gz` | Ubuntu 26.04.1 桌面加设备/内核 deb，路径相对 `/`，保留属主、ACL、xattr | `rootfs` workflow 或本地 `tools/build-liuqin-rootfs.sh` |
 | `rootfs.img` | 上面 tar 的 ext4 版本，刷到 `userdata` | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
 | `liuqin-kernel_*.deb` | 内核模块、`/boot` 文件、`kernel.release` | 开发机 `build-liuqin-boot.sh --deb` |
 
@@ -68,7 +68,7 @@ sh tools/build-liuqin-boot.sh --check    # 只检查，不生成
 脚本还会读 `out/liuqin-debs` 里内核 deb 的版本：如果它和这次 Image 的版本
 不一致，会提示先装配套的 deb，或者加 `--deb` 让两半一起生成。
 
-## 4. 装配整机（构建机）
+## 4. 装配整机（GitHub Actions / root 主机）
 
 ```sh
 sudo sh tools/build-liuqin-rootfs.sh --check   # 报告还缺什么
@@ -90,13 +90,13 @@ sudo sh tools/build-liuqin-rootfs.sh           # 准备输入，然后装配
 bundle 里有 `boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
 `liuqin-firstboot.cpio.gz`、`bundle.json`、`SHA256SUMS` 和文档。
 
-构建机需要：
+运行环境需要：
 
 | 项 | 要求 |
 |---|---|
 | 架构 | aarch64（原生 chroot）；x86 需要 qemu-aarch64 和 binfmt 的 P 标志 |
 | 权限 | root（chroot、属主、tar 的 ACL/xattr） |
-| 磁盘 | 约 20 GB（实测组成见下表） |
+| 磁盘 | 峰值约 20 GB（GitHub runner 145 GiB，清理后 118 GiB） |
 | 命令 | `dpkg-deb`、GNU `tar`、`unsquashfs`、`7z`、`m4`、`alsatplg`、`zstd`、`patch`、`git`、`curl`、`chroot`/`mount`/`unshare` |
 | 输入 | `tools/local`、V14 提取树、AudioReach 源码、内核产物 |
 
@@ -121,7 +121,7 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
   patch build-essential git curl dpkg-dev
 ```
 
-构建机不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
+不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
 版本和校验和），`dtc`/`fdtoverlay` 用系统包。
 
 集成仓的 `.github/workflows/rootfs.yml` 只装 rootfs：用 `PAT_GET_KERNEL`
@@ -130,7 +130,7 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 `native-root.hashes`，不生成 boot.img。`.github/workflows/build.yml` 在
 集成仓 push 时也能编译内核。
 
-本地或构建机也可以只装 rootfs：
+本地或 CI 也可以只装 rootfs：
 
 ```sh
 sudo sh tools/build-liuqin-rootfs.sh --rootfs-only
@@ -188,7 +188,7 @@ python3 tools/build-liuqin-settings.py --prepare-only --out out/prepared-inputs/
 ```
 
 真正编译传感器栈和 GNOME 设置程序（也就是生成二进制缓存）需要 root 和
-Ubuntu 桌面 root，在构建机上执行：
+Ubuntu 桌面 root，在 GitHub Actions 或本地 root 环境执行：
 
 ```sh
 sudo python3 tools/prepare-image-inputs.py run
@@ -197,7 +197,7 @@ sudo python3 tools/prepare-image-inputs.py run
 它复用上面三份源码，写出 `tools/local/artifacts-cache/`（传感器栈 tar 和
 `gnome-control-center` 二进制）和 `out/prepared-inputs/`。这两处都在
 `.gitignore` 里，不提交；把 `tools/local/` 和 `out/prepared-inputs/` 一起拷
-到构建机，构建机就不用重新下载或重编这些慢输入。
+到运行环境，就不用重新下载或重编这些慢输入。
 
 
 | 输入 | 来源 |

@@ -16,12 +16,12 @@
 | 内核 | 内核仓 `liuqin-7.3`；平板实际跑哪个 commit，用 `uname -r` 对照 |
 | 集成仓分支 | `liuqin-install` |
 | 开发机 | Ubuntu 26.04.1 arm64，2 核 / 11 GB：做 boot.img、内核 deb、离线检查 |
-| 构建机 | 另一台 arm64，磁盘要能同时放下 ISO、casper 层、解出的 root 和 tar；具体见 BUILD 第 4 节 |
+| 构建 | GitHub Actions `rootfs` workflow（`ubuntu-24.04-arm`）；runner 145 GiB，清理后约 118 GiB 可用 |
 | 刷机主机 | 通过 USB 连接平板：`fastboot`，把 `rootfs.tar.gz` 转成 ext4 镜像 |
 
 ## 安装与更新
 
-构建机产出 `boot.img` + `rootfs.tar.gz`，刷机主机把 tar 转成 `rootfs.img`，
+`rootfs` workflow 产出 `rootfs.tar.gz`，刷机主机把 tar 转成 `rootfs.img`，
 平板刷 `boot_a` 和 `userdata`。只换内核时，刷 `boot_a` 并在系统里装新的内核
 deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md)，产物见 [`BUILD.zh-CN.md`](BUILD.zh-CN.md)。
@@ -44,7 +44,7 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 | 相机 | 未验证 | 只在临时启动的相机内核上试过；完整镜像没有带相机启动 |
 | 自动亮度 | 不支持 | 参考项目 v0.6.1 以后才有，没有合并 |
 | 连接器温度 | 不支持 | 内核里没有对应代码 |
-| 单数据分区安装 | 未验证 | 工具已就绪（构建机生成镜像），还没在平板上走过一遍 |
+| 单数据分区安装 | 未验证 | 工具已就绪（rootfs workflow 生成镜像），还没在平板上走过一遍 |
 | 第一次启动的校准 | 未验证 | `provision-liuqin-from-persist.sh` 已在桌面环境支持，但新布局镜像没实测 |
 
 ## 已知问题

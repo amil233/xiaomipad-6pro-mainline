@@ -17,7 +17,7 @@ GitHub Actions ──▶ ci/liuqin-kernel-<commit>/
                       │
         ┌─────────────┴──────────────┐
         ▼                            ▼
-  装配 boot.img                构建机装配 rootfs
+  装配 boot.img                GitHub Actions 装配 rootfs
   Image + DTB + initramfs      Ubuntu + 设备/内核 deb
   + ABL overlay                      │
         │                            ▼
@@ -43,7 +43,7 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
 sh tools/build-liuqin-boot.sh
 
-# 构建机（另一台 arm64，root，约 20 GB 空闲）：装配整机 rootfs，产出 out/image/bundle
+# GitHub Actions（rootfs workflow）：装配整机 rootfs，产出 out/image/bundle
 sudo sh tools/build-liuqin-rootfs.sh
 
 # 刷机主机：把 bundle 里的 rootfs.tar.gz 变成 ext4，然后刷入
@@ -66,7 +66,7 @@ fastboot flash userdata out/dist/rootfs.img
 
 ## 规则
 
-1. 编译放在 GitHub Actions 或构建机上做；开发机只做装配、打包和离线检查，不在本机编译。
+1. 编译和整机装配都在 GitHub Actions；开发机只做 boot.img、打包和离线检查。
 2. 不执行 `git push`；本地提交后把提交号和命令交给维护者。
 3. ROM 只用 `V14.0.9.0.TMYCNXM`。
 4. 文档只维护中文。
