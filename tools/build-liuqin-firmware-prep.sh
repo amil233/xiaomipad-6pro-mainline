@@ -113,7 +113,7 @@ mkdir -p "$fw/novatek/liuqin" "$fw/qca" "$fw/ath11k/WCN6855/hw2.0" "$fw/ath11k/W
 	"$fw/qcom/sm8475/liuqin" "$fw/qcom/sm8450" \
 	"$fw/updates/qcom/vpu" "$fw/updates/ath11k/WCN6855/hw2.0" "$fw/updates/ath11k/WCN6855/hw2.1"
 
-printf '%s\n' "$touch_sha256" | while read -r _ name; do
+for name in novatek_nt36532_m81_fw_csot.bin novatek_nt36532_m81_fw_tm.bin; do
 	install -m 0644 "$touch_dir/$name" "$fw/novatek/liuqin/$name"
 done
 printf '%s\n' "$bt_names" | while read -r name; do
@@ -122,7 +122,7 @@ done
 for rev in hw2.0 hw2.1; do
 	install -m 0644 "$wlan_board" "$fw/ath11k/WCN6855/$rev/board.bin"
 done
-printf '%s\n' "$wlan_sha256" | while read -r _ name; do
+for name in amss.bin.zst board-2.bin.zst m3.bin.zst regdb.bin.zst; do
 	install -m 0644 "$wlan_dir/$name" "$fw/ath11k/WCN6855/hw2.0/$name"
 	ln -s "../hw2.0/$name" "$fw/ath11k/WCN6855/hw2.1/$name"
 done

@@ -185,7 +185,7 @@ def build(bundle, out, version):
         with target.open("xb") as output, intermediate.open("rb") as source:
             shutil.copyfileobj(source, output)
         report = {"package": target.name, "sha256": sha(target), "candidate": info,
-                  "input_bundle_sha256": BUNDLE_SHA256, "public_programs": len(manifest),
+                  "input_bundle_sha256": bundle_sha256, "public_programs": len(manifest),
                   "oem_firmware_distributed": False, "hashes": manifest}
         report_path.write_text(json.dumps(report, indent=2) + "\n")
         print(json.dumps({key: report[key] for key in ("package", "sha256", "public_programs")}))

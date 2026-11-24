@@ -463,7 +463,7 @@ else
 	done
 	wlan_zst_source=$wlan_zst_tmp
 fi
-printf '%s\n' "$wlan_firmware_sha256" | while read -r _ firmware_name; do
+for firmware_name in amss.bin.zst board-2.bin.zst m3.bin.zst regdb.bin.zst; do
 	cp "$wlan_zst_source/$firmware_name" \
 		"$staging/lib/firmware/ath11k/WCN6855/hw2.0/$firmware_name"
 	chmod 0644 "$staging/lib/firmware/ath11k/WCN6855/hw2.0/$firmware_name"
@@ -488,7 +488,7 @@ fi
 # so keep the pair together when the pool ships them.  Our kernel carries the
 # signed database and its keys built in (CONFIG_CFG80211_USE_KERNEL_REGDB_KEYS),
 # so the userland pair is optional; skip it rather than fail the build.
-printf '%s\n' "$regulatory_firmware_sha256" | while read -r _ firmware_name; do
+for firmware_name in regulatory.db regulatory.db.p7s; do
 	if [ -f "$regulatory_firmware_dir/$firmware_name" ]; then
 		cp "$regulatory_firmware_dir/$firmware_name" "$staging/lib/firmware/$firmware_name"
 		chmod 0644 "$staging/lib/firmware/$firmware_name"
@@ -540,8 +540,7 @@ if [ -n "$rootfs" ]; then
 else
 	sha256sum "$archive" "$busybox"
 fi
-printf 'bluetooth firmware: %s files, set sha256 %s\n' \
-	"$(printf '%s\n' "$bt_firmware_names" | wc -l)" "$bt_firmware_set_sha256"
+printf 'bluetooth firmware: %s files\n' "$(printf '%s\n' "$bt_firmware_names" | wc -l)"
 printf 'initramfs: %s bytes\n' "$(stat -c %s "$archive")"
 printf 'initramfs: %s\n' "$archive"
 printf 'storage mode: %s\n' "$storage_mode"
