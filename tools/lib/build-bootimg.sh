@@ -43,7 +43,7 @@ partition_size=$((0x0c000000))
 # kept every unclaimed clock and power domain alive, which is why the tablet
 # discharges while plugged in. Keep this string equal to the DTS one; the build
 # fails below if they drift.
-cmdline=${CMDLINE:-"earlycon=simplefb console=drm_log console=tty0 initcall_blacklist=simplefb_driver_init rootwait"}
+cmdline=${CMDLINE:-"earlycon=simplefb keep_bootcon console=drm_log console=tty0 initcall_blacklist=simplefb_driver_init initcall_debug ignore_loglevel clk_ignore_unused pd_ignore_unused rootwait mtdoops.dump_oops=1 hung_task_panic=1 softlockup_panic=1 panic=0 qcom_q6v5_pas.slpi_auto_boot=0"}
 header_cmdline=${HEADER_CMDLINE-$cmdline}
 
 for input in "$image" "$dtb" "$abl_overlay" "$ramdisk" "$dtc" "$fdtoverlay" \
