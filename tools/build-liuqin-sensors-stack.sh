@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Reproducibly build the liuqin SSC userspace as an arm64 extension layer.
-# The stock Ubuntu 26.04 root is mounted as a read-only overlay lowerdir; apt
+# The stock Ubuntu 26.04.1 root is mounted as a read-only overlay lowerdir; apt
 # and compilation can never mutate the release root.  Exact ROM configuration
 # is copied into the output, while per-device registry/calibration is excluded.
 #
@@ -12,10 +12,10 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-rootfs=${ROOTFS:-$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs}
+rootfs=${ROOTFS:-$project_root/tools/local/ubuntu-desktop-26.04.1-arm64/rootfs}
 source_manifest=${SOURCE_MANIFEST:-$project_root/device/sensors/sources.manifest}
 source_cache=${SOURCE_CACHE:-$project_root/tools/local/sensor-stack-src}
-rom_sensors=${ROM_SENSORS:-$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/etc/sensors}
+rom_sensors=${ROM_SENSORS:-$project_root/device/sensors/rom}
 static_overlay=${SENSORS_OVERLAY:-$project_root/device/sensors-overlay}
 ssc_accel_test_runner=$project_root/tests/ssc-accel-integration.py
 hexagonrpc_patch=${HEXAGONRPC_PATCH:-$project_root/device/sensors/patches/0001-hexagonrpcd-expose-the-SSC-registry-version-sibling.patch}
@@ -135,7 +135,7 @@ work=$out_dir/work
 merged=$work/root
 dest=$work/dest
 
-# Keep the pinned mirrors immutable. Build from an isolated byte copy and
+# Keep the configured mirrors immutable. Build from an isolated byte copy and
 # apply the reviewed local deltas there; a future source-cache refresh can
 # never silently absorb or drop a sensor contract.
 rm -rf "$work/source"
@@ -209,7 +209,7 @@ mounted_resolv=1
 
 case $assemble_only in
 0)
-say 'installing isolated Ubuntu 26.04 arm64 build dependencies'
+say 'installing isolated Ubuntu 26.04.1 arm64 build dependencies'
 # appstreamcli's catalogue refresh is a desktop convenience and takes several
 # minutes under QEMU.  Removing its apt hook only in this disposable upperdir
 # makes no package-selection difference and leaves the stock root untouched.
@@ -657,7 +657,7 @@ sha256sum "$out_dir/artifacts/sensor-stack.tar" >"$out_dir/artifacts/sensor-stac
 # Self-install downgrade: the upstream gate boots the arm64 binaries under
 # QEMU to smoke-test them on an x86 host, and fails the build when they will
 # not run.  This is a release-pipeline concern: the binaries are linked for
-# the tablet's Ubuntu 26.04 userspace, and the Raspberry Pi build host may be
+# the tablet's Ubuntu 26.04.1 userspace, and the Raspberry Pi build host may be
 # unable to execute them (SIGBUS from mixing the host glibc with the target
 # tree), which says nothing about the artifact.  Run the same three checks
 # when possible and warn on failure; the build is not interrupted.

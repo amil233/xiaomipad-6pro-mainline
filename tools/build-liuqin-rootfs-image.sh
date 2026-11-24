@@ -11,7 +11,7 @@
 # There is no linux_root/linux_home split, no separate /home and no /boot
 # partition; /home is an ordinary directory on the root.
 #
-# The Ubuntu 26.04 desktop root itself is assembled off-device (CI bundle); a
+# The Ubuntu 26.04.1 desktop root itself is assembled off-device (CI bundle); a
 # tablet never builds its own root.  This script only converts the archive the
 # device will mount into a filesystem fastboot can write.
 #

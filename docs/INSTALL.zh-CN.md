@@ -1,6 +1,6 @@
 # 刷机与更新
 
-适用：Xiaomi Pad 6 Pro（liuqin，128G），Ubuntu 26.04 arm64，从 A 槽启动，
+适用：Xiaomi Pad 6 Pro（liuqin，128G），Ubuntu 26.04.1 arm64（新镜像基线），从 A 槽启动，
 没有 Android。分区表保持原厂：`boot_a` 装内核，`userdata` 是唯一的数据分区
 （根和 `/home` 都在里面），没有 `/boot` 分区。
 

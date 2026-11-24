@@ -180,7 +180,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--out', type=Path, default=project / 'out/gnome-control-center')
-    parser.add_argument('--rootfs', type=Path, default=project / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs')
+    parser.add_argument('--rootfs', type=Path, default=project / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs')
     parser.add_argument('--jobs', type=int, default=min(os.cpu_count() or 1, 8))
     args = parser.parse_args()
     if args.jobs < 1:

@@ -3,7 +3,7 @@
 #
 # Assemble the native Ubuntu root filesystem:
 #
-#   pinned Ubuntu 26.04 desktop arm64 rootfs
+#   Ubuntu 26.04.1 desktop arm64 rootfs
 #   + the five liuqin debs installed in an ARM64 chroot
 #   + first-boot assembly (no ubuntu account, no autologin, marker, unit links)
 #
@@ -18,7 +18,7 @@
 #
 #   sudo tools/build-liuqin-native-root.sh [all|copy|debs|assemble|manifest]
 #
-# copy      fresh cp -a of the pinned rootfs + trivial static edits
+# copy      fresh cp -a of the base rootfs + trivial static edits
 # debs      chroot apt/dpkg install of the five debs (native on AArch64 hosts,
 #           qemu-aarch64/binfmt elsewhere)
 # assemble  BlueZ policy, unit links, marker, boundary asserts, pre-flight
@@ -29,13 +29,13 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 out_dir=${OUT_DIR:-"$project_root/out/native-root"}
-desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs"}
+desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04.1-arm64/rootfs"}
 desktop_manifest=${DESKTOP_ROOTFS_MANIFEST:-"$desktop_root.manifest"}
 debs_dir=${DEBS_DIR:-"$project_root/out/liuqin-debs"}
 # Shared with test-liuqin-debs.sh: the archive indexes are downloaded once per
-# host, not once per runner, and the shipped tree keeps the pinned (empty)
+# host, not once per runner, and the shipped tree keeps the expected (empty)
 # lists state instead of carrying stale host-fetched indexes.
-apt_cache=${APT_CACHE_DIR:-"$project_root/tools/local/apt-cache-26.04-arm64"}
+apt_cache=${APT_CACHE_DIR:-"$project_root/tools/local/apt-cache-26.04.1-arm64"}
 marker_text=liuqin-native-root-v1
 
 die() { printf 'build-liuqin-native-root: %s\n' "$*" >&2; exit 1; }
@@ -44,7 +44,7 @@ say() { printf 'build-liuqin-native-root: %s\n' "$*"; }
 [ "$(id -u)" = 0 ] || die 'run as root (tree copy, chroot and ownership preservation need it)'
 [ -x "$desktop_root/usr/lib/systemd/systemd" ] || die "not an Ubuntu root: $desktop_root"
 [ -f "$desktop_manifest" ] || die "desktop tree manifest is unavailable: $desktop_manifest"
-# The manifest hash is a release-reproducibility pin, not a safety check:
+# The manifest hash records the assembled tree; it is not a safety check against upstream:
 # the extracted tree is already exactly what your ISO produced. Print the
 # actual identity instead of refusing to assemble.
 say "desktop rootfs manifest: $(sha256sum "$desktop_manifest" | cut -d' ' -f1)"
@@ -70,7 +70,7 @@ stage_copy() {
 	rm -f "$root/etc/apt/sources.list.d/cdrom.sources"
 	printf 'liuqin\n' >"$root/etc/hostname"
 	chmod 0644 "$root/etc/hostname"
-	# First-boot semantics: systemd generates the machine id; assert the pinned
+	# First-boot semantics: systemd generates the machine id; assert the expected
 	# tree's empty 0444 placeholder survived the copy.
 	[ "$(stat -c '%a %u %g %s' "$root/etc/machine-id")" = '444 0 0 0' ] ||
 		die 'machine-id placeholder did not survive the copy'
@@ -171,7 +171,7 @@ EOF
 		"$root/tmp/liuqin-apt.conf" "$root/usr/sbin/policy-rc.d"
 	rm -rf "$root/tmp/liuqin-debs"
 	# cp -L inside the chroot wrote through the distro resolver symlink into the
-	# run/ stub; restore the pinned empty placeholder and assert the symlink
+	# run/ stub; restore the empty placeholder and assert the symlink
 	# itself was never replaced.
 	: >"$root/run/systemd/resolve/stub-resolv.conf"
 	[ -L "$root/etc/resolv.conf" ] &&
@@ -325,7 +325,7 @@ END {
 		preflight_fail 'bt-preconfigure lacks Before=bluetooth.service'
 	# Self-install downgrade: the upstream gate executes the tablet's systemd
 	# inside the chroot to prove it will boot there.  The binary is linked for
-	# the tablet's Ubuntu 26.04 glibc; a Raspberry Pi build host may fail to
+	# the tablet's Ubuntu 26.04.1 glibc; a Raspberry Pi build host may fail to
 	# execute it (SIGBUS from the mixed libc), which says nothing about the
 	# target.  The static /usr/sbin/init symlink above already proves the
 	# intended init.  Warn instead of failing.

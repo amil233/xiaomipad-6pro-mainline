@@ -67,13 +67,9 @@ def dir_content_hash(path: Path) -> str:
 # --- fingerprints -----------------------------------------------------------
 
 def sensors_fingerprint() -> dict:
-    rom = (PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/'
-           'super-work/vendor-extract/etc/sensors')
+    rom = PROJECT / 'device/sensors/rom'
     if not rom.is_dir():
-        raise SystemExit(
-            f'V14 vendor sensors extraction is missing: {rom}\n'
-            '       run tools/extract-v14-vendor.sh first '
-            '(super.img -> vendor_a EROFS -> /etc/sensors)')
+        raise SystemExit(f'tracked sensor configuration is missing: {rom}')
     return {
         'device/sensors': tree_hash('device/sensors'),
         'device/sensors-overlay': tree_hash('device/sensors-overlay'),
@@ -282,9 +278,9 @@ def cmd_run() -> None:
 
     inputs = {
         'UBUNTU_DESKTOP_ROOT': str(env_path('UBUNTU_DESKTOP_ROOT',
-                                            PROJECT / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs')),
+                                            PROJECT / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs')),
         'DESKTOP_ROOTFS_MANIFEST': str(env_path('DESKTOP_ROOTFS_MANIFEST',
-                                                PROJECT / 'tools/local/ubuntu-desktop-26.04-arm64/rootfs.manifest')),
+                                                PROJECT / 'tools/local/ubuntu-desktop-26.04.1-arm64/rootfs.manifest')),
         'FIRMWARE_POOL': str(PROJECT / 'tools/local/firmware-liuqin'),
         'FIRMWARE_TREE': str(firmware_dir),
         'AUDIO_TOPOLOGY': str(topology_bin),

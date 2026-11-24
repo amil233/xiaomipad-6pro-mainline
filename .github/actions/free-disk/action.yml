@@ -1,0 +1,22 @@
+name: Free runner disk
+description: Remove preinstalled toolchains that image assembly does not use
+runs:
+  using: composite
+  steps:
+    - name: Measure and remove unused toolchains
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "== before"
+        df -h /
+        for path in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                    /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                    /usr/local/lib/node_modules /opt/az /usr/share/swift; do
+          if [ -e "$path" ]; then du -sh "$path" 2>/dev/null || true; fi
+        done
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                    /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+                    /usr/local/lib/node_modules /opt/az /usr/share/swift
+        sudo apt-get clean
+        echo "== after"
+        df -h /

@@ -12,7 +12,7 @@
 #   all             everything whose inputs are present (kernel may be gated)
 #
 # Distro-file ownership conflicts use dpkg-divert in preinst/postrm, never a
-# bare overwrite.  The set was measured against the pinned 26.04 desktop root:
+# bare overwrite.  The set was measured against the 26.04.1 desktop root:
 # 4 firmware files (linux-firmware-qualcomm-wireless, different bytes) plus the
 # two reviewed component replacements (gnome-control-center power panel, SSC
 # iio-sensor-proxy).  The native install keeps the distro gdm3 custom.conf
@@ -28,7 +28,7 @@ maintainer='yzddmr6 <46088090+yzddmr6@users.noreply.github.com>'
 
 firmware_tree=${FIRMWARE_TREE:-"$project_root/device/firmware"}
 overlay=${GNOME_OVERLAY:-"$project_root/device/gnome-overlay"}
-ubuntu_desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64/rootfs"}
+ubuntu_desktop_root=${UBUNTU_DESKTOP_ROOT:-"$project_root/tools/local/ubuntu-desktop-26.04.1-arm64/rootfs"}
 audio_probe_libasound=$ubuntu_desktop_root/usr/lib/aarch64-linux-gnu/libasound.so.2.0.0
 busybox=${BUSYBOX:-"$project_root/tools/local/busybox-arm64/usr/bin/busybox"}
 power_key_cc=${POWER_KEY_CC:-$(command -v aarch64-linux-gnu-gcc || command -v gcc || command -v cc || true)}
@@ -138,7 +138,7 @@ build_firmware() {
 	[ "$count" -ge 1 ] || die 'firmware closure is empty'
 		# The main-tree ath11k blobs (hw2.0 files and the hw2.1 symlinks pointing
 	# at them) collide with linux-firmware-qualcomm-wireless at different
-	# bytes; divert the distro copies so the pinned fallbacks survive a
+	# bytes; divert the distro copies so the fallback copies survive a
 	# distro firmware upgrade.
 	divert_paths="
 /usr/lib/firmware/ath11k/WCN6855/hw2.0/amss.bin.zst
@@ -156,7 +156,7 @@ build_firmware() {
 	write_divert_postrm "$pkg" $divert_paths
 	cp "$work/$pkg.preinst" "$root/DEBIAN/preinst"
 	cp "$work/$pkg.postrm" "$root/DEBIAN/postrm"
-	pack "$pkg" all '' 'Xiaomi Pad 6 Pro (liuqin) firmware closure, pinned vendor set'
+	pack "$pkg" all '' 'Xiaomi Pad 6 Pro (liuqin) firmware closure, vendor set'
 }
 
 build_device_support() {

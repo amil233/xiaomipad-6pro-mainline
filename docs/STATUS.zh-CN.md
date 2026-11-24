@@ -8,7 +8,7 @@
 | 项 | 值 |
 |---|---|
 | 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`，SM8475） |
-| 系统 | Ubuntu 26.04 arm64 桌面（GNOME），单系统，没有 Android |
+| 系统 | Ubuntu 26.04 arm64 桌面（GNOME），单系统，没有 Android；新镜像基线改为 26.04.1 |
 | 启动 | A 槽直接启动（`fastboot flash boot_a`）；`boot_b` 不参与启动 |
 | 分区（现在） | 旧布局：`linux_root` + `linux_home`（2026 年由参考项目安装器划出） |
 | 分区（目标） | 原厂分区表；`userdata` 是唯一数据分区（ext4，`LABEL=LIUQIN_ROOT`，根在 `native-root/` 下），没有单独的 `/home` 或 `/boot` 分区 |
@@ -16,7 +16,7 @@
 | 内核 | 内核仓 `liuqin-7.3`；平板实际跑哪个 commit，用 `uname -r` 对照 |
 | 集成仓分支 | `liuqin-install` |
 | 开发机 | Ubuntu 26.04.1 arm64，2 核 / 11 GB：做 boot.img、内核 deb、离线检查 |
-| 构建机 | 另一台 arm64，≥40 GB 空闲：装配整机 rootfs |
+| 构建机 | 另一台 arm64，磁盘要能同时放下 ISO、casper 层、解出的 root 和 tar；具体见 BUILD 第 4 节 |
 | 刷机主机 | 树莓派：fastboot，把 `rootfs.tar.gz` 转成 ext4 镜像 |
 
 ## 安装与更新

@@ -39,6 +39,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y busybox-static
           sh tests/storage-guard.sh
+      - name: Free runner disk
+        uses: ./.github/actions/free-disk
+
       - name: Boot and rootfs image assembly offline checks
         run: |
           sudo apt-get update

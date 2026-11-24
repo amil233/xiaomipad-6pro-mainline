@@ -8,7 +8,7 @@
 | 角色 | 做什么 |
 |---|---|
 | 开发机 | 本工作区这台 Ubuntu 26.04.1 arm64（2 核 / 11 GB）：装配 boot.img、打内核 deb、离线检查 |
-| 构建机 | 另一台 arm64，40 GB 以上空闲：装配整机 rootfs（Ubuntu 桌面太大，开发机放不下） |
+| 构建机 | 另一台 arm64，约 20 GB 空闲：装配整机 rootfs（开发机也是 10 GB 级空闲，放不下 ISO + root + tar） |
 | 刷机主机 | 树莓派：把 `rootfs.tar.gz` 转成 ext4 镜像，fastboot 刷机 |
 | 平板 | liuqin 本体，只接收镜像 |
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | `ci/liuqin-kernel-<commit>/` | `kernel/`：Image、设备树、`.config`、`build-info.json`、`SHA256SUMS`；`kernel-modules/`：模块包和版本文件 | 内核仓 CI |
 | `boot.img` | Image + 设备树 + initramfs + ABL overlay，刷到 `boot_a` | 开发机 `tools/build-liuqin-boot.sh`，或整机装配 |
-| `rootfs.tar.gz` | Ubuntu 26.04 桌面加设备/内核 deb，路径相对 `/`，保留属主、ACL、xattr | 构建机 `tools/build-liuqin-rootfs.sh` |
+| `rootfs.tar.gz` | Ubuntu 26.04.1 桌面加设备/内核 deb，路径相对 `/`，保留属主、ACL、xattr | 构建机 `tools/build-liuqin-rootfs.sh` |
 | `rootfs.img` | 上面 tar 的 ext4 版本，刷到 `userdata` | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
 | `liuqin-kernel_*.deb` | 内核模块、`/boot` 文件、`kernel.release` | 开发机 `build-liuqin-boot.sh --deb` |
 
@@ -81,7 +81,7 @@ sudo sh tools/build-liuqin-rootfs.sh           # 准备输入，然后装配
 
 正式运行分三步：
 
-1. 第一次运行时下载 Ubuntu 26.04 桌面 ISO，校验后解出基础系统；
+1. 第一次运行时下载 Ubuntu 26.04.1 桌面 ISO，校验后解出基础系统；
 2. `tools/prepare-image-inputs.py run` 重建需要的输入（传感器用户态、GNOME
    设置程序、音频拓扑、固件树），没变的会复用缓存；
 3. `tools/build-liuqin-image.py` 依次做模块、deb、根目录装配、文件清单、
@@ -96,11 +96,25 @@ bundle 里有 `boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
 |---|---|
 | 架构 | aarch64（原生 chroot）；x86 需要 qemu-aarch64 和 binfmt 的 P 标志 |
 | 权限 | root（chroot、属主、tar 的 ACL/xattr） |
-| 磁盘 | 40 GB 以上 |
+| 磁盘 | 约 20 GB（实测组成见下表） |
 | 命令 | `dpkg-deb`、GNU `tar`、`unsquashfs`、`7z`、`m4`、`alsatplg`、`zstd`、`patch`、`git`、`curl`、`chroot`/`mount`/`unshare` |
 | 输入 | `tools/local`、V14 提取树、AudioReach 源码、内核产物 |
 
-Ubuntu 26.04 上一次装齐：
+磁盘实测（26.04.1 ISO，arm64）：
+
+| 项 | 占用 |
+|---|---|
+| ISO | 3.9 GiB |
+| casper 两层（minimal + standard） | 3.2 GiB |
+| 解出的桌面 root | 约 3.2 GiB |
+| `native-root` 的 `cp -a` 副本 | 约 3.2 GiB |
+| `rootfs.tar.gz` | 约 2.5–3 GiB |
+| chroot/apt/编译临时文件 | 约 2 GiB |
+
+峰值约 18–20 GiB（保留 ISO 和 casper 层）；解出 root 后删掉 ISO/casper，可降到
+约 11–12 GiB。之前写的“40 GB”是未测量的保守估计，作废。
+
+Ubuntu 26.04.1 上一次装齐：
 
 ```sh
 sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
@@ -178,7 +192,7 @@ sudo python3 tools/prepare-image-inputs.py run
 
 | 输入 | 来源 |
 |---|---|
-| Ubuntu 26.04 桌面 ISO | cdimage.ubuntu.com，下载时核对官方 `SHA256SUMS` |
+| Ubuntu 26.04.1 桌面 ISO | cdimage.ubuntu.com，下载时核对官方 `SHA256SUMS` |
 | 触摸/GPU/VPU/传感器配置 | V14 `super.img` 的 vendor 分区；`tools/extract-v14-vendor.sh` 解出 |
 | WLAN qca6490 固件 | V14 `NON-HLOS.bin`（modem 分区的 FAT）里的 `/qca6490/` |
 | 指纹固件 | 同一个 FAT 根目录的 `fpcliu.*` |

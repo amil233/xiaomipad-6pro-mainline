@@ -12,8 +12,8 @@
 # Requirements, checked by --check:
 #   * root (chroot, ownership, tar xattrs)
 #   * aarch64 host, or qemu-aarch64 binfmt with the P flag on another arch
-#   * about 40 GiB free (ISO + casper + desktop root + assembled root + tar)
-#   * the V14-derived inputs under tools/local, the pinned Ubuntu ISO, and the
+#   * about 20 GiB free (ISO 3.9 + casper 3.2 + desktop root 3.2 + copy 3.2 + tar ~3 GiB)
+#   * the tracked firmware/sensor inputs, the Ubuntu ISO, and the
 #     CI kernel artifact of kernel/source.json
 #
 # usage:
@@ -24,7 +24,7 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 workspace_root=$(CDPATH= cd -- "$project_root/.." && pwd)
-base_dir=$project_root/tools/local/ubuntu-desktop-26.04-arm64
+base_dir=$project_root/tools/local/ubuntu-desktop-26.04.1-arm64
 base_root=$base_dir/rootfs
 base_manifest=$base_dir/rootfs.manifest
 inputs_json=$project_root/out/image-inputs.local.json
@@ -78,10 +78,10 @@ else
 fi
 if [ "$(id -u)" = 0 ]; then report OK 'running as root'; else report MISSING 'root (run with sudo)'; fi
 free_gb=$(df -Pm "$project_root" | awk 'NR == 2 { print int($4 / 1024) }')
-if [ "${free_gb:-0}" -ge 40 ]; then
+if [ "${free_gb:-0}" -ge 20 ]; then
 	report OK "free space ${free_gb} GiB on $project_root"
 else
-	report MISSING "free space ${free_gb:-0} GiB (need about 40 GiB)"
+	report MISSING "free space ${free_gb:-0} GiB (need about 20 GiB)"
 fi
 for tool in python3 dpkg-deb tar gzip sha256sum curl git flock chroot mount unshare m4 alsatplg zstd patch; do
 	command -v "$tool" >/dev/null 2>&1 || report MISSING "tool: $tool"
@@ -113,10 +113,10 @@ else
 fi
 
 say 'inputs'
-if [ -d "$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/extracted/super-work/vendor-extract/etc/sensors" ]; then
-	report OK 'V14 vendor extraction (sensors/firmware)'
+if [ -d "$project_root/device/sensors/rom" ]; then
+	report OK 'tracked sensor configuration: device/sensors/rom'
 else
-	report MISSING 'V14 vendor extraction (run tools/extract-v14-vendor.sh)'
+	report MISSING 'tracked sensor configuration device/sensors/rom'
 fi
 if [ -f "$project_root/out/wlan/hw2.0/board-2.bin" ]; then
 	report OK 'WLAN HSP2 tuple: out/wlan'
@@ -152,7 +152,7 @@ command -v 7z >/dev/null 2>&1 || [ -d "$base_root" ] ||
 # --- prepare the Ubuntu base (first run only) -------------------------------
 
 if [ ! -d "$base_root" ] || [ ! -f "$base_manifest" ]; then
-	say 'preparing the Ubuntu 26.04 desktop base (download, casper, extract)'
+	say 'preparing the Ubuntu 26.04.1 desktop base (download, casper, extract)'
 	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" download
 	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" casper
 	sh "$project_root/tools/build-liuqin-ubuntu-desktop-rootfs.sh" extract

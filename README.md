@@ -1,6 +1,6 @@
 # xiaomipad-6pro-mainline（liuqin-install 分支）
 
-Xiaomi Pad 6 Pro（liuqin，128G）上的 Ubuntu 26.04 arm64 单系统：本工作区自建的
+Xiaomi Pad 6 Pro（liuqin，128G）上的 Ubuntu 26.04.1 arm64 单系统：本工作区自建的
 Linux 7.3 内核加设备驱动，没有 Android，从 A 槽直接启动。
 
 分区保持原厂：`boot_a` 换成我们的 boot.img，`userdata` 是唯一的数据分区
@@ -43,7 +43,7 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
 sh tools/build-liuqin-boot.sh
 
-# 构建机（另一台 arm64，root，≥40 GB）：装配整机 rootfs，产出 out/image/bundle
+# 构建机（另一台 arm64，root，约 20 GB 空闲）：装配整机 rootfs，产出 out/image/bundle
 sudo sh tools/build-liuqin-rootfs.sh
 
 # 刷机主机：把 bundle 里的 rootfs.tar.gz 变成 ext4，然后刷入

@@ -1,24 +1,23 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 #
-# Extract the Canonical Ubuntu 26.04 desktop arm64 rootfs from the pinned ISO.
+# Extract the Canonical Ubuntu 26.04.1 desktop arm64 rootfs from the ISO.
 #
 # Three stages, each independently gated:
-#   1. verify the ISO byte identity (size + sha256, previously GPG-verified
-#      against the Ubuntu CD Image signing key);
-#   2. extract the two casper layer squashfs images from the ISO without root
-#      and verify their pinned hashes -- the English-pruning layer is refused;
-#   3. extract base then standard over it with a root unsquashfs, then emit a
-#      tree manifest (path, mode, owner, sha256) for comparison and pinning.
+#   1. check the ISO against the SHA256SUMS published in the release directory;
+#   2. extract the two casper layer squashfs images from the ISO without root;
+#      the English-pruning layer is refused if it appears;
+#   3. extract base then standard over it with a root unsquashfs, then write a
+#      tree manifest (path, mode, owner, sha256) for comparison.
 #
 # Stage 3 needs real root so device nodes, ownership and xattrs survive.  Run
 # it as:  sudo tools/build-liuqin-ubuntu-desktop-rootfs.sh extract
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-input_dir=${UBUNTU_DESKTOP_INPUT:-"$project_root/tools/local/ubuntu-desktop-26.04-arm64"}
-iso=$input_dir/${UBUNTU_DESKTOP_ISO_NAME:-ubuntu-26.04-desktop-arm64.iso}
-iso_url=${UBUNTU_DESKTOP_URL:-https://cdimage.ubuntu.com/ubuntu/releases/26.04/release/ubuntu-26.04-desktop-arm64.iso}
+input_dir=${UBUNTU_DESKTOP_INPUT:-"$project_root/tools/local/ubuntu-desktop-26.04.1-arm64"}
+iso=$input_dir/${UBUNTU_DESKTOP_ISO_NAME:-ubuntu-26.04.1-desktop-arm64.iso}
+iso_url=${UBUNTU_DESKTOP_URL:-https://cdimage.ubuntu.com/ubuntu/releases/26.04.1/release/ubuntu-26.04.1-desktop-arm64.iso}
 # The expected hash is not stored here: it is read from the SHA256SUMS the
 # release directory publishes, and cached next to the ISO for offline checks.
 sums_url=${iso_url%/*}/SHA256SUMS
@@ -62,7 +61,7 @@ download_iso() {
 		return
 	fi
 	command -v curl >/dev/null || die 'curl is required'
-	# A mirror override must supply the same pinned bytes, never a newer release.
+	# A mirror override must supply the same release, not a newer one.
 	fetch_sums
 	curl --fail --location --continue-at - --output "$iso.part" "$iso_url"
 	printf '%s  %s\n' "$(iso_sha256)" "$iso.part" | sha256sum -c --quiet - ||
@@ -73,7 +72,7 @@ download_iso() {
 
 extract_casper() {
 	verify_iso
-	command -v 7z >/dev/null || die '7z is required (Ubuntu 26.04 package: 7zip); isoinfo silently truncates files >2GiB'
+	command -v 7z >/dev/null || die '7z is required (Ubuntu 26.04.1 package: 7zip); isoinfo silently truncates files >2GiB'
 	mkdir -p "$input_dir/iso/casper"
 	for layer in minimal minimal.standard; do
 		out=$input_dir/iso/casper/$layer.squashfs
