@@ -1,4 +1,4 @@
-# 显示：已确立的结论与判读陷阱
+> 归档于 2026-11-24：这是当时的记录，不再维护；当前状态见 [../STATUS.zh-CN.md](../STATUS.zh-CN.md)。\n\n# 显示：已确立的结论与判读陷阱
 
 **这是显示侧唯一现行文档。** 它取代了原先散落的 6 份材料
 （`display-panel-checklist.md`、`display-blackout-plan.md`、

@@ -1,18 +1,25 @@
-# docs/archive —— 冻结的历史取证
+# docs/archive —— 历史记录
 
-**这里的文档不再维护，也不构成任何任务或计划。** 保留它们只有两个理由：
-失败记录不能删，以及"某个结论是怎么被推翻的"必须可追溯。
+**这里的文档不再维护，也不构成任务。** 保留它们是为了留下失败记录和结论
+变化的过程。里面的提交号、镜像哈希、分区号和 ROM 版本都是写作当时的值，
+现在未必成立。当前事实只看：
 
-每条文件顶部都有同样的横幅。里面出现的**提交号、镜像哈希、分区槽、ROM
-版本**都是写作当时的现场值，其中一部分已经被后来的工作推翻（最典型：
-"Ubuntu 从 B 槽启动"）。当前事实只认：
+- [`../STATUS.zh-CN.md`](../STATUS.zh-CN.md) —— 设备现状
+- [`../INSTALL.zh-CN.md`](../INSTALL.zh-CN.md) —— 刷机、更新、回滚
+- [`../BUILD.zh-CN.md`](../BUILD.zh-CN.md) —— 从源码到可刷产物
 
-- [`../STATUS.zh-CN.md`](../STATUS.zh-CN.md) —— 唯一状态源
-- [`../INSTALL.zh-CN.md`](../INSTALL.zh-CN.md) —— 本机安装/恢复
-- [`../BUILD.zh-CN.md`](../BUILD.zh-CN.md) —— CI-only 构建
-- [`../FEATURES.zh-CN.md`](../FEATURES.zh-CN.md) —— 指纹/相机/快充/Waydroid
-- [`../display.md`](../display.md) —— 显示侧已确立的结论
-- [`../kernel-v73-divergence.md`](../kernel-v73-divergence.md) —— 内核偏离与 7.4 决策
+## 2026-11-24 精简时归档
+
+安装方式和分区布局定下来之后，下面这些文档不再作为依据，整体移到这里：
+
+| 文件 | 原来是什么 |
+|---|---|
+| `status-2026-11-24.zh-CN.md` | 旧的状态文档（含安装器历史、决策记录和大量哈希） |
+| `FEATURES.zh-CN.md` | 指纹/相机/快充/Waydroid 的细节 |
+| `display.md` | 显示点亮的排查记录 |
+| `AUDIO.zh-CN.md` | 外放 TDM 的调试记录 |
+| `userspace-port.md` | 从参考项目 v0.6.0 到 v0.8.0 的取舍提案 |
+| `kernel-v73-divergence.md` | 内核相对 7.3 的偏离清单和 7.4 合并预演 |
 
 ## 参考项目旧文档（`reference-v0.6.0/`）
 
