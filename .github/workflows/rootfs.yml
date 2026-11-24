@@ -89,7 +89,11 @@ jobs:
       - name: Split the tar for upload
         run: |
           set -euo pipefail
-          mkdir -p project/out/upload
+          # The assembly step runs as root; give this step an upload directory
+          # it owns and make the two source files readable before splitting.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" project/out/upload
+          sudo chmod 0644 project/out/image/root/rootfs.tar.gz \
+            project/out/image/root/native-root.hashes
           split -b 1900M -d -a 2 project/out/image/root/rootfs.tar.gz \
             project/out/upload/rootfs.tar.gz.part-
           cp project/out/image/root/native-root.hashes project/out/upload/
