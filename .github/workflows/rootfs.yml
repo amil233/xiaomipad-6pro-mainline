@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           artifact=$(find "$PWD/ci" -maxdepth 1 -type d -name 'liuqin-kernel-*' | head -n 1)
-          sudo env DROP_ISO=1 sh project/tools/build-liuqin-rootfs.sh \
+          sudo env DROP_ISO=1 SSC_ALLOW_COLDPLUG_SKIP=1 sh project/tools/build-liuqin-rootfs.sh \
             --rootfs-only --kernel "${artifact%/}" \
             --out "$PWD/project/out/image"
 

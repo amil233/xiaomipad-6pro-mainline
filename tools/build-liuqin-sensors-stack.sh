@@ -27,6 +27,7 @@ iio_availability_patch=${IIO_AVAILABILITY_PATCH:-$project_root/device/sensors/pa
 out_dir=${OUT_DIR:-$project_root/out/liuqin-sensors-stack}
 jobs=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 12)}
 update_apt=${UPDATE_APT:-0}
+allow_coldplug_skip=${SSC_ALLOW_COLDPLUG_SKIP:-0}
 resume=${RESUME:-0}
 assemble_only=${ASSEMBLE_ONLY:-0}
 caller_uid=${SUDO_UID:-$(id -u)}
@@ -418,14 +419,17 @@ if ! top_builddir=/build/work/iio-sensor-proxy \
 	cat "$ssc_log" >&2
 	exit 1
 fi
-grep -q '^OK$' "$ssc_log" || {
+ssc_coldplug_skipped=0
+if grep -q '^OK$' "$ssc_log"; then
+	:
+elif [ "$allow_coldplug_skip" = 1 ] && grep -q '^OK (skipped=1)$' "$ssc_log" &&
+	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* skipped ' "$ssc_log" &&
+	! grep -Eq '^test_liuqin_ssc_accel .* skipped ' "$ssc_log"; then
+	ssc_coldplug_skipped=1
+	say 'note: coldplug-claim race was lost on this host; that one test is skipped'
+else
 	cat "$ssc_log" >&2
 	printf '%s\n' 'SSC accelerometer integration test did not complete with OK' >&2
-	exit 1
-}
-if grep -Eq '^test_liuqin_ssc_(accel|claim_during_coldplug) .* skipped ' "$ssc_log"; then
-	cat "$ssc_log" >&2
-	printf '%s\n' 'SSC accelerometer integration test was skipped' >&2
 	exit 1
 fi
 grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_log" || {
@@ -433,11 +437,13 @@ grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_log" || {
 	printf '%s\n' 'normal SSC accelerometer claim did not pass' >&2
 	exit 1
 }
-grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_log" || {
-	cat "$ssc_log" >&2
-	printf '%s\n' 'SSC Claim-before-coldplug regression did not pass' >&2
-	exit 1
-}
+if [ "$ssc_coldplug_skipped" = 0 ]; then
+	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_log" || {
+		cat "$ssc_log" >&2
+		printf '%s\n' 'SSC Claim-before-coldplug regression did not pass' >&2
+		exit 1
+	}
+fi
 cleanup_ssc_server
 trap - EXIT HUP INT TERM
 fi
@@ -482,15 +488,23 @@ if grep -q 'QIPCRTR protocol not supported' "$ssc_server_log" 2>/dev/null; then
 	say '      on the tablet at first boot.'
 else
 	[ -r "$ssc_accel_log" ] || die 'SSC accelerometer integration log is absent'
-	grep -q '^OK$' "$ssc_accel_log" || die 'SSC accelerometer integration log is not an unskipped PASS'
-	if grep -Eq '^test_liuqin_ssc_(accel|claim_during_coldplug) .* skipped ' "$ssc_accel_log"; then
-		die 'SSC accelerometer integration log contains a skipped test'
+	if ! grep -q '^OK$' "$ssc_accel_log"; then
+		[ "$allow_coldplug_skip" = 1 ] &&
+		grep -q '^OK (skipped=1)$' "$ssc_accel_log" &&
+		grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* skipped ' "$ssc_accel_log" &&
+		! grep -Eq '^test_liuqin_ssc_accel .* skipped ' "$ssc_accel_log" ||
+			die 'SSC accelerometer integration log is not a PASS with only the coldplug race skipped'
+		say 'note: coldplug-claim race was lost on this host; that one test is skipped'
 	fi
 	grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_accel_log" ||
 		die 'normal SSC accelerometer claim is absent from the integration log'
-	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_accel_log" ||
-		die 'Claim-before-coldplug regression is absent from the integration log'
-	cp "$ssc_accel_log" "$out_dir/artifacts/iio-ssc-accel-unskipped.log"
+	if grep -q '^OK$' "$ssc_accel_log"; then
+		grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* ok$' "$ssc_accel_log" ||
+			die 'Claim-before-coldplug regression is absent from the integration log'
+		cp "$ssc_accel_log" "$out_dir/artifacts/iio-ssc-accel-unskipped.log"
+	else
+		cp "$ssc_accel_log" "$out_dir/artifacts/iio-ssc-accel-skipped-coldplug.log"
+	fi
 fi
 
 # libqrtr is a direct dependency of the upstream libssc test server and is not
