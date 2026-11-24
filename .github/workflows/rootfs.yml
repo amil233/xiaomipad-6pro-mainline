@@ -19,7 +19,7 @@ jobs:
     # This job downloads the kernel artifact with PAT_GET_KERNEL and runs as
     # root; only trusted liuqin-install code is assembled.
     if: github.ref == 'refs/heads/liuqin-install' && (github.event_name == 'workflow_dispatch' || vars.LIUQIN_IMAGE_CI == 'enabled')
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4

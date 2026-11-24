@@ -8,7 +8,7 @@
 | 角色 | 做什么 |
 |---|---|
 | 开发机 | 本工作区这台 Ubuntu 26.04.1 arm64（2 核 / 11 GB）：装配 boot.img、打内核 deb、离线检查 |
-| GitHub Actions | `rootfs` workflow，`ubuntu-24.04-arm`：装配整机 rootfs（runner 145 GiB，清理后约 118 GiB 可用） |
+| GitHub Actions | `rootfs` workflow，`ubuntu-26.04-arm`：装配整机 rootfs（runner 145 GiB，清理后约 118 GiB 可用） |
 | 刷机主机 | 通过 USB 连接平板：把 `rootfs.tar.gz` 转成 ext4 镜像，`fastboot` 刷入 |
 | 平板 | liuqin 本体，只接收镜像 |
 
@@ -33,7 +33,7 @@
 ## 2. 内核：只在 CI 编译
 
 - 推内核仓 `liuqin-7.3`，或在内核仓手动触发，跑
-  `linux-sm8450-liuqin/.github/workflows/liuqin.yml`（`ubuntu-24.04-arm`）。
+  `linux-sm8450-liuqin/.github/workflows/liuqin.yml`（`ubuntu-26.04-arm`）。
 - CI 用 `kernel/source.json` 的分支和分片构建，产物目录名是构建出来的
   commit。用户把产物放进 `ci/`，agent 不下载。
 - 用之前脚本会自己核对：目录名等于 `build-info.json` 里的 commit、两个
@@ -137,7 +137,7 @@ sudo sh tools/build-liuqin-rootfs.sh --rootfs-only
 # out/image/root/rootfs.tar.gz + native-root.hashes
 ```
 
-CI 用 `ubuntu-24.04-arm`：先装 `7zip`、`squashfs-tools`、`alsa-utils`、`m4`、
+CI 用 `ubuntu-26.04-arm`：先装 `7zip`、`squashfs-tools`、`alsa-utils`、`m4`、
 `zstd`、`patch`、`build-essential`、`git`、`curl`、`dpkg-dev`、`file`、
 `binutils`，再跑 `--check` 预检，最后才下载 ISO。传感器栈的
 coldplug 竞态测试在 CI 上允许跳过（`SSC_ALLOW_COLDPLUG_SKIP=1`），其他测试

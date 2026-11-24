@@ -40,7 +40,7 @@ runs:
       run: |
         sudo apt-get update
         pkgs=(build-essential bc bison flex libssl-dev libelf-dev python3 ccache kmod rsync)
-        # On an aarch64 host (ubuntu-24.04-arm) the kernel compiles natively and
+        # On an aarch64 host (ubuntu-26.04-arm) the kernel compiles natively and
         # no cross toolchain is needed; x86 runners still install one.
         if [ "$(uname -m)" != "aarch64" ]; then
           pkgs+=(gcc-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu)

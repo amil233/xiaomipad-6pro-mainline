@@ -427,7 +427,7 @@ elif [ "$allow_coldplug_skip" = 1 ] && grep -q '^OK (skipped=1)$' "$ssc_log" &&
 	grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* skipped ' "$ssc_log" &&
 	! grep -Eq '^test_liuqin_ssc_accel .* skipped ' "$ssc_log"; then
 	ssc_coldplug_skipped=1
-	say 'note: coldplug-claim race was lost on this host; that one test is skipped'
+	printf '%s\n' 'note: coldplug-claim race was lost on this host; that one test is skipped' >&2
 else
 	cat "$ssc_log" >&2
 	printf '%s\n' 'SSC accelerometer integration test did not complete with OK' >&2
@@ -495,7 +495,7 @@ else
 		grep -Eq '^test_liuqin_ssc_claim_during_coldplug .* skipped ' "$ssc_accel_log" &&
 		! grep -Eq '^test_liuqin_ssc_accel .* skipped ' "$ssc_accel_log" ||
 			die 'SSC accelerometer integration log is not a PASS with only the coldplug race skipped'
-		say 'note: coldplug-claim race was lost on this host; that one test is skipped'
+		printf '%s\n' 'note: coldplug-claim race was lost on this host; that one test is skipped' >&2
 	fi
 	grep -Eq '^test_liuqin_ssc_accel .* ok$' "$ssc_accel_log" ||
 		die 'normal SSC accelerometer claim is absent from the integration log'

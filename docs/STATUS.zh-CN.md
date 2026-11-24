@@ -16,7 +16,7 @@
 | 内核 | 内核仓 `liuqin-7.3`；平板实际跑哪个 commit，用 `uname -r` 对照 |
 | 集成仓分支 | `liuqin-install` |
 | 开发机 | Ubuntu 26.04.1 arm64，2 核 / 11 GB：做 boot.img、内核 deb、离线检查 |
-| 构建 | GitHub Actions `rootfs` workflow（`ubuntu-24.04-arm`）；runner 145 GiB，清理后约 118 GiB 可用 |
+| 构建 | GitHub Actions `rootfs` workflow（`ubuntu-26.04-arm`）；runner 145 GiB，清理后约 118 GiB 可用 |
 | 刷机主机 | 通过 USB 连接平板：`fastboot`，把 `rootfs.tar.gz` 转成 ext4 镜像 |
 
 ## 安装与更新
