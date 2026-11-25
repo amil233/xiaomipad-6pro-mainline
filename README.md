@@ -20,10 +20,7 @@ GitHub Actions ──▶ ci/liuqin-kernel-<commit>/
   Image + DTB + initramfs      Ubuntu + 设备/内核 deb
   + ABL overlay                      │
         │                            ▼
-        │                      rootfs.tar.gz
-        │                            │ 刷机主机转换
-        │                            ▼
-        │                      rootfs.img
+        │                      rootfs.img（分片）
         ▼                            ▼
   fastboot flash boot_a     fastboot flash userdata
         └───────────────┬────────────┘
@@ -42,13 +39,13 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
 sh tools/build-liuqin-boot.sh
 
-# GitHub Actions（rootfs workflow）：装配 rootfs 和配套 boot.img，产出 artifact
+# 本地整机装配（可选；CI 产物可直接下载）
 sudo sh tools/build-liuqin-rootfs.sh
 
-# 刷机主机：把装配目录里的 rootfs.tar.gz 变成 ext4，然后刷入
-sudo sh tools/build-liuqin-rootfs-image.sh --rootfs <rootfs.tar.gz> --out <输出目录>
+# 刷机主机：合并 CI 的 img 分片，然后刷入
+cat rootfs.img.part-* > rootfs.img
 fastboot flash boot_a    boot.img
-fastboot flash userdata <rootfs.img>
+fastboot flash userdata  rootfs.img
 ```
 
 平时只有第一条（约 15 秒，不编译内核）。第一次启动后要做一次校准导入，

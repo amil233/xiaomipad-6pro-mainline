@@ -49,21 +49,19 @@ boot.img 里有这份 rootfs 的文件哈希清单，启动时会核对。**只�
 
 ## 2. 第一次安装或重装
 
-集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、`rootfs.tar.gz` 分片、
-`native-root.hashes` 和 `liuqin-firstboot.cpio.gz`，不需要再手工配内核。
+集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、分片的 `rootfs.img`、
+`SHA256SUMS`、`native-root.hashes` 和 `liuqin-firstboot.cpio.gz`，不需要在
+刷机主机上转换。
 
 在刷机主机上执行：
 
 ```sh
-# 下载 artifact 后，先合并分片
-cat rootfs.tar.gz.part-* > rootfs.tar.gz
-
-# 转成 fastboot 能写的 ext4 镜像
-sudo sh tools/build-liuqin-rootfs-image.sh \
-  --rootfs rootfs.tar.gz --out out/dist
+# 下载 artifact 后，先合并 img 分片
+cat rootfs.img.part-* > rootfs.img
+sha256sum -c SHA256SUMS
 
 fastboot flash boot_a   boot.img
-fastboot flash userdata out/dist/rootfs.img
+fastboot flash userdata rootfs.img
 fastboot reboot
 ```
 
@@ -118,7 +116,7 @@ fastboot reboot
 用户态一变，boot.img 里的文件清单就过期，两样要一起换：
 
 1. 先备份 `/home`（`userdata` 会被整块重写）；
-2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；刷机主机合并分片并生成 `rootfs.img`
+2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；刷机主机合并 `rootfs.img` 分片
    （BUILD 第 5 节）；
 3. `fastboot flash boot_a boot.img`，
    `fastboot flash userdata rootfs.img`；

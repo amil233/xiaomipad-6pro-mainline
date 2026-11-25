@@ -9,7 +9,7 @@
 |---|---|
 | 开发机 | 本工作区这台 Ubuntu 26.04.1 arm64（2 核 / 11 GB）：装配 boot.img、打内核 deb、离线检查 |
 | GitHub Actions | `rootfs` workflow，`ubuntu-26.04-arm`：装配整机 rootfs（runner 145 GiB，清理后约 118 GiB 可用） |
-| 刷机主机 | 通过 USB 连接平板：把 `rootfs.tar.gz` 转成 ext4 镜像，`fastboot` 刷入 |
+| 刷机主机 | 通过 USB 连接平板：合并 `rootfs.img` 分片，`fastboot` 刷入 |
 | 平板 | liuqin 本体，只接收镜像 |
 
 仓库里**不保存内核 commit、配置哈希或镜像哈希**。用到的每个文件都由脚本在
@@ -23,8 +23,8 @@
 |---|---|---|
 | `ci/liuqin-kernel-<commit>/` | `kernel/`：Image、设备树、`.config`、`build-info.json`、`SHA256SUMS`；`kernel-modules/`：模块包和版本文件 | 内核仓 CI |
 | `boot.img` | Image + 设备树 + initramfs + ABL overlay，刷到 `boot_a` | 开发机 `tools/build-liuqin-boot.sh`，或整机装配 |
-| `rootfs.tar.gz` | Ubuntu 26.04.1 桌面加设备/内核 deb，路径相对 `/`，保留属主、ACL、xattr | `rootfs` workflow 或本地 `tools/build-liuqin-rootfs.sh` |
-| `rootfs.img` | 上面 tar 的 ext4 版本，刷到 `userdata` | 刷机主机 `tools/build-liuqin-rootfs-image.sh` |
+| `rootfs.tar.gz` | 本地整机装配的中间产物；路径相对 `/`，保留属主、ACL、xattr | 本地 `tools/build-liuqin-rootfs.sh` |
+| `rootfs.img` | 上面 tar 的 ext4 版本，刷到 `userdata` | `rootfs` workflow 直接产出分片；本地用 `tools/build-liuqin-rootfs-image.sh` |
 | `liuqin-kernel_*.deb` | 内核模块、`/boot` 文件、`kernel.release` | 开发机 `build-liuqin-boot.sh --deb` |
 
 `kernel/source.json` 只记录三样东西：内核仓的**分支**、设备树路径、参与配置
@@ -130,8 +130,9 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 集成仓的 `.github/workflows/rootfs.yml` 装 rootfs 和配套的 boot.img：
 用跟踪的固件池、WLAN tuple、AudioReach 源码和 ABL 分析重建输入，用
 `PAT_GET_KERNEL` 下载内核仓最近的 artifact，在托管 arm64 runner 上运行
-`build-liuqin-rootfs.sh --rootfs-only --boot`，上传 `boot.img`、ramdisk、
-分片的 `rootfs.tar.gz` 和 `native-root.hashes`，boot 与 root 由同一次
+`build-liuqin-rootfs.sh --rootfs-only --boot`，再调用
+`build-liuqin-rootfs-image.sh` 生成 ext4，上传 `boot.img`、ramdisk、分片的
+`rootfs.img`、`SHA256SUMS` 和 `native-root.hashes`；boot 与 root 由同一次
 内核产物和同一份 root 文件清单生成。`.github/workflows/build.yml` 在
 集成仓 push 时也能编译内核。
 

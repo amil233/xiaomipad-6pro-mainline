@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             7zip squashfs-tools alsa-utils m4 zstd patch build-essential \
-            git curl dpkg-dev file binutils
+            git curl dpkg-dev file binutils e2fsprogs
 
       - name: Fetch busybox
         run: sh project/tools/fetch-busybox-arm64.sh
@@ -89,18 +89,26 @@ jobs:
             --kernel "${{ steps.kernel_artifact.outputs.dir }}" \
             --out "$PWD/project/out/image"
 
-      - name: Split the tar for upload
+      - name: Build rootfs image
+        run: |
+          sudo sh project/tools/build-liuqin-rootfs-image.sh \
+            --rootfs "$PWD/project/out/image/root/rootfs.tar.gz" \
+            --out "$PWD/project/out/image/dist"
+
+      - name: Split the image for upload
         run: |
           set -euo pipefail
-          # The assembly step runs as root; give this step an upload directory
-          # it owns and make the two source files readable before splitting.
+          # The assembly and image steps run as root; give this step an upload
+          # directory it owns and make the outputs readable before splitting.
           sudo install -d -o "$(id -u)" -g "$(id -g)" project/out/upload
-          sudo chmod 0644 project/out/image/root/rootfs.tar.gz \
+          sudo chmod 0644 project/out/image/dist/rootfs.img \
+            project/out/image/dist/SHA256SUMS \
             project/out/image/root/native-root.hashes \
             project/out/image/boot/boot-liuqin-native.img \
             project/out/image/boot/liuqin-firstboot.cpio.gz
-          split -b 1900M -d -a 2 project/out/image/root/rootfs.tar.gz \
-            project/out/upload/rootfs.tar.gz.part-
+          split -b 1900M -d -a 2 project/out/image/dist/rootfs.img \
+            project/out/upload/rootfs.img.part-
+          cp project/out/image/dist/SHA256SUMS project/out/upload/
           cp project/out/image/root/native-root.hashes project/out/upload/
           cp project/out/image/boot/boot-liuqin-native.img project/out/upload/boot.img
           cp project/out/image/boot/liuqin-firstboot.cpio.gz project/out/upload/
