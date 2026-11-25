@@ -20,7 +20,7 @@ GitHub Actions ──▶ ci/liuqin-kernel-<commit>/
   Image + DTB + initramfs      Ubuntu + 设备/内核 deb + boot.img
   + ABL overlay                      │
         │                            ▼
-        │                      rootfs.img（分片）
+        │                      rootfs.simg（分片）
         ▼                            ▼
   fastboot flash boot_a     fastboot flash userdata
         └───────────────┬────────────┘
@@ -40,9 +40,9 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 sh tools/build-liuqin-boot.sh
 
 # 刷机主机：合并 CI 的 img 分片，然后刷入
-cat rootfs.img.part-* > rootfs.img
+cat rootfs.simg.part-* > rootfs.simg
 fastboot flash boot_a    boot.img
-fastboot flash userdata  rootfs.img
+fastboot flash userdata  rootfs.simg
 ```
 
 只有“只换内核”才需要第一条；整机安装或用户态更新直接下载 CI artifact。

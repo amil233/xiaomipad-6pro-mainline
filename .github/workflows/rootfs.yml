@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             7zip squashfs-tools alsa-utils m4 zstd patch build-essential \
-            git curl dpkg-dev file binutils e2fsprogs
+            git curl dpkg-dev file binutils e2fsprogs android-sdk-libsparse-utils
 
       - name: Fetch busybox
         run: sh project/tools/fetch-busybox-arm64.sh
@@ -95,19 +95,27 @@ jobs:
             --rootfs "$PWD/project/out/image/root/rootfs.tar.gz" \
             --out "$PWD/project/out/image/dist"
 
+      - name: Convert to Android sparse image
+        run: |
+          sudo img2simg project/out/image/dist/rootfs.img \
+            project/out/image/dist/rootfs.simg
+          sudo chmod 0644 project/out/image/dist/rootfs.simg
+          sudo sh -c "cd '$PWD/project/out/image/dist' && sha256sum rootfs.simg > SHA256SUMS"
+          sudo chmod 0644 project/out/image/dist/SHA256SUMS
+
       - name: Split the image for upload
         run: |
           set -euo pipefail
           # The assembly and image steps run as root; give this step an upload
           # directory it owns and make the outputs readable before splitting.
           sudo install -d -o "$(id -u)" -g "$(id -g)" project/out/upload
-          sudo chmod 0644 project/out/image/dist/rootfs.img \
+          sudo chmod 0644 project/out/image/dist/rootfs.simg \
             project/out/image/dist/SHA256SUMS \
             project/out/image/root/native-root.hashes \
             project/out/image/boot/boot-liuqin-native.img \
             project/out/image/boot/liuqin-firstboot.cpio.gz
-          split -b 1900M -d -a 2 project/out/image/dist/rootfs.img \
-            project/out/upload/rootfs.img.part-
+          split -b 1900M -d -a 2 project/out/image/dist/rootfs.simg \
+            project/out/upload/rootfs.simg.part-
           cp project/out/image/dist/SHA256SUMS project/out/upload/
           cp project/out/image/root/native-root.hashes project/out/upload/
           cp project/out/image/boot/boot-liuqin-native.img project/out/upload/boot.img

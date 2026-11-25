@@ -49,19 +49,19 @@ boot.img 里有这份 rootfs 的文件哈希清单，启动时会核对。**只�
 
 ## 2. 第一次安装或重装
 
-集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、分片的 `rootfs.img`、
-`SHA256SUMS`、`native-root.hashes` 和 `liuqin-firstboot.cpio.gz`，不需要在
-刷机主机上转换。
+集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、分片的
+`rootfs.simg`（Android sparse）、`SHA256SUMS`、`native-root.hashes` 和
+`liuqin-firstboot.cpio.gz`，不需要在刷机主机上转换。
 
 在刷机主机上执行：
 
 ```sh
-# 下载 artifact 后，先合并 img 分片
-cat rootfs.img.part-* > rootfs.img
+# 下载 artifact 后，先合并 sparse 镜像分片
+cat rootfs.simg.part-* > rootfs.simg
 sha256sum -c SHA256SUMS
 
 fastboot flash boot_a   boot.img
-fastboot flash userdata rootfs.img
+fastboot flash userdata rootfs.simg
 fastboot reboot
 ```
 
@@ -116,10 +116,10 @@ fastboot reboot
 用户态一变，boot.img 里的文件清单就过期，两样要一起换：
 
 1. 先备份 `/home`（`userdata` 会被整块重写）；
-2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；刷机主机合并 `rootfs.img` 分片
-   （BUILD 第 5 节）；
+2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；
+   刷机主机合并 `rootfs.simg` 分片（BUILD 第 4 节）；
 3. `fastboot flash boot_a boot.img`，
-   `fastboot flash userdata rootfs.img`；
+   `fastboot flash userdata rootfs.simg`；
 4. 重启，按第 2 节做一次校准导入，再把 `/home` 放回去。
 
 不能只装新的 device-support 而不换 boot.img：下次启动时文件清单对不上，
