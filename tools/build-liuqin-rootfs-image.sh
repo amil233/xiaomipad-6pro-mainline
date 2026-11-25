@@ -73,12 +73,12 @@ tool() {
 	return 1
 }
 
-to_bytes() {
+to_mb() {
 	value=$1
 	case $value in
-	*[Gg]) printf '%s\n' "$(( ${value%?} * 1024 * 1024 * 1024 ))" ;;
-	*[Mm]) printf '%s\n' "$(( ${value%?} * 1024 * 1024 ))" ;;
-	*[Kk]) printf '%s\n' "$(( ${value%?} * 1024 ))" ;;
+	*[Gg]) printf '%s\n' "$(( ${value%?} * 1024 ))" ;;
+	*[Mm]) printf '%s\n' "${value%?}" ;;
+	*[Kk]) printf '%s\n' "$(( (${value%?} + 1023) / 1024 ))" ;;
 	'' | *[!0-9]*) die "not a size: $value (use 8G, 8192M, ...)" ;;
 	*) printf '%s\n' "$value" ;;
 	esac
@@ -170,24 +170,26 @@ module_count=$(find "$modules" -name '*.ko*' -type f | wc -l | tr -d ' ')
 # --- size -------------------------------------------------------------------
 
 used_mb=$(du -sm --apparent-size "$tree" | cut -f1)
+# Work in MiB throughout: byte counts for a multi-GiB image overflow 32-bit
+# shell arithmetic on some hosts, which silently turned the auto size into the
+# 6 GiB floor.  truncate/mke2fs take the MiB value directly.
 if [ -z "$size" ]; then
 	# Round the payload up with 25% headroom.  The image does not have to match
 	# the partition: the filesystem is grown online with resize2fs once the
 	# tablet runs from it.
-	root_bytes=$(( (used_mb * 125 / 100 + 512 + 1023) / 1024 * 1024 * 1024 ))
-	[ "$root_bytes" -ge $((6 * 1024 * 1024 * 1024)) ] ||
-		root_bytes=$((6 * 1024 * 1024 * 1024))
+	root_mb=$(( used_mb * 125 / 100 + 512 ))
+	[ "$root_mb" -ge 6144 ] || root_mb=6144
 else
-	root_bytes=$(to_bytes "$size")
+	root_mb=$(to_mb "$size")
 fi
-[ "$root_bytes" -ge $(( (used_mb * 5 / 4 + 32) * 1024 * 1024 )) ] ||
-	die "image size $((root_bytes / 1024 / 1024)) MiB cannot hold a $used_mb MiB tree"
+[ "$root_mb" -ge $(( used_mb * 5 / 4 + 32 )) ] ||
+	die "image size ${root_mb} MiB cannot hold a $used_mb MiB tree"
 avail_mb=$(df -Pm "$out_dir" | awk 'NR == 2 { print $4 }')
 [ "$avail_mb" -ge $((used_mb + 256)) ] ||
 	die "not enough space in $out_dir: ${avail_mb} MiB free, ${used_mb} MiB tree"
 
 say "root:       $used_mb MiB, $module_count modules of $release"
-say "image:      $((root_bytes / 1024 / 1024)) MiB ext4, LABEL=LIUQIN_ROOT"
+say "image:      ${root_mb} MiB ext4, LABEL=LIUQIN_ROOT"
 say "target:     userdata (single data partition; no /home or /boot partition)"
 
 if [ "$check_only" = 1 ]; then
@@ -199,7 +201,7 @@ fi
 
 say "formatting: $rootfs_img"
 rm -f "$rootfs_img"
-truncate -s "$root_bytes" "$rootfs_img"
+truncate -s "${root_mb}M" "$rootfs_img"
 "$mke2fs_bin" -q -F -t ext4 -L LIUQIN_ROOT -m 0 \
 	-E lazy_itable_init=0,lazy_journal_init=0 -d "$work" "$rootfs_img" ||
 	die "mke2fs failed: $rootfs_img"
