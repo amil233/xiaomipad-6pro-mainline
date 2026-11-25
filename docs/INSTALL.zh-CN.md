@@ -25,6 +25,26 @@ boot.img 里有这份 rootfs 的文件哈希清单，启动时会核对。**只�
 - 刷 `userdata` 会清空数据分区（根和 `/home` 一起），先备份。
 - `boot_b` 不参与启动，也不是回滚方式；回滚用 `repack/` 里的 boot.img。
 
+### 1.1 从旧的 `/` + `/home` 双分区迁移
+
+参考项目安装器把根和 `/home` 划成了 `linux_root`/`linux_home`，原厂的
+`userdata` 已经不在。新镜像只认原厂表里的 `userdata`，所以不能原地升级：
+
+1. 备份平板上要保留的数据；
+2. 用 V14 线刷包恢复原厂分区表。先试 LUN0：
+
+   ```sh
+   fastboot flash partition images/gpt_both0.bin
+   ```
+
+   如果 `flash_all.sh` 仍报找不到 `userdata`，再按 ROM 里的
+   `images/gpt_both1.bin` … `images/gpt_both5.bin` 逐个 LUN 刷入；
+3. 运行 `flash_all.sh` 恢复原厂 Android 和分区表（会清空平板）；
+4. 重启到 fastboot，再按第 2 节刷新的 boot 和 rootfs。
+
+刷 GPT 是破坏性操作，确认用的是本机 V14 线刷包里的文件；不确定就先用
+官方线刷工具恢复，再继续。
+
 ## 2. 第一次安装或重装
 
 集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、`rootfs.tar.gz` 分片、
