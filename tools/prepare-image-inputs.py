@@ -312,9 +312,9 @@ def cmd_run(rootfs: bool, fingerprint: bool) -> None:
                       AUDIO_TOPOLOGY=str(topology_bin),
                       WLAN_HSP2_TUPLE=str(wlan),
                       STOCK_OVERLAY_DIR=str(env_path('STOCK_OVERLAY_DIR',
-                                                     PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo')),
+                                                     PROJECT / 'device/abl-analysis/dtbo')),
                       STOCK_BASE_DIR=str(env_path('STOCK_BASE_DIR',
-                                                  PROJECT / 'tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs')),
+                                                  PROJECT / 'device/abl-analysis/vendor_boot/dtbs')),
                       MKBOOTIMG_DIR=str(PROJECT / 'tools/local/aosp-mkbootimg'))
     for key, value in inputs.items():
         if not key.endswith('_SHA256') and not Path(value).exists():

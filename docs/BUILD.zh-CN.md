@@ -85,7 +85,7 @@ sudo sh tools/build-liuqin-rootfs.sh           # 准备输入，然后装配
 2. `tools/prepare-image-inputs.py run` 重建需要的输入（传感器用户态、GNOME
    设置程序、音频拓扑、固件树），没变的会复用缓存；
 3. `tools/build-liuqin-image.py` 依次做模块、deb、根目录装配、文件清单、
-   boot.img、打包，结果在 `out/image/bundle/`。
+   boot.img、打包，结果放进 `ci/` 下（与内核产物同一目录）。
 
 bundle 里有 `boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
 `liuqin-firstboot.cpio.gz`、`bundle.json`、`SHA256SUMS` 和文档。
@@ -98,7 +98,7 @@ bundle 里有 `boot.img`、`rootfs.tar.gz`、`native-root.hashes`、
 | 权限 | root（chroot、属主、tar 的 ACL/xattr） |
 | 磁盘 | 峰值约 20 GB（GitHub runner 145 GiB，清理后 118 GiB） |
 | 命令 | `dpkg-deb`、GNU `tar`、`unsquashfs`、`7z`、`m4`、`alsatplg`、`zstd`、`patch`、`git`、`curl`、`chroot`/`mount`/`unshare` |
-| 输入 | `device/firmware-pool`、`device/wlan-tuple`、`device/sensors/rom`、`device/audio-topology/upstream`、内核产物 |
+| 输入 | `device/firmware-pool`、`device/wlan-tuple`、`device/sensors/rom`、`device/audio-topology/upstream`、`device/abl-analysis`、内核产物 |
 
 磁盘实测（26.04.1 ISO，arm64）：
 
@@ -124,17 +124,19 @@ sudo apt install 7zip squashfs-tools erofs-utils mtools alsa-utils m4 zstd \
 不需要内核源码：模块直接用产物里的 `kernel-modules/`（先核对 commit、
 版本和校验和），`dtc`/`fdtoverlay` 用系统包。
 
-集成仓的 `.github/workflows/rootfs.yml` 只装 rootfs：用跟踪的固件池、WLAN tuple 和 AudioReach 源码重建固件树，用 `PAT_GET_KERNEL`
-下载内核仓最近的 artifact，在托管 arm64 runner 上运行
-`build-liuqin-rootfs.sh --rootfs-only`，上传分片的 `rootfs.tar.gz` 和
-`native-root.hashes`，不生成 boot.img。`.github/workflows/build.yml` 在
+集成仓的 `.github/workflows/rootfs.yml` 装 rootfs 和配套的 boot.img：
+用跟踪的固件池、WLAN tuple、AudioReach 源码和 ABL 分析重建输入，用
+`PAT_GET_KERNEL` 下载内核仓最近的 artifact，在托管 arm64 runner 上运行
+`build-liuqin-rootfs.sh --rootfs-only --boot`，上传 `boot.img`、ramdisk、
+分片的 `rootfs.tar.gz` 和 `native-root.hashes`，boot 与 root 由同一次
+内核产物和同一份 root 文件清单生成。`.github/workflows/build.yml` 在
 集成仓 push 时也能编译内核。
 
 本地或 CI 也可以只装 rootfs：
 
 ```sh
 sudo sh tools/build-liuqin-rootfs.sh --rootfs-only
-# out/image/root/rootfs.tar.gz + native-root.hashes
+# `ci/` 下 rootfs.tar.gz + native-root.hashes
 ```
 
 CI 用 `ubuntu-26.04-arm`：先装 `7zip`、`squashfs-tools`、`alsa-utils`、`m4`、
@@ -146,7 +148,7 @@ claim 测试用测试闸门文件确定性复现，不依赖机器速度，也�
 ## 5. 把 rootfs 变成可刷镜像（刷机主机）
 
 ```sh
-sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out out/dist
+sudo sh tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out <输出目录>
 ```
 
 - fastboot 只能写块设备，所以要把 tar 变成 ext4；initramfs 把
@@ -208,7 +210,7 @@ sudo python3 tools/prepare-image-inputs.py run
 | 指纹固件 | 同一个 FAT 根目录的 `fpcliu.*` |
 | 指纹用户态 | 可选，默认不装；源码在 `device/fingerprint/oem/`，按 [`FINGERPRINT.zh-CN.md`](FINGERPRINT.zh-CN.md) 自建 |
 | 蓝牙固件 | V14 `BTFM.bin` |
-| ABL 覆盖层和基设备树 | V14 `dtbo.img`、`vendor_boot.img` |
+| ABL 覆盖层和基设备树 | 已提取为 `device/abl-analysis`（V14 `dtbo.img`、`vendor_boot.img`） |
 | WLAN tuple | 已提取为 `device/wlan-tuple`（V14 qca6490 + 上游 board） |
 | WLAN 上游固件 | linux-firmware 的 WCN6855 文件 |
 | WLAN bdencoder | qca-swiss-army-knife 的 `ath11k-bdencoder`（Python） |

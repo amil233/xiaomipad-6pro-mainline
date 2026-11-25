@@ -20,28 +20,37 @@ boot.img 里有这份 rootfs 的文件哈希清单，启动时会核对。**只�
 ## 1. 开始之前
 
 - Bootloader 已解锁，能进 fastboot，电量 30% 以上。
-- 分区表是原厂 V14 的那张：`boot_a`、`userdata` 都在。现在这台平板还是旧布局
-  （`linux_root` + `linux_home`，`userdata` 被旧安装器删掉了），换成单数据分区
-  要先刷 V14 整包 `flash_all.sh`，会清空整机；之后不再需要动分区表。
+- 分区表是原厂 V14 的那张：`boot_a`、`userdata` 都在；现在按新的单数据分区
+  布局使用。
 - 刷 `userdata` 会清空数据分区（根和 `/home` 一起），先备份。
-- `boot_b` 不参与启动，也不是回滚方式；回滚用 `repack/` 或旧 bundle 里的
-  boot.img。
+- `boot_b` 不参与启动，也不是回滚方式；回滚用 `repack/` 里的 boot.img。
 
 ## 2. 第一次安装或重装
 
-在刷机主机上执行，boot.img 和 rootfs.tar.gz 来自同一个 bundle：
+集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、`rootfs.tar.gz` 分片、
+`native-root.hashes` 和 `liuqin-firstboot.cpio.gz`，不需要再手工配内核。
+
+在刷机主机上执行：
 
 ```sh
-fastboot flash boot_a   bundle/boot.img
+# 下载 artifact 后，先合并分片
+cat rootfs.tar.gz.part-* > rootfs.tar.gz
+
+# 转成 fastboot 能写的 ext4 镜像
+sudo sh tools/build-liuqin-rootfs-image.sh \
+  --rootfs rootfs.tar.gz --out out/dist
+
+fastboot flash boot_a   boot.img
 fastboot flash userdata out/dist/rootfs.img
 fastboot reboot
 ```
 
-刷完把 bundle 里的两个文件拷到开发机，覆盖同名文件：
+刷完把 `native-root.hashes` 和 `liuqin-firstboot.cpio.gz` 拷到开发机，覆盖
+同名文件，供以后只换内核时装配 boot.img：
 
 ```sh
-cp bundle/native-root.hashes      <repo>/out/native-root/native-root.hashes
-cp bundle/liuqin-firstboot.cpio.gz <repo>/out/initramfs-liuqin/liuqin-firstboot.cpio.gz
+cp native-root.hashes       <repo>/out/native-root/native-root.hashes
+cp liuqin-firstboot.cpio.gz <repo>/out/initramfs-liuqin/liuqin-firstboot.cpio.gz
 ```
 
 这两个文件是 boot.img 里那份清单的来源。下次只换内核时，脚本会用它们核对
@@ -87,10 +96,10 @@ fastboot reboot
 用户态一变，boot.img 里的文件清单就过期，两样要一起换：
 
 1. 先备份 `/home`（`userdata` 会被整块重写）；
-2. 集成仓的 `rootfs` workflow（GitHub Actions）出新 bundle；刷机主机生成 `rootfs.img`
+2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；刷机主机合并分片并生成 `rootfs.img`
    （BUILD 第 5 节）；
-3. `fastboot flash boot_a bundle/boot.img`，
-   `fastboot flash userdata out/dist/rootfs.img`；
+3. `fastboot flash boot_a boot.img`，
+   `fastboot flash userdata rootfs.img`；
 4. 重启，按第 2 节做一次校准导入，再把 `/home` 放回去。
 
 不能只装新的 device-support 而不换 boot.img：下次启动时文件清单对不上，
@@ -117,10 +126,10 @@ initramfs 会拒绝挂载根文件系统。
 |---|---|
 | 新内核能启动但有问题 | 在系统里装回旧的内核 deb，再刷回旧 boot.img |
 | 新内核完全起不来 | 旧 boot.img 和旧 rootfs.img 一起刷回（新 deb 已经换掉了模块，单刷 boot.img 对不上） |
-| 新用户态有问题 | 旧 bundle 的 boot.img 和 rootfs.img 一起刷回 |
+| 新用户态有问题 | 旧 boot.img 和 rootfs.img 一起刷回 |
 | 回原厂 | V14 线刷包 `flash_all.sh`；`out/boot_a.img` 留档 |
 
-刷机主机上保留上一套 bundle 和 `out/dist/`，回滚就靠它们。
+刷机主机上保留上一套 boot.img 和 rootfs.img，回滚就靠它们。
 
 ## 7. 卡住了看哪里
 

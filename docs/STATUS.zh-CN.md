@@ -10,8 +10,7 @@
 | 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`，SM8475） |
 | 系统 | Ubuntu 26.04 arm64 桌面（GNOME），单系统，没有 Android；新镜像基线改为 26.04.1 |
 | 启动 | A 槽直接启动（`fastboot flash boot_a`）；`boot_b` 不参与启动 |
-| 分区（现在） | 旧布局：`linux_root` + `linux_home`（2026 年由参考项目安装器划出） |
-| 分区（目标） | 原厂分区表；`userdata` 是唯一数据分区（ext4，`LABEL=LIUQIN_ROOT`，根在 `native-root/` 下），没有单独的 `/home` 或 `/boot` 分区 |
+| 分区 | 原厂分区表；`userdata` 是唯一数据分区（ext4，`LABEL=LIUQIN_ROOT`，根在 `native-root/` 下），没有单独的 `/home` 或 `/boot` 分区 |
 | ROM | `V14.0.9.0.TMYCNXM` |
 | 内核 | 内核仓 `liuqin-7.3`；平板实际跑哪个 commit，用 `uname -r` 对照 |
 | 集成仓分支 | `liuqin-install` |
@@ -33,7 +32,7 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 - 音频：48 kHz / 4 声道 / 24-bit / 4×32-bit slot 的 TDM，四颗 CS35L41；
   `speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1` 出声。
 - 桌面：GNOME 可登录；USB 网络救援（initramfs `telnet 192.168.7.2 2323`）。
-- 持久化：根分区和独立 `/home`（旧布局下）可读写。
+- 持久化：根分区（`userdata` 单块数据分区）可读写。
 - 恢复：原厂 V14 线刷包可以整机回退。
 
 ## 未验证或不支持
@@ -56,7 +55,7 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 | 亮度重启后重置 | 背光驱动是模块，查 `systemd-backlight@` 启动顺序 |
 | 接电脑 USB 掉电 | 电流上限停在 100 mA；原厂靠 USB 枚举抬到 500 mA，内核里没有这个处理 |
 | 音频边角 | 只接受 48k/4ch/24-bit；强制 2ch/S16 的应用会被拒 |
-| 分区迁移 | 当前平板还是旧布局；换成原厂表单数据分区要先刷 V14 整包，会清空整机 |
+| 分区迁移 | 当前按新布局（原厂分区表 + `userdata` 单块数据分区）；如需重划分区，先刷 V14 整包，会清空整机 |
 | 升级 7.4 | 等正式版；合并冲突先记在 `archive/kernel-v73-divergence.md` |
 
 ## 文档

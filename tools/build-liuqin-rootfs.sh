@@ -34,12 +34,13 @@ say() { printf 'build-liuqin-rootfs: %s\n' "$*"; }
 
 usage() {
 	cat <<'EOF'
-usage: build-liuqin-rootfs.sh [--check] [--rootfs-only] [--fingerprint] [--kernel DIR] [--out DIR]
+usage: build-liuqin-rootfs.sh [--check] [--rootfs-only] [--boot] [--fingerprint] [--kernel DIR] [--out DIR]
 
   --kernel DIR    artifact root or its kernel/ directory; defaults to the
                   newest artifact under ci/
   --out DIR       assembly output inside out/; defaults to out/image
   --rootfs-only   assemble rootfs.tar.gz only (tracked firmware, no boot.img)
+  --boot          with --rootfs-only, also build the matching boot.img/ramdisk
   --fingerprint   also include the optional fingerprint package
   --check         print the readiness report and exit; write nothing
 EOF
@@ -49,10 +50,12 @@ kernel=
 out_dir=$project_root/out/image
 check_only=0
 rootfs_only=0
+with_boot=0
 with_fingerprint=0
 while [ $# -gt 0 ]; do
 	case $1 in
 	--rootfs-only) rootfs_only=1; shift ;;
+	--boot) with_boot=1; shift ;;
 	--fingerprint) with_fingerprint=1; shift ;;
 	--kernel) [ $# -ge 2 ] || die '--kernel needs a value'; kernel=$2; shift 2 ;;
 	--out) [ $# -ge 2 ] || die '--out needs a value'; out_dir=$2; shift 2 ;;
@@ -152,17 +155,17 @@ if audio_sources_ok; then
 else
 	report MISSING 'AudioReach topology sources (device/audio-topology/upstream)'
 fi
-if [ "$rootfs_only" = 0 ]; then
+if [ "$rootfs_only" = 0 ] || [ "$with_boot" = 1 ]; then
 	if [ -d "$project_root/tools/local/aosp-mkbootimg" ]; then
 		report OK 'mkbootimg'
 	else
 		report MISSING 'mkbootimg under tools/local (fetch-aosp-mkbootimg.sh)'
 	fi
-	if [ -d "$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/dtbo" ] &&
-		[ -d "$project_root/tools/local/roms/liuqin/V14.0.9.0.TMYCNXM/analysis/vendor_boot/dtbs" ]; then
-		report OK 'ABL overlay/base DTB analysis'
+	if [ -d "$project_root/device/abl-analysis/dtbo" ] &&
+		[ -d "$project_root/device/abl-analysis/vendor_boot/dtbs" ]; then
+		report OK 'tracked ABL overlay/base DTB analysis'
 	else
-		report MISSING 'ABL overlay/base DTB analysis (tools/extract-v14-vendor.sh)'
+		report MISSING 'tracked ABL overlay/base DTB analysis device/abl-analysis'
 	fi
 fi
 
@@ -175,6 +178,8 @@ if [ "$check_only" = 1 ]; then
 	exit 1
 fi
 [ "$failures" = 0 ] || die "$failures requirement(s) missing; run --check for the report"
+[ "$with_boot" = 0 ] || [ "$rootfs_only" = 1 ] ||
+	die '--boot is only valid with --rootfs-only (full assembly builds boot.img itself)' 
 [ "$(id -u)" = 0 ] || die 'run as root (sudo)'
 command -v 7z >/dev/null 2>&1 || [ -d "$base_root" ] ||
 	die '7z is required to extract the Ubuntu ISO (install the 7zip package)'
@@ -209,7 +214,23 @@ if [ "$rootfs_only" = 1 ]; then
 	[ -f "$tar" ] || die "assembly produced no rootfs tar: $tar"
 	say "rootfs: $tar"
 	say "hashes: $hashes"
-	say 'next:   split the tar for upload; build boot.img separately when pairing a fresh root'
+	if [ "$with_boot" = 1 ]; then
+		boot_out=$out_dir/boot
+		[ ! -e "$boot_out" ] || die "boot output already exists: $boot_out"
+		say 'assembling the matching boot.img'
+		NATIVE_ROOT_HASHES="$hashes" \
+		KERNEL_SOURCE="$kernel_dir" KERNEL_OUT="$kernel_dir" \
+		FIRMWARE_POOL="$project_root/device/firmware-pool" \
+		WLAN_HSP2_TUPLE="$project_root/device/wlan-tuple" \
+		AUDIO_TOPOLOGY="$project_root/out/prepared-inputs/topology/Xiaomi-Pad-6-Pro-tplg.bin" \
+		STOCK_OVERLAY_DIR="$project_root/device/abl-analysis/dtbo" \
+		STOCK_BASE_DIR="$project_root/device/abl-analysis/vendor_boot/dtbs" \
+		MKBOOTIMG_DIR="$project_root/tools/local/aosp-mkbootimg" \
+		OUT_DIR="$boot_out" \
+		sh "$project_root/tools/build-liuqin-native-boot.sh"
+		say "boot:   $boot_out/boot-liuqin-native.img"
+		say "ramdisk:$boot_out/liuqin-firstboot.cpio.gz"
+	fi
 	exit 0
 fi
 

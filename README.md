@@ -4,8 +4,7 @@ Xiaomi Pad 6 Pro（liuqin，128G）上的 Ubuntu 26.04.1 arm64 单系统：本�
 Linux 7.3 内核加设备驱动，没有 Android，从 A 槽直接启动。
 
 分区保持原厂：`boot_a` 换成我们的 boot.img，`userdata` 是唯一的数据分区
-（根和 `/home` 都在这一块 ext4 上）；没有单独的 `/boot` 分区，也不建
-`linux_root`/`linux_home`。
+（根和 `/home` 都在这一块 ext4 上）；没有单独的 `/boot` 分区。
 
 ## 一个内核分支，两个可刷产物
 
@@ -43,13 +42,13 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
 sh tools/build-liuqin-boot.sh
 
-# GitHub Actions（rootfs workflow）：装配整机 rootfs，产出 out/image/bundle
+# GitHub Actions（rootfs workflow）：装配 rootfs 和配套 boot.img，产出 artifact
 sudo sh tools/build-liuqin-rootfs.sh
 
-# 刷机主机：把 bundle 里的 rootfs.tar.gz 变成 ext4，然后刷入
-sudo sh tools/build-liuqin-rootfs-image.sh --rootfs <bundle>/rootfs.tar.gz --out out/dist
-fastboot flash boot_a    <bundle>/boot.img
-fastboot flash userdata out/dist/rootfs.img
+# 刷机主机：把装配目录里的 rootfs.tar.gz 变成 ext4，然后刷入
+sudo sh tools/build-liuqin-rootfs-image.sh --rootfs <rootfs.tar.gz> --out <输出目录>
+fastboot flash boot_a    boot.img
+fastboot flash userdata <rootfs.img>
 ```
 
 平时只有第一条（约 15 秒，不编译内核）。第一次启动后要做一次校准导入，

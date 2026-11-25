@@ -48,6 +48,9 @@ jobs:
       - name: Fetch busybox
         run: sh project/tools/fetch-busybox-arm64.sh
 
+      - name: Fetch mkbootimg
+        run: sh project/tools/fetch-aosp-mkbootimg.sh
+
       - name: Download kernel artifact
         id: kernel_artifact
         env:
@@ -75,14 +78,14 @@ jobs:
 
       - name: Preflight
         run: |
-          sudo env sh project/tools/build-liuqin-rootfs.sh --check --rootfs-only \
+          sudo env sh project/tools/build-liuqin-rootfs.sh --check --rootfs-only --boot \
             --kernel "${{ steps.kernel_artifact.outputs.dir }}" \
             --out "$PWD/project/out/image"
 
       - name: Assemble rootfs
         run: |
           sudo env DROP_ISO=1 sh project/tools/build-liuqin-rootfs.sh \
-            --rootfs-only \
+            --rootfs-only --boot \
             --kernel "${{ steps.kernel_artifact.outputs.dir }}" \
             --out "$PWD/project/out/image"
 
@@ -93,10 +96,14 @@ jobs:
           # it owns and make the two source files readable before splitting.
           sudo install -d -o "$(id -u)" -g "$(id -g)" project/out/upload
           sudo chmod 0644 project/out/image/root/rootfs.tar.gz \
-            project/out/image/root/native-root.hashes
+            project/out/image/root/native-root.hashes \
+            project/out/image/boot/boot-liuqin-native.img \
+            project/out/image/boot/liuqin-firstboot.cpio.gz
           split -b 1900M -d -a 2 project/out/image/root/rootfs.tar.gz \
             project/out/upload/rootfs.tar.gz.part-
           cp project/out/image/root/native-root.hashes project/out/upload/
+          cp project/out/image/boot/boot-liuqin-native.img project/out/upload/boot.img
+          cp project/out/image/boot/liuqin-firstboot.cpio.gz project/out/upload/
           ls -lh project/out/upload
           df -h /
 
