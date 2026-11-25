@@ -265,6 +265,12 @@ if ! grep -q "^kernel_size: $image_gz_size\$" "$info" || \
 	exit 1
 fi
 
+# Match the stock fastboot image: zero-fill the image to the exact 192 MiB
+# boot partition.  The boot header keeps its real payload sizes; fastboot and
+# ABL ignore the trailing zeros.
+truncate -s "$partition_size" "$bootimg" ||
+	{ echo "error: could not pad the boot image to $partition_size bytes" >&2; exit 1; }
+
 {
 	printf 'ABL_OVERLAY_SINK: %s\n' "${ABL_OVERLAY_SINK:-1}"
 	printf 'ABL_DTB02_IDS: %s\n' "${ABL_DTB02_IDS:-0}"
@@ -273,5 +279,5 @@ fi
 } >>"$info"
 
 sha256sum "$image_gz" "$boot_dtb" "$ramdisk" "$bootimg"
-printf 'boot image size: %s / %s bytes\n' "$bootimg_size" "$partition_size"
+printf 'boot image size: %s / %s bytes (zero-padded)\n' "$(stat -c %s "$bootimg")" "$partition_size"
 printf 'boot image info: %s\n' "$info"

@@ -59,7 +59,10 @@ sh tools/build-liuqin-boot.sh --check    # 只检查，不生成
 3. 调 `tools/lib/build-bootimg.sh` 装配，内部再做一次解包/重打包的往返检查。
 
 输出目录里有 `boot-liuqin-firstboot.img`、`Image.gz`、合并后的设备树和
-`boot-liuqin-firstboot.info`。已有同名目录不会被覆盖；换版本用 `--out`。
+`boot-liuqin-firstboot.info`。boot image 末尾补零到 **192 MiB**（原厂
+`boot` 分区大小），和官方线刷包一致；header 里的 kernel/ramdisk/dtb 大小
+不变，ABL 和 fastboot 会忽略尾部零。已有同名目录不会被覆盖；换版本用
+`--out`。
 
 只换内核时 rootfs 不变，所以文件清单不变，旧 ramdisk 可以继续用；内核模块
 和版本号由新的内核 deb 更新。动了用户态，清单会变，boot.img 和 rootfs 要
