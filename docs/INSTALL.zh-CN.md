@@ -6,6 +6,8 @@
 
 产物怎么来见 [`BUILD.zh-CN.md`](BUILD.zh-CN.md)。
 
+救援 shell 的进入方法见 [`RESCUE.zh-CN.md`](RESCUE.zh-CN.md)。
+
 ## 0. 要刷什么
 
 ```
