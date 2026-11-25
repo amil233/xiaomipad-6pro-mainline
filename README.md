@@ -16,8 +16,8 @@ GitHub Actions ──▶ ci/liuqin-kernel-<commit>/
                       │
         ┌─────────────┴──────────────┐
         ▼                            ▼
-  装配 boot.img                GitHub Actions 装配 rootfs
-  Image + DTB + initramfs      Ubuntu + 设备/内核 deb
+  只换内核：装配 boot.img      用户态：GitHub Actions 装配
+  Image + DTB + initramfs      Ubuntu + 设备/内核 deb + boot.img
   + ABL overlay                      │
         │                            ▼
         │                      rootfs.img（分片）
@@ -39,16 +39,14 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
 sh tools/build-liuqin-boot.sh
 
-# 本地整机装配（可选；CI 产物可直接下载）
-sudo sh tools/build-liuqin-rootfs.sh
-
 # 刷机主机：合并 CI 的 img 分片，然后刷入
 cat rootfs.img.part-* > rootfs.img
 fastboot flash boot_a    boot.img
 fastboot flash userdata  rootfs.img
 ```
 
-平时只有第一条（约 15 秒，不编译内核）。第一次启动后要做一次校准导入，
+只有“只换内核”才需要第一条；整机安装或用户态更新直接下载 CI artifact。
+第一次启动后要做一次校准导入，
 见 [`docs/INSTALL.zh-CN.md`](docs/INSTALL.zh-CN.md)。
 
 ## 文档
