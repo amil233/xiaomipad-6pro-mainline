@@ -19,6 +19,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools/build-liuqin-boot.sh"
+# Synthetic kernel release for the synthetic artifact; the real one comes from
+# the CI-built kernel artifact, never from a literal here.
+KERNEL_RELEASE = "fixture"
 
 
 def load_contract_module():
@@ -89,7 +92,7 @@ def main():
         (kernel / "arch/arm64/boot/Image").write_bytes(b"kernel image fixture\n")
         (kernel / f"arch/arm64/boot/dts/{dtb}").write_bytes(b"dtb fixture\n")
         write_sums(kernel, ["arch/arm64/boot/Image", f"arch/arm64/boot/dts/{dtb}"])
-        (modules / "kernel.release").write_text("7.3.0-fixture\n")
+        (modules / "kernel.release").write_text(KERNEL_RELEASE + "\n")
         write_sums(modules, ["kernel.release"])
 
         # A manifest that satisfies every pinned native path, then the contract

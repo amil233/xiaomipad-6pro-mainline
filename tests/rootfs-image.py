@@ -21,6 +21,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools/build-liuqin-rootfs-image.sh"
 MARKER = b"liuqin-native-root-v1\n"
+# Synthetic kernel release for the fixture tree; the real one is recorded by the
+# CI-built kernel artifact (boot + deb) and must never be a literal here.
+NATIVE_KERNEL_RELEASE = "fixture"
+MODULE_RELATIVE = f"usr/lib/modules/{NATIVE_KERNEL_RELEASE}/kernel/drivers/x"
+WRONG_KERNEL_RELEASE = NATIVE_KERNEL_RELEASE + "-other"
 
 
 def e2fsprogs():
@@ -54,8 +59,7 @@ def debugfs(tools, image, request):
 
 
 def make_tree(root):
-    for directory in ("etc", "usr/lib/systemd", "usr/lib/modules/7.3.0-fixture/kernel/drivers/x",
-                      "usr/share/liuqin"):
+    for directory in ("etc", "usr/lib/systemd", MODULE_RELATIVE, "usr/share/liuqin"):
         (root / directory).mkdir(parents=True, exist_ok=True)
     (root / "etc/liuqin-native-root").write_bytes(MARKER)
     (root / "etc/liuqin-native-root").chmod(0o644)
@@ -63,8 +67,9 @@ def make_tree(root):
     (root / "etc/fstab").write_bytes(b"UUID=fixture-root / ext4 defaults 0 1\n")
     (root / "usr/lib/systemd/systemd").write_bytes(b"#!/bin/sh\n: systemd fixture\n")
     (root / "usr/lib/systemd/systemd").chmod(0o755)
-    (root / "usr/share/liuqin/kernel.release").write_bytes(b"7.3.0-fixture\n")
-    (root / "usr/lib/modules/7.3.0-fixture/kernel/drivers/x/x.ko").write_bytes(b"module fixture\n")
+    (root / "usr/share/liuqin/kernel.release").write_bytes((NATIVE_KERNEL_RELEASE + "\n").encode())
+    module_file = MODULE_RELATIVE + "/x.ko"
+    (root / module_file).write_bytes(b"module fixture\n")
     (root / "etc/keep").write_bytes(b"xattr must survive\n")
     (root / "etc/keep").chmod(0o640)
     (root / "sbin-init").symlink_to("/usr/lib/systemd/systemd")
@@ -96,7 +101,7 @@ def main():
         assert "Type: regular" in debugfs(tools, image, "stat /native-root/etc/liuqin-native-root")
         assert "Mode:  0644" in debugfs(tools, image, "stat /native-root/etc/liuqin-native-root")
         assert "Type: directory" in debugfs(
-            tools, image, "stat /native-root/usr/lib/modules/7.3.0-fixture")
+            tools, image, f"stat /native-root/usr/lib/modules/{NATIVE_KERNEL_RELEASE}")
         assert 'Fast link dest: "/usr/lib/systemd/systemd"' in debugfs(
             tools, image, "stat /native-root/sbin-init")
         assert "user.fixture" in debugfs(tools, image, "ea_list /native-root/etc/keep")
@@ -134,7 +139,7 @@ def main():
         assert "no modules" in result.stderr, result.stderr
 
         result = run("--root", root, "--out", work / "refuse",
-                     "--kernel-release", "7.3.0-other", expect=1)
+                     "--kernel-release", WRONG_KERNEL_RELEASE, expect=1)
         assert "does not match" in result.stderr, result.stderr
 
         result = run("--root", root, "--out", work / "refuse", "--size", "16M", expect=1)

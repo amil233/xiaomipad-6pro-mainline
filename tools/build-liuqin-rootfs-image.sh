@@ -27,7 +27,7 @@
 # usage:
 #   sudo tools/build-liuqin-rootfs-image.sh --rootfs rootfs.tar.gz --out DIR
 #   sudo tools/build-liuqin-rootfs-image.sh --root DIR --out DIR
-#        [--size 8G] [--kernel-release 7.3.0-g...] [--check]
+#        [--size 8G] [--kernel-release <release>] [--check]
 set -eu
 
 # Build scripts run from cron, CI and sudo shells with different PATHs; make

@@ -492,8 +492,8 @@ make_gnome_tree() {
 	printf 'ssc-sample-gate\n' >"$tree/usr/libexec/liuqin-ssc-sample-gate"
 	printf 'r03-audio-topology\n' >"$tree/usr/lib/firmware/qcom/sm8450/Xiaomi-Pad-6-Pro-tplg.bin"
 	printf 'version=12\n' >"$tree/usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/sns_reg_version"
-	printf '6.17.0-rc1-gfixture\n' >"$tree/usr/share/liuqin/kernel.release"
-	printf 'fixture  usr/lib/modules/6.17.0-rc1-gfixture/kernel/fixture.ko\n' \
+	printf 'fixture\n' >"$tree/usr/share/liuqin/kernel.release"
+	printf 'fixture  usr/lib/modules/fixture/kernel/fixture.ko\n' \
 		>"$tree/usr/share/liuqin/kernel-modules.manifest"
 	printf '/org/gnome/settings-daemon/plugins/power/power-button-action\n' \
 		>"$tree/etc/dconf/db/local.d/locks/00-liuqin-power"
@@ -749,8 +749,8 @@ make_native_tree() {
 	printf 'sqe\n' >"$tree/usr/lib/firmware/updates/qcom/a730_sqe.fw"
 	printf 'gmu\n' >"$tree/usr/lib/firmware/updates/qcom/gmu_gen70000.bin"
 	printf 'version=12\n' >"$tree/usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/sns_reg_version"
-	printf '6.17.0-rc1-gfixture\n' >"$tree/usr/share/liuqin/kernel.release"
-	printf 'fixture  usr/lib/modules/6.17.0-rc1-gfixture/kernel/fixture.ko\n' \
+	printf 'fixture\n' >"$tree/usr/share/liuqin/kernel.release"
+	printf 'fixture  usr/lib/modules/fixture/kernel/fixture.ko\n' \
 		>"$tree/usr/share/liuqin/kernel-modules.manifest"
 	printf 'gschema\n' >"$tree/usr/share/liuqin/power/io.github.liuqin.power.gschema.xml"
 	printf 'compiled\n' >"$tree/usr/share/liuqin/power/gschemas.compiled"
