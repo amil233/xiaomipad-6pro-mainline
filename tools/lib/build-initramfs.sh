@@ -161,8 +161,10 @@ fi
 	echo "error: WLAN board data is unavailable: $wlan_board_file" >&2
 	exit 1
 }
-[ "$(dd if="$wlan_board_file" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 7f454c46 ] ||
-	echo 'error: WLAN board data is not an ELF' >&2 && exit 1
+if [ "$(dd if="$wlan_board_file" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" != 7f454c46 ]; then
+	echo 'error: WLAN board data is not an ELF' >&2
+	exit 1
+fi
 
 if [ -n "$rootfs" ] && [ ! -r "$rootfs" ]; then
 	echo "error: stage-2 root filesystem is unavailable: $rootfs" >&2
