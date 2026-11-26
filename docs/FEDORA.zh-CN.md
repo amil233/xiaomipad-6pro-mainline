@@ -69,7 +69,10 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
   SELinux 配置是 `enforcing`，策略已装好。自带内核是 7.2.11，`/boot` 占 515 MiB。
   这个根能直接放进 8 GiB 的 ext4 镜像。
 - 第 2 步的打包脚本 `tools/build-liuqin-kernel-rpm.sh` 已写好，workflow 里也
-  接上了，还没跑过。
+  接上了，跑到装包这一步了。打出来的是一个 `kernel-liuqin` 包，版本形如
+  `7.3.0-0.1.g<commit>`（RPM 的 Version/Release 里不能有 `-`，所以拆开写），
+  真正的 `uname -r` 记在 `Provides: kernel-uname-r`。装包前会先删掉 Fedora
+  自带的 `kernel*` 包和 `/boot` 内容。
 
 ## 还没确认的事
 

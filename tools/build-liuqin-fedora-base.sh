@@ -15,8 +15,8 @@
 # 用法：
 #   sudo tools/build-liuqin-fedora-base.sh download   # 下载并核对 ISO
 #   sudo tools/build-liuqin-fedora-base.sh verify     # 只核对已有的 ISO
-#   sudo tools/build-liuqin-fedora-base.sh extract    # 解出根目录树 + 清单
-#   sudo tools/build-liuqin-fedora-base.sh manifest   # 只重写清单
+#   sudo tools/build-liuqin-fedora-base.sh extract    # 解出根目录树
+#   sudo tools/build-liuqin-fedora-base.sh manifest   # 写这棵树的清单（装完内核后再写）
 #   sudo tools/build-liuqin-fedora-base.sh report     # 打印这棵树的情况
 #   sudo tools/build-liuqin-fedora-base.sh all        # download + extract + report
 #
@@ -50,8 +50,8 @@ usage: build-liuqin-fedora-base.sh download|verify|extract|manifest|report|all
 
   download   下载 Live ISO 和官方校验文件，核对之后才保留
   verify     只核对已有的 ISO
-  extract    解开 ISO，把根目录树复制到 FEDORA_ROOT，并写出清单（需要 root）
-  manifest   只重写清单（需要 root）
+  extract    解开 ISO，把根目录树复制到 FEDORA_ROOT（需要 root）
+  manifest   写这棵树的清单（需要 root；装完内核包以后再跑，否则清单是旧的）
   report     打印包的个数、体积、关键包是否存在
   all        download + extract + report
 EOF
@@ -230,7 +230,7 @@ extract_root() {
 	say "tree: $root"
 
 	rm -f "$work/live.img"
-	write_manifest
+	say 'next: write the manifest after the kernel package is in place'
 }
 
 write_manifest() {

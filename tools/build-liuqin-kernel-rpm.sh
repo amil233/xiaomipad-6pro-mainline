@@ -1,24 +1,27 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 #
-# 把内核 CI 的产物打成一个 RPM，再装进 Fedora 的根目录树。
+# 内核产物在 Fedora 上的形态：一个 RPM，装进 Fedora 的根目录树。
 #
-# 这个脚本要在 Fedora 容器里跑（`docker run ... fedora:45`）：宿主机是
-# Ubuntu，没有 rpmbuild/dnf/rpm，而 GitHub Actions 也没有 Fedora 的 runner，
-# 用官方 aarch64 镜像起一个容器就够，不需要虚拟机。
+# 宿主机是 Ubuntu，没有 rpmbuild / rpm / dnf，所以这个脚本要在 Fedora 容器里
+# 跑，由 tools/fedora-container.sh 负责起容器：
 #
-#   sh tools/build-liuqin-kernel-rpm.sh build     # 出 RPM
-#   sh tools/build-liuqin-kernel-rpm.sh install   # 删掉 Fedora 自带内核，装我们的，检查
-#   sh tools/build-liuqin-kernel-rpm.sh check     # 只检查已装好的树
+#   sh tools/fedora-container.sh \
+#     'sh tools/build-liuqin-kernel-rpm.sh build install'
+#
+# 三个动作互相独立，可以只跑其中一个：
+#
+#   build    从内核 CI 产物打出一个 RPM（只要产物）
+#   install  把 RPM 装进树里，先清掉 Fedora 自带的内核（只要 RPM 和树）
+#   check    检查树里的内核模块、登记文件和 systemd（只要树）
 #
 # 可选环境变量：
-#   KERNEL_DIR   内核产物目录（默认取 ci/ 里最新的 liuqin-kernel-*）
-#   OUT          输出目录（默认 out/fedora-rpm）
-#   TREE         Fedora 的根目录树（默认 tools/local/fedora-kde-mobile-45-arm64/rootfs）
+#   KERNEL_DIR   内核产物目录；默认取 ci/ 下最新的 liuqin-kernel-*
+#   OUT          RPM 输出目录；默认 out/fedora-rpm
+#   TREE         Fedora 根目录树；默认 tools/local/fedora-kde-mobile-45-arm64/rootfs
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-workspace_root=$project_root
 out_dir=${OUT:-"$project_root/out/fedora-rpm"}
 tree=${TREE:-"$project_root/tools/local/fedora-kde-mobile-45-arm64/rootfs"}
 pkg_name=kernel-liuqin
@@ -28,65 +31,73 @@ say() { printf 'build-liuqin-kernel-rpm: %s\n' "$*"; }
 
 usage() {
 	cat <<'EOF'
-usage: build-liuqin-kernel-rpm.sh build|install|check
+usage: build-liuqin-kernel-rpm.sh ACTION...
 
   build    用内核 CI 产物打一个 kernel-liuqin RPM（需要 rpmbuild）
-  install  从树里删掉 Fedora 自带的内核包和 /boot 内容，装我们的 RPM（需要 rpm）
-  check    检查树里内核模块和登记文件是否齐全
+  install  清掉树里 Fedora 自带的内核，把 RPM 装进去（需要 rpm）
+  check    检查树里内核模块、登记文件和 systemd
+
+多个动作按顺序执行，例如 `build install`。所有动作都能重复跑。
 EOF
 }
 
-# --- 输入 --------------------------------------------------------------------
+need() { # 工具名 用途
+	command -v "$1" >/dev/null 2>&1 || die "$1 is missing ($2); run this through tools/fedora-container.sh"
+}
 
-# shellcheck source=tools/lib/kernel-artifact.sh
-. "$project_root/tools/lib/kernel-artifact.sh"
+# --- 产物 --------------------------------------------------------------------
 
-resolve_inputs() {
-	# 产物的一致性检查用 python3 读 build-info.json；fedora:45 的基础镜像里
-	# 没有它，缺了就会得到一句"没有一致的产物"，看不出真正原因。
-	command -v python3 >/dev/null ||
-		die 'python3 is missing (the artifact check needs it); run this through tools/fedora-container.sh'
-	requested=${KERNEL_DIR:-}
-	resolve_kernel_artifact "$project_root" "$workspace_root" "$requested" || {
-		die 'no consistent kernel artifact (copy one from CI into ci/, or set KERNEL_DIR)'
-	}
+artifact_release() {
+	# 产物的一致性检查用 python3 读 build-info.json，容器里默认没有它。
+	need python3 'the kernel artifact check needs it'
+	# shellcheck source=tools/lib/kernel-artifact.sh
+	. "$project_root/tools/lib/kernel-artifact.sh"
+	resolve_kernel_artifact "$project_root" "$project_root" "${KERNEL_DIR:-}" || die \
+		'no consistent kernel artifact (copy one from CI into ci/, or set KERNEL_DIR)'
 	release=$(cat "$MODULES_DIR/kernel.release")
 	case $release in
 	'' | *[!A-Za-z0-9._+-]*) die "unsafe kernel release: $release" ;;
 	esac
-	# RPM 的 Version 和 Release 里不能有 '-'，把 release 拆成两段。
+	say "kernel artifact: $ARTIFACT"
+	say "kernel release:  $release"
+	modules_dir=$MODULES_DIR
+}
+
+rpm_release() {
+	# shellcheck disable=SC2012
+	rpm_file=$(ls -t "$out_dir"/$pkg_name-*.aarch64.rpm 2>/dev/null | head -1)
+	[ -n "$rpm_file" ] || die "no RPM in $out_dir; run the build action first"
+	release=$(rpm -qp --provides "$rpm_file" 2>/dev/null |
+		sed -n 's/^kernel-uname-r = //p' | head -1)
+	[ -n "$release" ] || die "cannot read the kernel release from $rpm_file"
+}
+
+# --- build -------------------------------------------------------------------
+
+build_rpm() {
+	need rpmbuild 'packaging'
+	artifact_release
+
+	# RPM 的 Version 和 Release 里都不能有 '-'，把 7.3.0-g<sha> 拆成两段。
 	base=${release%%-*}
 	if [ "$base" = "$release" ]; then
 		extra=local
 	else
 		extra=${release#*-}
 	fi
-	say "kernel artifact: $ARTIFACT"
-	say "kernel release:  $release"
-}
-
-# --- build -------------------------------------------------------------------
-
-build_rpm() {
-	command -v rpmbuild >/dev/null || die 'rpmbuild is missing; run this inside fedora:45'
-	resolve_inputs
 
 	stage=$out_dir/stage
 	rm -rf "$out_dir"
 	mkdir -p "$stage"
-	tar --extract --file "$MODULES_DIR/modules.tar" --directory "$stage" --no-same-owner
-	[ -d "$stage/usr/lib/modules/$release" ] ||
-		die "module tree has no $release"
+	tar --extract --file "$modules_dir/modules.tar" --directory "$stage" --no-same-owner
 	[ -f "$stage/usr/lib/modules/$release/modules.dep" ] ||
-		die 'module tree carries no dependency index'
+		die "the module tree has no $release/modules.dep"
 	mkdir -p "$stage/usr/share/liuqin"
-	cp "$MODULES_DIR/kernel.release" "$stage/usr/share/liuqin/kernel.release"
-	cp "$MODULES_DIR/modules.manifest" "$stage/usr/share/liuqin/kernel-modules.manifest"
+	cp "$modules_dir/kernel.release" "$stage/usr/share/liuqin/kernel.release"
+	cp "$modules_dir/modules.manifest" "$stage/usr/share/liuqin/kernel-modules.manifest"
 	chmod 0644 "$stage/usr/share/liuqin/kernel.release" \
 		"$stage/usr/share/liuqin/kernel-modules.manifest"
-
-	modules=$(find "$stage/usr/lib/modules/$release" -name '*.ko*' -type f | wc -l | tr -d ' ')
-	say "modules in the payload: $modules"
+	say "modules in the payload: $(find "$stage/usr/lib/modules/$release" -name '*.ko*' -type f | wc -l | tr -d ' ')"
 
 	spec=$out_dir/$pkg_name.spec
 	cat >"$spec" <<EOF
@@ -103,7 +114,6 @@ License:        GPL-2.0-only
 BuildArch:      aarch64
 AutoReqProv:    no
 Provides:       kernel-uname-r = $release
-Obsoletes:      liuqin-kernel
 %description
 Kernel modules and the release marker for the Xiaomi Pad 6 Pro (liuqin).
 The kernel image itself is flashed separately as boot.img; this package only
@@ -115,91 +125,85 @@ cp -a $stage/. %{buildroot}/
 /usr/lib/modules/$release
 /usr/share/liuqin/kernel.release
 /usr/share/liuqin/kernel-modules.manifest
-%post
-exit 0
 EOF
 
 	say "building $pkg_name-$base-0.1.$extra.aarch64.rpm"
 	rpmbuild -bb --quiet \
 		--define "_topdir $out_dir/rpmbuild" \
-		--define "_rpmdir $out_dir/rpmbuild/RPMS" \
 		"$spec" >"$out_dir/rpmbuild.log" 2>&1 ||
-		{ tail -30 "$out_dir/rpmbuild.log"; die 'rpmbuild failed'; }
-	rpm_file=$out_dir/rpmbuild/RPMS/aarch64/$pkg_name-$base-0.1.$extra.aarch64.rpm
-	[ -f "$rpm_file" ] || die "rpmbuild produced no $rpm_file"
-	mv "$rpm_file" "$out_dir/"
+		{ tail -40 "$out_dir/rpmbuild.log" >&2; die 'rpmbuild failed'; }
+	mv "$out_dir/rpmbuild/RPMS/aarch64/$pkg_name-$base-0.1.$extra.aarch64.rpm" "$out_dir/" ||
+		die 'rpmbuild reported success but produced no RPM'
 	rm -rf "$out_dir/stage" "$out_dir/rpmbuild" "$out_dir/$pkg_name.spec"
 	say "rpm: $out_dir/$pkg_name-$base-0.1.$extra.aarch64.rpm"
-	rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} (%{SIZE} bytes)\n' \
-		"$out_dir/$pkg_name-$base-0.1.$extra.aarch64.rpm"
 }
 
 # --- install -----------------------------------------------------------------
 
-find_fedora_kernel_packages() {
-	rpm --root "$tree" -qa --qf '%{NAME}\n' 2>/dev/null |
-		grep -E '^kernel(-|$)' | grep -v "^$pkg_name$" | sort -u
-}
-
-install_into_tree() {
-	command -v rpm >/dev/null || die 'rpm is missing; run this inside fedora:45'
-	[ -d "$tree" ] || die "no Fedora tree at $tree"
-	resolve_inputs
-
-	rpm_file=$(ls "$out_dir"/$pkg_name-*.aarch64.rpm 2>/dev/null | head -1)
-	[ -n "$rpm_file" ] || die "no RPM in $out_dir; run the build action first"
-
-	old=$(find_fedora_kernel_packages)
+prune_fedora_kernel() { # RELEASE
+	prune_release=$1
+	# Fedora 自带的内核包在安装/卸载时会跑 kernel-install 和 dracut、往 /boot
+	# 写东西；这里只是把它们从树里拿掉，所以脚本一律不执行。
+	old=$(rpm --root "$tree" -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null |
+		grep -E '^kernel(-|\.)' | grep -v "^$pkg_name-" || true)
 	if [ -n "$old" ]; then
-		say 'removing Fedora own kernel packages:'
+		say 'removing the Fedora kernel packages:'
 		printf '%s\n' "$old" | sed 's/^/  /'
-		# 这些包的安装脚本会去写 /boot、跑 dracut 和 kernel-install，这里只是
-		# 删除文件，不需要它们执行。
 		for pkg in $old; do
 			rpm --root "$tree" -e --noscripts --nodeps "$pkg" >/dev/null 2>&1 || :
 		done
-	else
-		say 'no Fedora kernel packages found'
 	fi
-	rm -rf "$tree"/boot/*
-	# 删掉不属于我们这个 release 的模块目录（Fedora 自带的那份）。
+	# /boot 里是 Fedora 的内核、initramfs 和引导项，我们用不到：内核从 boot.img
+	# 启动，模块在 /usr/lib/modules 下。
+	rm -rf "$tree"/boot/* 2>/dev/null || :
 	for dir in "$tree"/usr/lib/modules/*; do
 		[ -d "$dir" ] || continue
-		[ "$(basename "$dir")" = "$release" ] || {
+		[ "$(basename "$dir")" = "$prune_release" ] || {
 			say "removing stale module tree: $dir"
 			rm -rf "$dir"
 		}
 	done
+}
 
-	say "installing $rpm_file"
-	rpm --root "$tree" -i --noscripts --nodeps "$rpm_file" ||
-		die 'rpm -i failed'
-	chmod 0644 "$tree/usr/share/liuqin/kernel.release" 2>/dev/null || :
+install_into_tree() {
+	need rpm 'installing'
+	[ -d "$tree" ] || die "no Fedora tree at $tree"
+	rpm_release
+	say "installing into $tree (release $release)"
+	prune_fedora_kernel "$release"
+	# --nosignature: 包是我们自己打的，没有签名，Fedora 的 rpm 默认要求校验。
+	# --replacepkgs: 重复跑这个动作时覆盖已装的同名同版本包。
+	rpm --root "$tree" -U --replacepkgs --noscripts --nosignature --nodeps "$rpm_file" ||
+		die 'rpm could not install the package'
 	check_tree
 }
 
+# --- check -------------------------------------------------------------------
+
 check_tree() {
 	[ -d "$tree" ] || die "no Fedora tree at $tree"
-	[ -f "$tree/usr/share/liuqin/kernel.release" ] ||
-		die 'the tree carries no /usr/share/liuqin/kernel.release'
-	recorded=$(cat "$tree/usr/share/liuqin/kernel.release")
-	[ -d "$tree/usr/lib/modules/$recorded" ] ||
-		die "no module tree for $recorded"
-	[ -f "$tree/usr/lib/modules/$recorded/modules.dep" ] ||
-		die "no modules.dep for $recorded"
+	marker=$tree/usr/share/liuqin/kernel.release
+	[ -f "$marker" ] || die "the tree carries no $marker"
+	recorded=$(cat "$marker")
+	[ -d "$tree/usr/lib/modules/$recorded" ] || die "no module tree for $recorded"
+	[ -f "$tree/usr/lib/modules/$recorded/modules.dep" ] || die "no modules.dep for $recorded"
 	[ -x "$tree/usr/lib/systemd/systemd" ] || die 'the tree has no systemd'
 	modules=$(find "$tree/usr/lib/modules/$recorded" -name '*.ko*' -type f | wc -l | tr -d ' ')
-	say "tree: $tree"
-	say "release: $recorded, modules: $modules, size: $(du -sm --apparent-size "$tree" | cut -f1) MiB"
-	say "rpm: $(rpm --root "$tree" -q $pkg_name 2>/dev/null || echo 'not installed')"
 	[ "$modules" -ge 1 ] || die 'the module tree is empty'
+	say "tree: $tree"
+	say "release: $recorded; modules: $modules; size: $(du -sm --apparent-size "$tree" | cut -f1) MiB"
+	say "package: $(rpm --root "$tree" -q $pkg_name 2>/dev/null || echo 'not installed')"
 }
 
-case ${1:-} in
-build) build_rpm ;;
-install) install_into_tree ;;
-check) resolve_inputs; check_tree ;;
--h | --help) usage; exit 0 ;;
-'') usage; exit 1 ;;
-*) die "unknown action: $1 (see --help)" ;;
-esac
+# --- 入口 --------------------------------------------------------------------
+
+[ $# -ge 1 ] || { usage; exit 1; }
+for action in "$@"; do
+	case $action in
+	build) build_rpm ;;
+	install) install_into_tree ;;
+	check) check_tree ;;
+	-h | --help) usage; exit 0 ;;
+	*) die "unknown action: $action (see --help)" ;;
+	esac
+done

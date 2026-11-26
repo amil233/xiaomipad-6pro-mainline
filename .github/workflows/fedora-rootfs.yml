@@ -79,6 +79,8 @@ jobs:
           set -euo pipefail
           mkdir -p project/out
           report=project/out/fedora-base-report.txt
+          # 清单要在这时候写：树里刚换过内核包，之前那份已经过期了。
+          sudo sh project/tools/build-liuqin-fedora-base.sh manifest
           sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
           sh project/tools/fedora-container.sh \
             'sh tools/build-liuqin-kernel-rpm.sh check' >>"$report"
