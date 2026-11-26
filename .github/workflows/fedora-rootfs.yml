@@ -1,7 +1,16 @@
 name: Fedora rootfs
-# 这条工作流只服务 Fedora 那条线，手动触发。它和 Ubuntu 线的 rootfs.yml
-# 是两份东西：取根的方式、包格式、桌面都不同，改一边不该碰另一边。
+# 这条工作流只服务 Fedora 那条线。它和 Ubuntu 线的 rootfs.yml 是两份东西：
+# 取根的方式、包格式、桌面都不同，改一边不该碰另一边。
 on:
+  # GitHub 只允许对「默认分支上存在的工作流」用 API 手动触发，这个文件只活在
+  # Fedora 分支上，所以用 push 触发：改动下面这几个文件就会自动跑一次。
+  push:
+    branches: [liuqin-installer-fedora]
+    paths:
+      - 'tools/build-liuqin-fedora-base.sh'
+      - 'tools/lib/rootfs-manifest.sh'
+      - 'device/configs/liuqin-fedora.config'
+      - '.github/workflows/fedora-rootfs.yml'
   workflow_dispatch:
 permissions:
   contents: read
