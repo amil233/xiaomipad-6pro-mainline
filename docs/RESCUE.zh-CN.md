@@ -11,8 +11,9 @@ stage 1 的 initramfs 自带 BusyBox、USB 网卡和 **telnet**（不是 SSH）�
 - 启动 `telnetd`，端口 `2323`；
 - 只要 UFS 处于 fail-closed 状态，就保留这个 shell。
 
-之前装错内核 deb 后停在这里，就是因为 root 里的 `kernel.release` 和
-initramfs 的文件清单对不上。
+停在准入拒绝时，日志里会有 `persistent root rejected: <原因>`。最常见的是
+`kernel release mismatch`：boot.img 里钉的内核版本和根里的 `kernel.release`
+不是同一次构建，也就是 boot.img 和 rootfs 没有一起刷。
 
 ## 生成一个只用于救援的 boot.img
 
@@ -65,8 +66,8 @@ fdisk dd mke2fs mount umount nc wget tar telnet
 - 要写块设备：先确认 `blockdev --getro /dev/sda`，必要时
   `blockdev --setrw /dev/sda`；
 - 完整恢复原厂 GPT 不建议在这个 shell 里手工做；用 fastboot 的
-  `flash partition`、EDL/QFIL，或者回到正常 Ubuntu 用 `sgdisk`。
-- 如果只是要把 `linux_home` 改名成 `userdata`，在正常 Ubuntu 里做更安全：
+  `flash partition`、EDL/QFIL，或者回到正常的系统里用 `sgdisk`。
+- 如果只是要把 `linux_home` 改名成 `userdata`，在正常的系统里做更安全：
 
   ```sh
   sudo sgdisk --change-name=37:userdata /dev/sda

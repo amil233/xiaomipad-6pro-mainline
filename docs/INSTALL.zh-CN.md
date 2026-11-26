@@ -1,62 +1,35 @@
 # 刷机与更新
 
-适用：Xiaomi Pad 6 Pro（liuqin，128G），Ubuntu 26.04.1 arm64（新镜像基线），从 A 槽启动，
-没有 Android。分区表保持原厂：`boot_a` 装内核，`userdata` 是唯一的数据分区
-（根和 `/home` 都在里面），没有 `/boot` 分区。
+适用：Xiaomi Pad 6 Pro（liuqin，128G），Fedora 45 KDE Plasma Mobile，从 A 槽
+启动，没有 Android。分区表保持原厂：`boot_a` 装内核，`userdata` 是唯一的数据
+分区（卷标 `LIUQIN_ROOT` 的 ext4，根在 `native-root/` 下），没有 `/boot` 分区。
 
 产物怎么来见 [`BUILD.zh-CN.md`](BUILD.zh-CN.md)。
-
-救援 shell 的进入方法见 [`RESCUE.zh-CN.md`](RESCUE.zh-CN.md)。
 
 ## 0. 要刷什么
 
 ```
 boot.img    → boot_a      内核、设备树、initramfs、ABL overlay
-rootfs.img  → userdata    整个 Ubuntu 根文件系统
+rootfs.simg → userdata    整个 Fedora 根文件系统（Android sparse 格式）
 ```
 
-boot.img 里有这份 rootfs 的文件哈希清单，启动时会核对。**只换内核**时清单
-不变，刷 boot.img 就行；**动了用户态**时清单会变，boot.img 和 rootfs 必须
-一起换。
+boot.img 里钉着这次构建的内核版本号，启动时和根里的 `kernel.release` 比对，
+不一致就停在 initramfs 的救援 shell。所以两者必须来自同一次构建、一起刷。
 
 ## 1. 开始之前
 
-- Bootloader 已解锁，能进 fastboot，电量 30% 以上。
-- 分区表是原厂 V14 的那张：`boot_a`、`userdata` 都在；现在按新的单数据分区
-  布局使用。
-- 刷 `userdata` 会清空数据分区（根和 `/home` 一起），先备份。
-- `boot_b` 不参与启动，也不是回滚方式；回滚用 `repack/` 里的 boot.img。
-
-### 1.1 从旧的 `/` + `/home` 双分区迁移
-
-参考项目安装器把根和 `/home` 划成了 `linux_root`/`linux_home`，原厂的
-`userdata` 已经不在。新镜像只认原厂表里的 `userdata`，所以不能原地升级：
-
-1. 备份平板上要保留的数据；
-2. 用 V14 线刷包恢复原厂分区表。先试 LUN0：
-
-   ```sh
-   fastboot flash partition images/gpt_both0.bin
-   ```
-
-   如果 `flash_all.sh` 仍报找不到 `userdata`，再按 ROM 里的
-   `images/gpt_both1.bin` … `images/gpt_both5.bin` 逐个 LUN 刷入；
-3. 运行 `flash_all.sh` 恢复原厂 Android 和分区表（会清空平板）；
-4. 重启到 fastboot，再按第 2 节刷新的 boot 和 rootfs。
-
-刷 GPT 是破坏性操作，确认用的是本机 V14 线刷包里的文件；不确定就先用
-官方线刷工具恢复，再继续。
+- Bootloader 已解锁，能进 fastboot，电量 30% 以上；
+- 分区表是原厂 V14 的那张；
+- 刷 `userdata` 会清空数据分区（根和 `/home` 一起），先备份；
+- 回滚靠上一套镜像：刷回旧的 `boot.img` + `rootfs.simg`，或者用 V14 线刷包恢复
+  原厂系统。
 
 ## 2. 第一次安装或重装
 
-集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、分片的 `rootfs.tgz`
-（里面是 Android sparse 的 `rootfs.simg`）、`SHA256SUMS`、`native-root.hashes`
-和 `liuqin-firstboot.cpio.gz`，不需要在刷机主机上转换。
-
-在刷机主机上执行：
+在刷机主机上：
 
 ```sh
-# 下载 artifact 后，先合并分片，核对，再解开
+# 下载 artifact 后，先合并分片、核对、解开
 cat rootfs.tgz.part-* > rootfs.tgz
 sha256sum -c SHA256SUMS
 tar -xzf rootfs.tgz          # 得到 rootfs.simg
@@ -66,40 +39,27 @@ fastboot flash userdata rootfs.simg
 fastboot reboot
 ```
 
-Windows 刷机主机：先 `copy /b rootfs.tgz.part-* rootfs.tgz` 合并，再用 7-Zip
-把 `rootfs.tgz` 解两层（先出 `rootfs.tar`，再出 `rootfs.simg`）。`SHA256SUMS`
-核对的是 `rootfs.tgz`，解压出来的 `rootfs.simg` 由它一并覆盖。
+Windows 刷机主机：先 `copy /b rootfs.tgz.part-* rootfs.tgz`，再用 7-Zip 把
+`rootfs.tgz` 解两层（先出 `rootfs.tar`，再出 `rootfs.simg`）。`SHA256SUMS` 核对
+的是 `rootfs.tgz`。
 
-刷完把 `native-root.hashes` 和 `liuqin-firstboot.cpio.gz` 拷到开发机，覆盖
-同名文件，供以后只换内核时装配 boot.img：
+第一次启动会进 **plasma-setup**（KDE 的首次设置），创建用户、设语言时区。这条线
+没有 gnome-initial-setup，也没有预置账户。
 
-```sh
-cp native-root.hashes       <repo>/out/native-root/native-root.hashes
-cp liuqin-firstboot.cpio.gz <repo>/out/initramfs-liuqin/liuqin-firstboot.cpio.gz
-```
-
-这两个文件是 boot.img 里那份清单的来源。下次只换内核时，脚本会用它们核对
-新内核和实际 rootfs 是否匹配。
-
-第一次启动会直接进 `gnome-initial-setup`，创建用户。进桌面后做两件事：
+进桌面后做两件事：
 
 ```sh
 # 1. 从 persist 分区取本机的 MAC、蓝牙地址、喇叭校准和传感器数据
 sudo sh tools/provision-liuqin-from-persist.sh /
 sudo reboot
 
-# 2. 镜像默认只占 6–8 GB，把它扩到整个 userdata
+# 2. 镜像默认只占 6 GiB 左右，把它扩到整个 userdata
 sudo resize2fs /dev/disk/by-partlabel/userdata
 ```
 
-不做第 1 步也能开机，但 Wi-Fi/蓝牙地址、喇叭校准和传感器会缺或使用默认值。
-第 1 步只在重装 rootfs 后需要，因为那些数据在根分区里，会被刷掉。
-
-原厂 `persist` 分区可能留着没 replay 的 ext4 journal，这时内核对只读挂载会
-报 `recovery required on readonly filesystem` 并拒绝。脚本先试 `ro`，失败
-就退到 `ro,noload`，打一条 warning 后照常取值，全程不写 persist。想把这个
-状态彻底修掉，手动 replay 一次即可（会写 journal 和元数据，仍不碰用户的
-校准文件）：
+原厂 `persist` 分区可能留着没 replay 的 ext4 journal，这时内核对只读挂载会报
+`recovery required on readonly filesystem`。脚本先试 `ro`，失败就退到 `ro,noload`，
+打一条 warning 后照常取值，全程不写 persist。想彻底修掉，手动 replay 一次：
 
 ```sh
 sudo umount /dev/disk/by-partlabel/persist 2>/dev/null
@@ -108,38 +68,28 @@ sudo mount -o rw /dev/disk/by-partlabel/persist /mnt && sudo umount /mnt
 
 ## 3. 只更新内核
 
-先在平板上装新的内核 deb，再进 fastboot 刷 boot.img：
+1. 用新的内核产物重新装配 boot.img（`fedora-rootfs` 工作流的第 5 步，或本地
+   `tools/build-liuqin-fedora-boot.sh`）；
+2. 平板上下载并安装新的 `kernel-liuqin-*.aarch64.rpm`：
 
-```sh
-# 1. 平板上的 Ubuntu 里（只改磁盘上的文件，正在运行的内核不受影响）
-sudo dpkg -i liuqin-kernel_0.1_arm64.deb
+   ```sh
+   sudo dnf install ./kernel-liuqin-7.3.0-0.1.g<commit>.aarch64.rpm
+   ```
 
-# 2. 关机，音量键进 fastboot
+   包是本地打的、没有签名，`dnf` 需要用 `--nogpgcheck`。
+3. 关机进 fastboot，`fastboot flash boot_a boot.img`，重启。
 
-# 3. 刷机主机
-fastboot boot repack/<commit>-boot/boot-liuqin-firstboot.img   # 可以先试
-fastboot flash boot_a repack/<commit>-boot/boot-liuqin-firstboot.img
-fastboot reboot
-```
-
-- 装完 deb 后旧 boot.img 已经找不到对应的内核模块，不要再用它启动；直接进
-  fastboot 刷新的。
-- 内核模块和版本号由 deb 更新，boot.img 只换 Image、设备树和 initramfs。
-- 这条路不碰 `userdata`，数据保留。
+这条路不碰 `userdata`，数据保留。
 
 ## 4. 更新用户态
 
-用户态一变，boot.img 里的文件清单就过期，两样要一起换：
+树里的任何内容变了（固件、桌面、包）就要重跑 `fedora-rootfs` 工作流，boot.img 和
+rootfs 一起换：
 
-1. 先备份 `/home`（`userdata` 会被整块重写）；
-2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；
-   刷机主机合并 `rootfs.tgz` 分片并解开（BUILD 第 4 节）；
-3. `fastboot flash boot_a boot.img`，
-   `fastboot flash userdata rootfs.simg`；
-4. 重启，按第 2 节做一次校准导入，再把 `/home` 放回去。
-
-不能只装新的 device-support 而不换 boot.img：下次启动时文件清单对不上，
-initramfs 会拒绝挂载根文件系统。
+1. 备份 `/home`；
+2. 跑工作流，下载新的 artifact；
+3. 按第 2 节合并、解开、刷 `boot_a` 和 `userdata`；
+4. 重启后按第 2 节做一次校准导入，再把 `/home` 放回去。
 
 ## 5. 启动后检查
 
@@ -147,29 +97,32 @@ initramfs 会拒绝挂载根文件系统。
 
 | 项 | 怎么看 |
 |---|---|
-| 内核 | 面板或串口日志到 systemd，没有 oops；`uname -r` 是预期的版本 |
-| 显示/触控 | 120 Hz；`/proc/interrupts` 有 nt36523，`/dev/input` 有事件节点 |
+| 内核 | 面板或串口日志到 systemd；`uname -r` 是 `fedora-rootfs` 工作流报的那个版本 |
+| 准入 | 没有停在 initramfs 救援 shell |
+| 显示/触控 | 桌面出现；`/proc/interrupts` 有 `nt36523`；`/dev/input` 有事件节点 |
 | Wi-Fi / 蓝牙 | MAC 和地址来自 persist |
 | 音频 | `speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1` 出声 |
-| 根分区 | `findmnt /` 是 `LABEL=LIUQIN_ROOT` 的 ext4，`/home` 在同一个文件系统上 |
-| 桌面 | 能登录、能建用户 |
+| 根分区 | `findmnt /` 是 `LABEL=LIUQIN_ROOT` 的 ext4 |
+| 桌面 | Plasma Mobile 能登录、能建用户 |
+| SELinux | `getenforce` 是 `Permissive` |
 
 结果写回 [`STATUS.zh-CN.md`](STATUS.zh-CN.md)；没验证过的不要写成可用。
 
-## 6. 回滚与恢复
+## 6. 回滚
 
 | 情况 | 怎么做 |
 |---|---|
-| 新内核能启动但有问题 | 在系统里装回旧的内核 deb，再刷回旧 boot.img |
-| 新内核完全起不来 | 旧 boot.img 和旧 rootfs.img 一起刷回（新 deb 已经换掉了模块，单刷 boot.img 对不上） |
-| 新用户态有问题 | 旧 boot.img 和 rootfs.img 一起刷回 |
-| 回原厂 | V14 线刷包 `flash_all.sh`；`out/boot_a.img` 留档 |
+| 新内核起不来 | 刷回旧的 boot.img（模块版本要一起回，装旧的 RPM） |
+| 新用户态有问题 | 旧的 `boot.img` + `rootfs.simg` 一起刷回 |
+| 回 Ubuntu 线 | 刷 `liuqin-install` 线的产物 |
+| 回原厂 | V14 线刷包 `flash_all.sh` |
 
-刷机主机上保留上一套 boot.img 和 rootfs.img，回滚就靠它们。
+刷机主机上保留上一套 `boot.img` 和 `rootfs.simg`，回滚就靠它们。
 
 ## 7. 卡住了看哪里
 
-- 停在 initramfs：USB 网络救援 `telnet 192.168.7.2 2323`。
-- 空间没长满：`resize2fs /dev/disk/by-partlabel/userdata`。
-- 刷之前先看 `boot-liuqin-firstboot.info`：命令行、ramdisk、ABL 信息都在里面。
-- 其它问题：STATUS 的“已知问题”。
+- 停在 initramfs：USB 网络救援 `telnet 192.168.7.2 2323`，见
+  [`RESCUE.zh-CN.md`](RESCUE.zh-CN.md)；
+- 空间没长满：`sudo resize2fs /dev/disk/by-partlabel/userdata`；
+- 准入被拒：救援 shell 里会有 `persistent root rejected: <原因>` 一行，最常见的
+  是 `kernel release mismatch`（boot.img 和 rootfs 不是同一次构建）。

@@ -1,109 +1,76 @@
-# 从产物到刷机
+# 产物怎么来
 
-内核在内核仓的 GitHub Actions 编译；整机 rootfs 和配套 boot.img 在集成仓的
-`rootfs` workflow 上装配。开发机不跑整机装配，也不需要把 tar 转成 ext4。
+内核在内核仓的 GitHub Actions 上编译；整机镜像在集成仓的 `fedora-rootfs` 工作流
+上装配。开发机不跑整机装配。
 
-## 1. 产物
+## 1. 产物清单
 
-| 产物 | 内容 | 谁产出 |
-|---|---|---|
-| `ci/liuqin-kernel-<commit>/` | `kernel/`：Image、设备树、`.config`、`build-info.json`、`SHA256SUMS`；`kernel-modules/`：模块包和版本文件 | 内核仓 CI |
-| `rootfs.tgz` | `rootfs.img` 的 Android sparse 版本（`rootfs.simg`）打成的 gzip 包；artifact 里再切成 1900 MiB 的 `rootfs.tgz.part-NN` | 集成仓 `rootfs` workflow |
-| `boot.img` | Image + 设备树 + initramfs + ABL overlay，补零到 192 MiB | 同一次 `rootfs` workflow |
-| `native-root.hashes` | 这次 rootfs 的文件清单 | 同一次 `rootfs` workflow |
-| `liuqin-firstboot.cpio.gz` | boot.img 里的 initramfs | 同一次 `rootfs` workflow |
-| `liuqin-kernel_*.deb` | 模块、`/boot` 文件、`kernel.release` | `build-liuqin-boot.sh --deb` |
-
-`kernel/source.json` 只记录内核仓的**分支**、设备树和配置分片，不保存
-commit 或哈希。用到的文件都由脚本当场核对。
+| 产物 | 内容 |
+|---|---|
+| `boot.img` | 内核 Image + 设备树 + initramfs + ABL overlay，补零到 192 MiB |
+| `rootfs.tgz.part-NN` | Android sparse 的 ext4 镜像（`rootfs.simg`）打成的 tgz，按 1900 MiB 切分 |
+| `SHA256SUMS` | 上面那个 `rootfs.tgz` 的哈希 |
+| `native-root.hashes.gz` | 装配前那棵树的逐文件哈希（`sha256  /绝对路径`） |
+| `rootfs.manifest.gz` | 同一棵树的类型、权限、属主、路径 |
+| `kernel-liuqin-*.aarch64.rpm` | 内核模块包，用于只换内核时在系统里升级 |
 
 ## 2. 内核 CI
 
-- 推内核仓 `liuqin-7.3`，或手动触发
-  `linux-sm8450-liuqin/.github/workflows/liuqin.yml`（`ubuntu-26.04-arm`）。
-- CI 用 `kernel/source.json` 的分支和分片构建，产物目录名就是构建出来的
-  commit。
-- 使用前核对目录名等于 `build-info.json` 的 commit、两个 `SHA256SUMS` 通过、
-  `.config` 和分片的哈希一致。
+内核仓 `liuqin-7.3-fedora` 分支一推就会构建（跑集成仓的
+`.github/actions/kernel`），产物是 `liuqin-kernel-<commit>/`，里面
+`kernel/` 有 Image、dtb、`.config`、`build-info.json`，`kernel-modules/` 有
+`modules.tar`、`kernel.release`、`modules.manifest`。
 
-## 3. rootfs 和 boot 的 CI
+内核代码和 `liuqin-7.3` 分支完全一样；区别只在这个分支会去取集成仓的
+`liuqin-installer-fedora` 分支，用那份配置（带 SELinux）。
 
-集成仓的 `.github/workflows/rootfs.yml`：
+## 3. 镜像 CI（`fedora-rootfs` 工作流）
 
-1. 用 `PAT_GET_KERNEL` 下载内核仓该分支最近一次成功的 artifact；
-2. 用仓库里跟踪的固件池、WLAN tuple、传感器配置、AudioReach 子集和 ABL
-   分析重建输入；
-3. 下载 Ubuntu 26.04.1 桌面 ISO，解出桌面 root，随后删除 ISO 和 casper；
-4. 装配 rootfs、对应 boot.img 和 ramdisk；
-5. 生成 ext4 的 `rootfs.img`，再转成 Android sparse 的 `rootfs.simg`；
-6. 把 `rootfs.simg` 打进 `rootfs.tgz`（tar + gzip），`SHA256SUMS` 记它；
-7. 把 `rootfs.tgz` 切成 1900 MiB 的片，和 `boot.img`、`SHA256SUMS`、
-   `native-root.hashes`、ramdisk 一起上传。
+手动触发（`workflow_dispatch`）或推送到 `liuqin-installer-fedora` 且改动了
+`tools/` 下的相关脚本、`initramfs/init`、`device/configs/liuqin-fedora.config`、
+工作流本身时触发。它分七段：
 
-产物名：`liuqin-rootfs-<commit>`。boot 和 root 来自同一次内核 artifact 和
-同一份文件清单，不会错配。
+1. **下 ISO**：从 `dl.fedoraproject.org` 取
+   `Fedora-KDE-Mobile-Live-45-1.4.aarch64.iso`，按官方 `CHECKSUM` 核对；
+2. **解根**：抽出 `LiveOS/squashfs.img`（Fedora 42 起实为 EROFS），按魔数判断格式，
+   挂上里面的根，整棵树复制出来（保留属主、ACL、SELinux 标签）；
+3. **内核包**：下载内核 CI 产物，在 `fedora:45` 容器里打成一个 `kernel-liuqin`
+   RPM，装进树里，同时删掉 Fedora 自带的 `kernel*` 包和 `/boot` 内容；
+4. **整理树**：写 `/etc/liuqin-native-root`、清 `machine-id`、SELinux 改 permissive，
+   写出 `native-root.hashes`；
+5. **boot.img**：编扬声器拓扑，用内核产物 + ABL overlay + 新 initramfs 组装；
+6. **ext4 镜像**：树放进 `native-root/`，`mke2fs` 成卷标 `LIUQIN_ROOT` 的 ext4，
+   过 `e2fsck`、卷标和 `debugfs` 检查；
+7. **打包**：`img2simg` → `rootfs.tgz` → 1900 MiB 分片，连同其他产物上传。
 
-运行环境：`ubuntu-26.04-arm`，清理后约 118 GiB 可用；不需要本地构建机。
+运行环境：`ubuntu-26.04-arm`（arm64），约 118 GiB 可用。RPM 相关的部分在
+`fedora:45` 容器里跑——GitHub 没有 arm64 的 rpm 系 runner，容器是原生执行，
+`tools/fedora-container.sh` 会钉 `--platform linux/arm64` 并核对容器里的
+`uname -m`。
 
 ## 4. 刷机
 
-下载 artifact 后，在能运行 fastboot 的机器上：
-
-```sh
-cat rootfs.tgz.part-* > rootfs.tgz
-sha256sum -c SHA256SUMS      # 核对的是 rootfs.tgz，里面的 simg 一并受它覆盖
-tar -xzf rootfs.tgz          # 得到 rootfs.simg
-
-fastboot flash boot_a   boot.img
-fastboot flash userdata rootfs.simg
-fastboot reboot
-```
-
-在 Windows 刷机主机上先合并分片，再用 7-Zip 解两层（`rootfs.tgz` → `rootfs.tar`
-→ `rootfs.simg`）：
-
-```
-copy /b rootfs.tgz.part-* rootfs.tgz
-```
-
-首次启动进 `gnome-initial-setup`。进桌面后：
-
-```sh
-sudo resize2fs /dev/disk/by-partlabel/userdata
-```
-
-分区表必须是原厂表；从旧的 `linux_root`/`linux_home` 迁移见
-[`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) 第 1 节。
+见 [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) 第 2 节。
 
 ## 5. 只换内核
 
-rootfs 不变时，不需要重跑整机装配：
+boot.img 里钉的是内核版本号，所以只换内核时：
 
-```sh
-sh tools/build-liuqin-boot.sh --deb
-```
+1. 用新的内核产物重新装配 boot.img（同一次工作流的第 5 步，或本地
+   `tools/build-liuqin-fedora-boot.sh`）；
+2. 平板上装新的 `kernel-liuqin-*.aarch64.rpm`；
+3. 刷 `boot_a`。
 
-用内核仓 CI 的 artifact，加上平板当前 root 的 `out/native-root/native-root.hashes`
-和 ramdisk，生成新的 boot.img 和配套 deb。刷 `boot_a`，在系统里装 deb。
-
-用户态变了就要重新跑 `rootfs` workflow，boot.img 和 rootfs 一起换。
+rootfs 不动。反过来，动了树的任何内容（固件、桌面、包），boot.img 里的版本钉虽然
+还能对上，但树已经变了，重新跑一遍工作流更省事。
 
 ## 6. 输入从哪来
 
 | 输入 | 来源 |
 |---|---|
-| 内核产物 | 内核仓 CI |
-| Ubuntu 26.04.1 桌面 ISO | cdimage.ubuntu.com，下载时核对官方 `SHA256SUMS` |
-| 固件池、传感器配置 | 已跟踪在 `device/firmware-pool`、`device/sensors/rom` |
-| WLAN tuple | 已跟踪在 `device/wlan-tuple` |
-| 音频拓扑源码 | 已跟踪在 `device/audio-topology/upstream` |
-| ABL overlay/基设备树 | 已跟踪在 `device/abl-analysis` |
-| 指纹用户态 | 可选，默认不装；见 [`FINGERPRINT.zh-CN.md`](FINGERPRINT.zh-CN.md) |
+| 内核产物 | 内核仓 `liuqin-7.3-fedora` 的 CI |
+| Fedora Live ISO | `dl.fedoraproject.org`，官方 `CHECKSUM` 核对 |
+| 固件池、WLAN tuple、ABL 分析 | 仓库里跟踪的 `device/firmware-pool`、`device/wlan-tuple`、`device/abl-analysis` |
+| 音频拓扑源码 | `device/audio-topology/upstream` |
 
-外部下载只核对发布方给的校验值；没有校验值的只记录来源和实际哈希，不用
-自造的哈希冒充验证。
-
-## 7. 发布
-
-目前没有公开发布包。通用镜像在平板上完整安装、冷启动并逐项检查之前，不标
-“已验证”。
+外部下载只核对发布方给的校验值。

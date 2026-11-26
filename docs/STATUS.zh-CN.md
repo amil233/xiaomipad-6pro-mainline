@@ -1,69 +1,47 @@
-# 状态（2026-11-26）
+# 状态（2026-11-26，Fedora 分支）
 
-这里只写当前事实。内核版本、镜像哈希等会变的数字不抄进文档，用命令现场查：
-`uname -r`、`git -C ../linux-sm8450-liuqin log -1`、`ls repack/`。
+这条分支做的是把平板从 Ubuntu + GNOME 换成 Fedora 45 KDE Plasma Mobile。**还没在
+真机上启动过**，下面分开写"CI 上已经产出的"和"还没验证的"。
 
-## 设备
+会变的数字（内核版本、镜像哈希）不写死，用命令现场查。
 
-| 项 | 值 |
+## 已经跑通的（都在 CI 上）
+
+| 项 | 现状 |
 |---|---|
-| 设备 | Xiaomi Pad 6 Pro（liuqin，128G，天马 `m81_36_02_0a`，SM8475） |
-| 系统 | Ubuntu 26.04 arm64 桌面（GNOME），单系统，没有 Android；新镜像基线改为 26.04.1 |
-| 启动 | A 槽直接启动（`fastboot flash boot_a`）；`boot_b` 不参与启动 |
-| 分区 | 原厂分区表；`userdata` 是唯一数据分区（ext4，`LABEL=LIUQIN_ROOT`，根在 `native-root/` 下），没有单独的 `/home` 或 `/boot` 分区 |
-| ROM | `V14.0.9.0.TMYCNXM` |
-| 内核 | 内核仓 `liuqin-7.3`；平板实际跑哪个 commit，用 `uname -r` 对照 |
-| 集成仓分支 | `liuqin-install` |
-| 开发机 | Ubuntu 26.04.1 arm64，2 核 / 11 GB：做 boot.img、内核 deb、离线检查 |
-| 构建 | GitHub Actions `rootfs` workflow（`ubuntu-26.04-arm`）；runner 145 GiB，清理后约 118 GiB 可用 |
-| 刷机主机 | 通过 USB 连接平板：合并 `rootfs.tgz` 分片并解开，`fastboot` 刷入 |
+| 取自 Live ISO 的根 | Fedora 45 KDE Mobile，ext4（ISO 里那层是 EROFS，解开就是根）；131,266 个文件、1713 个包、6107 MiB |
+| 内核包 | `kernel-liuqin` RPM 装进树：756 个模块，树降到 5377 MiB（Fedora 自带内核和 `/boot` 已清掉） |
+| 根整理 | marker、`machine-id` 清空、SELinux permissive，`native-root.hashes` 已生成 |
+| 桌面 | `plasma-mobile 6.8.1`、`plasma-workspace 6.8.1`、`plasma-setup 6.8.1`、登录管理器 `plasmalogin` |
+| boot.img / ext4 镜像 | 装配步骤已接入工作流，首次结果以最近一次 run 为准 |
 
-## 安装与更新
-
-`rootfs` workflow 产出分片的 `rootfs.tgz`（内含 sparse 的 `rootfs.simg`），
-刷机主机合并、解开后直接刷入，平板刷 `boot_a` 和 `userdata`。只换内核时，
-刷 `boot_a` 并在系统里装新的内核 deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
-[`INSTALL.zh-CN.md`](INSTALL.zh-CN.md)，产物见 [`BUILD.zh-CN.md`](BUILD.zh-CN.md)。
-
-## 已验证
-
-- 显示：2 LM / 2 DSC、双 DSI、120 Hz、天马面板。
-- 触控：Novatek `nt36523`（SPI）+ 天马固件自动更新。
-- 音频：48 kHz / 4 声道 / 24-bit / 4×32-bit slot 的 TDM，四颗 CS35L41；
-  `speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1` 出声。
-- 桌面：GNOME 可登录；USB 网络救援（initramfs `telnet 192.168.7.2 2323`）。
-- 持久化：根分区（`userdata` 单块数据分区）可读写。
-- 恢复：原厂 V14 线刷包可以整机回退。
-- 安装：按 [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) 第 2 节从 CI 产物走完整流程
-  装成 Ubuntu 26.04.1 桌面（fastboot 刷 `boot_a` + `userdata`，首启进桌面，
-  `provision-liuqin-from-persist.sh` 和 `resize2fs` 都通过）。
-
-## 未验证或不支持
+## 还没验证的
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 指纹 | 未验证 | 默认镜像不装；自建和验收步骤见 [`FINGERPRINT.zh-CN.md`](FINGERPRINT.zh-CN.md) |
-| 相机 | 未验证 | 只在临时启动的相机内核上试过；完整镜像没有带相机启动 |
-| 自动亮度 | 不支持 | 参考项目 v0.6.1 以后才有，没有合并 |
-| 连接器温度 | 不支持 | 内核里没有对应代码 |
-| g_idle 冷启动顺序 | 待测 | 生产改动尚未实现；步骤见 [`TEST-g-idle-coldplug.zh-CN.md`](TEST-g-idle-coldplug.zh-CN.md) |
+| 真机启动 | 未验证 | 一次都没刷过；这是下一步 |
+| 显示 / 触控 | 未验证 | 依赖主线内核 + Mesa，与 Ubuntu 线同一套驱动 |
+| Wi-Fi / 蓝牙 | 未验证 | 地址来自 persist，需要跑 `provision-liuqin-from-persist.sh` |
+| 音频 | 未验证 | 拓扑和 UCM2 的移植还没做，KDE 侧走 PipeWire |
+| 传感器 / 电源键 / 指纹 / 相机 | 未验证 | Ubuntu 线那套设备载荷还没移植成 RPM |
+| 首次设置 | 未验证 | 应当进 plasma-setup 建用户 |
 
-## 已知问题
+## 已知问题 / 待办
 
-| 问题 | 现状 |
+| 项 | 现状 |
 |---|---|
-| 关机后插电自动开机 | 看 `/proc/cmdline` 里的 `off-mode-charge`；可试 `fastboot oem off-mode-charge 0` |
-| 亮度重启后重置 | 背光驱动是模块，查 `systemd-backlight@` 启动顺序 |
-| 接电脑 USB 掉电 | 电流上限停在 100 mA；原厂靠 USB 枚举抬到 500 mA，内核里没有这个处理 |
-| 音频边角 | 只接受 48k/4ch/24-bit；强制 2ch/S16 的应用会被拒 |
-| persist journal 未 replay | 原厂 persist 带着未 replay 的 ext4 journal，内核拒绝 `ro` 挂载；`provision-liuqin-from-persist.sh` 自动退到 `ro,noload` 并告警，手动 replay 一次的命令见 INSTALL 第 2 节 |
-| 分区迁移 | 当前按新布局（原厂分区表 + `userdata` 单块数据分区）；如需重划分区，先刷 V14 整包，会清空整机 |
-| 升级 7.4 | 等正式版；合并冲突先记在 `archive/kernel-v73-divergence.md` |
+| 设备载荷没移植 | 固件、UCM2、传感器栈、电源键、指纹这些都还只在 Ubuntu 线的 deb 里 |
+| SELinux | 先 permissive；策略和标签没打全之前不收紧 |
+| 自动登录 | `etc/plasmalogin.conf` 里有 autologin 相关配置，树里没有人类账户，第一次启动走 plasma-setup，上机时确认 |
+| 无 `/etc/fstab` | 根由 initramfs 挂好，systemd 不需要 fstab；确认没有服务因此报错 |
+| 内核升代 | 现在跟主线 7.3；Fedora 45 自带的也是 7.3.6，同代 |
 
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
+| [`FEDORA.zh-CN.md`](FEDORA.zh-CN.md) | 换发行版的来龙去脉、五个阶段、还没确认的事 |
+| [`BUILD.zh-CN.md`](BUILD.zh-CN.md) | 从 ISO 到可刷产物 |
 | [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) | 刷机、更新、回滚 |
-| [`BUILD.zh-CN.md`](BUILD.zh-CN.md) | 从源码到可刷产物 |
+| [`RESCUE.zh-CN.md`](RESCUE.zh-CN.md) | initramfs 救援 shell |
 | [`archive/`](archive/) | 历史记录，不再维护 |
