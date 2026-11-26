@@ -33,7 +33,7 @@ log() {
 # built persistent image contains /etc/liuqin-storage-mode with the single word
 # "persistent".  Even in that image we begin by making every UFS block device
 # read-only.  The userdata partition is opened only after its identity
-# (PARTNAME, filesystem label, marker file and root contract) has been checked
+# (PARTNAME, filesystem label, marker file and kernel release) has been checked
 # while it is mounted read-only.  Capacity variants move userdata inside the
 # GPT, so the partition is resolved by name, not by a pinned number.
 storage_mode=readonly
@@ -478,7 +478,7 @@ storage_prepare_persistent_root() {
 	storage_probe_checked_root=$storage_probe_root
 	[ -z "$storage_root_subdir" ] || storage_probe_checked_root=$storage_probe_root/$storage_root_subdir
 	if ! storage_root_ok "$storage_probe_checked_root"; then
-		log "persistent root marker or root contract is invalid"
+		log "persistent root marker, systemd or kernel release check failed"
 		storage_abort
 		return 1
 	fi

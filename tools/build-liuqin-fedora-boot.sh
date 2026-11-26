@@ -4,6 +4,10 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+die() { printf 'build-liuqin-fedora-boot: %s\n' "$*" >&2; exit 1; }
+say() { printf 'build-liuqin-fedora-boot: %s\n' "$*"; }
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+
 out_dir=${OUT_DIR:-"$project_root/out/fedora-boot"}
 kernel_source=${KERNEL_SOURCE:-"$project_root/../linux-sm8450-liuqin"}
 kernel_out=${KERNEL_OUT:-"$project_root/out/kernel"}
@@ -47,10 +51,6 @@ fi
 image=${KERNEL_IMAGE:-$kernel_out/arch/arm64/boot/Image}
 raw_dtb=${KERNEL_DTB:-$kernel_out/arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dtb}
 cmdline=$(cat "$project_root/device/native-bootargs.txt")
-
-die() { printf 'build-liuqin-fedora-boot: %s\n' "$*" >&2; exit 1; }
-say() { printf 'build-liuqin-fedora-boot: %s\n' "$*"; }
-sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 case $out_dir in
 "$project_root"/out/*) ;;

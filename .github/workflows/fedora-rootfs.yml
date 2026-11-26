@@ -96,7 +96,7 @@ jobs:
             device-tree-compiler m4 alsa-utils e2fsprogs android-sdk-libsparse-utils
           # 取根那一步是用 sudo 跑的，tools/local 是它建的（root 拥有）；这里要
           # 往里 clone mkbootimg，先把这一层目录交还给 runner 用户。
-          sudo chown "$(id -u):$(id -g)" project/tools/local
+          [ -d project/tools/local ] && sudo chown "$(id -u):$(id -g)" project/tools/local
           sh project/tools/fetch-aosp-mkbootimg.sh
           sh project/tools/fetch-busybox-arm64.sh
 

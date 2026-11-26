@@ -41,7 +41,7 @@ touch_firmware_names="novatek_nt36532_m81_fw_csot.bin novatek_nt36532_m81_fw_tm.
 # nothing that could re-open hci0 once the rootfs is up. One megabyte, and it
 # is the difference between the driver having a chance and not.
 #
-# Selection rule and pinning are explained in tools/build-liuqin-ubuntu-rootfs.sh;
+# The selection rule is explained by the callers: build-liuqin-fedora-boot.sh here,
 # the two scripts ship the identical set, from the identical directory, and both
 # check it against the same digest.
 bt_firmware_dir=${BT_FIRMWARE_DIR:-"$project_root/tools/local/firmware-liuqin/bt-qca6490/vendor/bt_firmware/image"}
@@ -165,7 +165,7 @@ fi
 
 if [ -n "$rootfs" ] && [ ! -r "$rootfs" ]; then
 	echo "error: stage-2 root filesystem is unavailable: $rootfs" >&2
-	echo "       run tools/build-liuqin-ubuntu-rootfs.sh, or set ROOTFS=none to" >&2
+	echo "       pass ROOTFS=none to ask for the stage-1-only image." >&2
 	echo "       build the stage-1-only diagnostic initramfs." >&2
 	exit 1
 fi
