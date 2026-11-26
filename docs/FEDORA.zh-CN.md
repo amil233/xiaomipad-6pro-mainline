@@ -64,14 +64,18 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
 - 内核的 SELinux 开关写进了 `device/configs/liuqin-fedora.config`，并且加进了
   `kernel/source.json` 的配置列表，所以这个分支构建出来的内核带 SELinux。
 - 第 1 步的脚本 `tools/build-liuqin-fedora-base.sh` 和新的 workflow
-  `.github/workflows/fedora-rootfs.yml` 已经写好，**还没跑过**。
+  `.github/workflows/fedora-rootfs.yml` 已经写好，跑过两次，第二次看清了 ISO
+  的内部结构（见下一节），刚改完，还要再跑一次确认。
 
 ## 还没确认的事
 
-- Live ISO 里那个文件仍叫 `LiveOS/squashfs.img`，但 Fedora 42 起里面换成了
-  EROFS（比 squashfs 压缩率好）。再往里通常是一个 ext4 的 `LiveOS/rootfs.img`。
-  脚本按魔数判断格式，squashfs、EROFS、直接是 ext4 三种都能处理；第一次跑
-  workflow 时已经确认是 EROFS，卡在只认 squashfs 的老假设上，现已改掉。
+- Live ISO 里那个文件仍叫 `LiveOS/squashfs.img`，但从 Fedora 42 起是 EROFS
+  （2.34 GB）。按日志确认：**这层 EROFS 解出来就是根**，里面没有
+  `LiveOS/rootfs.img`，只有 `boot/`、`usr/` 这些正常目录。脚本已按这个改：
+  只认 `LiveOS/rootfs.img` 这个固定位置，没有就把打开的树当根。
+- 这棵树里的 `boot/` 装的是 Fedora 自己的内核和 initramfs（`vmlinuz-*`、
+  `initramfs-*.img`）。我们用不上（内核从 `boot_a` 启动，模块在
+  `/usr/lib/modules`），要不要在装配时删掉、能省多少，等报告里的数字出来再定。
 - 内核 RPM 的安装脚本会尝试往 `/boot` 写东西，要绕开。
 - 桌面定制（原来的 `device/gnome-overlay`）几乎要重做，工作量最大。
 

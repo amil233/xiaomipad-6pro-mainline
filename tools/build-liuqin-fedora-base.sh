@@ -125,14 +125,13 @@ image_kind() { # FILE
 	echo unknown
 }
 
-# 容器里那个文件系统镜像：优先按 Fedora 的固定位置找，找不到再在浅层找 *.img。
+# 容器里的根文件系统镜像。只认 Fedora 的固定位置 LiveOS/rootfs.img；没有就是
+# 打开的这棵树本身当根（Fedora 45 就是这样）。不能见到 *.img 就抓：这棵树里
+# 还有 /boot/initramfs-*.img，那是压缩过的 initramfs，不是根。
 find_root_image() { # DIR
 	find_dir=$1
-	if [ -f "$find_dir/LiveOS/rootfs.img" ]; then
-		printf '%s\n' "$find_dir/LiveOS/rootfs.img"
-		return 0
-	fi
-	find "$find_dir" -maxdepth 2 -type f -name '*.img' | head -1
+	[ -f "$find_dir/LiveOS/rootfs.img" ] || return 0
+	printf '%s\n' "$find_dir/LiveOS/rootfs.img"
 }
 
 # 把一个镜像打开成一个目录：ext2/3/4 和 EROFS 用挂载，squashfs 用 unsquashfs。
@@ -254,6 +253,10 @@ report() {
 	printf 'kernel modules:   %s\n' "$(ls "$root/usr/lib/modules" 2>/dev/null | tr '\n' ' ')"
 	printf 'selinux config:   %s\n' "$(grep -h '^SELINUX=' "$root/etc/selinux/config" 2>/dev/null || echo 'none')"
 	printf 'selinux policy:   %s\n' "$([ -d "$root/etc/selinux/targeted" ] && echo present || echo missing)"
+	printf 'boot directory:   %s MiB (%s)\n' \
+		"$(du -sm --apparent-size "$root/boot" 2>/dev/null | cut -f1)" \
+		"$(ls "$root/boot" 2>/dev/null | tr '\n' ' ')"
+	printf 'layout:           %s\n' "$(grep -h '^ID=' "$root/etc/os-release" 2>/dev/null) $(grep -h '^VARIANT_ID=' "$root/etc/os-release" 2>/dev/null)"
 
 	if command -v rpm >/dev/null 2>&1; then
 		printf 'packages:         %s\n' "$(rpm --root "$root" -qa 2>/dev/null | wc -l | tr -d ' ')"
