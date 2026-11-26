@@ -9,6 +9,7 @@ on:
     paths:
       - 'tools/build-liuqin-fedora-base.sh'
       - 'tools/build-liuqin-kernel-rpm.sh'
+      - 'tools/build-liuqin-fedora-rootfs.sh'
       - 'tools/fedora-container.sh'
       - 'tools/lib/rootfs-manifest.sh'
       - 'tools/lib/kernel-artifact.sh'
@@ -74,6 +75,9 @@ jobs:
             'sh tools/build-liuqin-kernel-rpm.sh build &&
              sh tools/build-liuqin-kernel-rpm.sh install'
 
+      - name: Assemble the Fedora root
+        run: sudo sh project/tools/build-liuqin-fedora-rootfs.sh assemble
+
       # 容器里是 root，project/out 会被它建成 root 拥有的目录；后面的步骤要往
       # 这里写报告和 RPM，所以先把所有权交还给 runner 用户。
       - name: Take ownership of the container output
@@ -89,12 +93,16 @@ jobs:
           # 清单要在这时候写：树里刚换过内核包，之前那份已经过期了。
           sudo sh project/tools/build-liuqin-fedora-base.sh manifest
           sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
+          sudo sh project/tools/build-liuqin-fedora-rootfs.sh report >>"$report"
           sh project/tools/fedora-container.sh \
             'sh tools/build-liuqin-kernel-rpm.sh check' >>"$report"
           cat "$report"
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/rootfs.manifest \
             >project/out/rootfs.manifest.gz
+          gzip -6 -c \
+            project/tools/local/fedora-kde-mobile-45-arm64/native-root.hashes \
+            >project/out/native-root.hashes.gz
           cp project/out/fedora-rpm/*.aarch64.rpm project/out/
           ls -lh project/out
           df -h /
@@ -107,5 +115,6 @@ jobs:
           path: |
             project/out/fedora-base-report.txt
             project/out/rootfs.manifest.gz
+            project/out/native-root.hashes.gz
             project/out/kernel-liuqin-*.aarch64.rpm
           retention-days: 7

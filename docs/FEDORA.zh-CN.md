@@ -34,6 +34,15 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
 | 内核里只有 AppArmor，SELinux 没编进去 | 内核编上 SELinux，先用 permissive |
 | 根是 ext4 | 还是 ext4（不用 btrfs） |
 
+## 还没做、但上机前必须做的一件事
+
+initramfs 的准入检查（`initramfs/init`）是按 Ubuntu + GNOME 写的：它要求
+`/usr/sbin/gdm3`、`/usr/bin/gnome-shell`、电源键、传感器、Wacom 锁等大约 40 个
+文件和一大堆启用关系，缺一个就拒绝挂载这个根。Fedora 树上没有这些，所以
+Fedora 线要加自己的准入分支（判据只留：根标记、systemd、内核模块与
+`kernel.release` 一致、`ID=fedora`）。这是第 3 步剩下的关键一块，做完才能出
+boot.img。
+
 ## 分五步，每步的"算过"标准
 
 1. **取出 Fedora 的根。** 下载 Live ISO、核对哈希、解开，得到一棵能 `chroot`
@@ -68,8 +77,12 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
   `plasma-setup 6.8.1`、`selinux-policy-targeted 45.23`、`systemd 262` 都在；
   SELinux 配置是 `enforcing`，策略已装好。自带内核是 7.2.11，`/boot` 占 515 MiB。
   这个根能直接放进 8 GiB 的 ext4 镜像。
-- 第 2 步的打包脚本 `tools/build-liuqin-kernel-rpm.sh` 已写好，workflow 里也
-  接上了，跑到装包这一步了。打出来的是一个 `kernel-liuqin` 包，版本形如
+- **第 2 步已跑通**：`kernel-liuqin` 包装进树里，756 个模块，树从 6107 MiB 降到
+  5377 MiB（Fedora 自带的内核包和 515 MiB 的 `/boot` 都清掉了）。
+- 第 3 步开始：`tools/build-liuqin-fedora-rootfs.sh` 负责把树整理成能启动的根，
+  现在做三件事——写 `/etc/liuqin-native-root` 标记、清空 `machine-id`、把
+  SELinux 改成 permissive；然后写出 `native-root.hashes`（18 万个文件），
+  boot.img 里的准入清单要用它。打出来的是一个 `kernel-liuqin` 包，版本形如
   `7.3.0-0.1.g<commit>`（RPM 的 Version/Release 里不能有 `-`，所以拆开写），
   真正的 `uname -r` 记在 `Provides: kernel-uname-r`。装包前会先删掉 Fedora
   自带的 `kernel*` 包和 `/boot` 内容。
@@ -83,8 +96,13 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
 - 这棵树里的 `boot/`（515 MiB）和 7.2.11 的内核是用不上的：我们从 `boot_a`
   启动自己的内核，模块也由自己的包提供。第 2 步会把这些连同 Fedora 的内核包
   一起删掉。
-- 树里没有 `sddm`，登录管理器应该是 `plasma-login-manager`（Fedora 45 的
-  `kde-mobile` 包组带的是它）。第 4 步上机时确认。
+- 登录管理器是 **plasmalogin**（`plasma-login-manager` 的一部分），不是
+  sddm、也不是 gdm；首次设置的向导是 `plasma-setup.service`，已经在
+  `multi-user.target.wants` 里启用了。这些都是 Plasma Mobile 自己的东西，
+  不能照搬 Ubuntu 线的 `gnome-initial-setup` / `gdm` 那一套。
+- 树里没有 `/etc/fstab`，`/home` 是空的；`/etc/passwd` 里有没有 `liveuser`
+  这类现成账户，要等下一次 CI 的报告打出来才知道（报告里会列人类账户和
+  自动登录相关文件）。
 - GitHub Actions 没有 Fedora 的 runner，也没有 aarch64 的 rpm 系环境，所以
   打包和装包都在 `fedora:45` 的 aarch64 容器里做（runner 本身就是 arm64，
   容器是原生执行，不用模拟）。统一走 `tools/fedora-container.sh`：它钉
