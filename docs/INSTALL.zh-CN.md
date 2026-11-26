@@ -49,21 +49,26 @@ boot.img 里有这份 rootfs 的文件哈希清单，启动时会核对。**只�
 
 ## 2. 第一次安装或重装
 
-集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、分片的
-`rootfs.simg`（Android sparse）、`SHA256SUMS`、`native-root.hashes` 和
-`liuqin-firstboot.cpio.gz`，不需要在刷机主机上转换。
+集成仓的 `rootfs` workflow 会一次产出配套的 boot.img、分片的 `rootfs.tgz`
+（里面是 Android sparse 的 `rootfs.simg`）、`SHA256SUMS`、`native-root.hashes`
+和 `liuqin-firstboot.cpio.gz`，不需要在刷机主机上转换。
 
 在刷机主机上执行：
 
 ```sh
-# 下载 artifact 后，先合并 sparse 镜像分片
-cat rootfs.simg.part-* > rootfs.simg
+# 下载 artifact 后，先合并分片，核对，再解开
+cat rootfs.tgz.part-* > rootfs.tgz
 sha256sum -c SHA256SUMS
+tar -xzf rootfs.tgz          # 得到 rootfs.simg
 
 fastboot flash boot_a   boot.img
 fastboot flash userdata rootfs.simg
 fastboot reboot
 ```
+
+Windows 刷机主机：先 `copy /b rootfs.tgz.part-* rootfs.tgz` 合并，再用 7-Zip
+把 `rootfs.tgz` 解两层（先出 `rootfs.tar`，再出 `rootfs.simg`）。`SHA256SUMS`
+核对的是 `rootfs.tgz`，解压出来的 `rootfs.simg` 由它一并覆盖。
 
 刷完把 `native-root.hashes` 和 `liuqin-firstboot.cpio.gz` 拷到开发机，覆盖
 同名文件，供以后只换内核时装配 boot.img：
@@ -89,6 +94,17 @@ sudo resize2fs /dev/disk/by-partlabel/userdata
 
 不做第 1 步也能开机，但 Wi-Fi/蓝牙地址、喇叭校准和传感器会缺或使用默认值。
 第 1 步只在重装 rootfs 后需要，因为那些数据在根分区里，会被刷掉。
+
+原厂 `persist` 分区可能留着没 replay 的 ext4 journal，这时内核对只读挂载会
+报 `recovery required on readonly filesystem` 并拒绝。脚本先试 `ro`，失败
+就退到 `ro,noload`，打一条 warning 后照常取值，全程不写 persist。想把这个
+状态彻底修掉，手动 replay 一次即可（会写 journal 和元数据，仍不碰用户的
+校准文件）：
+
+```sh
+sudo umount /dev/disk/by-partlabel/persist 2>/dev/null
+sudo mount -o rw /dev/disk/by-partlabel/persist /mnt && sudo umount /mnt
+```
 
 ## 3. 只更新内核
 
@@ -117,7 +133,7 @@ fastboot reboot
 
 1. 先备份 `/home`（`userdata` 会被整块重写）；
 2. 集成仓的 `rootfs` workflow（GitHub Actions）出新产物（下载 artifact）；
-   刷机主机合并 `rootfs.simg` 分片（BUILD 第 4 节）；
+   刷机主机合并 `rootfs.tgz` 分片并解开（BUILD 第 4 节）；
 3. `fastboot flash boot_a boot.img`，
    `fastboot flash userdata rootfs.simg`；
 4. 重启，按第 2 节做一次校准导入，再把 `/home` 放回去。

@@ -1,4 +1,4 @@
-# 状态（2026-11-24）
+# 状态（2026-11-26）
 
 这里只写当前事实。内核版本、镜像哈希等会变的数字不抄进文档，用命令现场查：
 `uname -r`、`git -C ../linux-sm8450-liuqin log -1`、`ls repack/`。
@@ -16,13 +16,13 @@
 | 集成仓分支 | `liuqin-install` |
 | 开发机 | Ubuntu 26.04.1 arm64，2 核 / 11 GB：做 boot.img、内核 deb、离线检查 |
 | 构建 | GitHub Actions `rootfs` workflow（`ubuntu-26.04-arm`）；runner 145 GiB，清理后约 118 GiB 可用 |
-| 刷机主机 | 通过 USB 连接平板：合并 `rootfs.simg` 分片，`fastboot` 刷入 |
+| 刷机主机 | 通过 USB 连接平板：合并 `rootfs.tgz` 分片并解开，`fastboot` 刷入 |
 
 ## 安装与更新
 
-`rootfs` workflow 产出分片的 `rootfs.simg`，刷机主机合并后直接刷入，
-平板刷 `boot_a` 和 `userdata`。只换内核时，刷 `boot_a` 并在系统里装新的内核
-deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
+`rootfs` workflow 产出分片的 `rootfs.tgz`（内含 sparse 的 `rootfs.simg`），
+刷机主机合并、解开后直接刷入，平板刷 `boot_a` 和 `userdata`。只换内核时，
+刷 `boot_a` 并在系统里装新的内核 deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md)，产物见 [`BUILD.zh-CN.md`](BUILD.zh-CN.md)。
 
 ## 已验证
@@ -34,6 +34,9 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 - 桌面：GNOME 可登录；USB 网络救援（initramfs `telnet 192.168.7.2 2323`）。
 - 持久化：根分区（`userdata` 单块数据分区）可读写。
 - 恢复：原厂 V14 线刷包可以整机回退。
+- 安装：按 [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) 第 2 节从 CI 产物走完整流程
+  装成 Ubuntu 26.04.1 桌面（fastboot 刷 `boot_a` + `userdata`，首启进桌面，
+  `provision-liuqin-from-persist.sh` 和 `resize2fs` 都通过）。
 
 ## 未验证或不支持
 
@@ -43,8 +46,6 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 | 相机 | 未验证 | 只在临时启动的相机内核上试过；完整镜像没有带相机启动 |
 | 自动亮度 | 不支持 | 参考项目 v0.6.1 以后才有，没有合并 |
 | 连接器温度 | 不支持 | 内核里没有对应代码 |
-| 单数据分区安装 | 未验证 | 工具已就绪（rootfs workflow 生成镜像），还没在平板上走过一遍 |
-| 第一次启动的校准 | 未验证 | `provision-liuqin-from-persist.sh` 已在桌面环境支持，但新布局镜像没实测 |
 | g_idle 冷启动顺序 | 待测 | 生产改动尚未实现；步骤见 [`TEST-g-idle-coldplug.zh-CN.md`](TEST-g-idle-coldplug.zh-CN.md) |
 
 ## 已知问题
@@ -55,6 +56,7 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 | 亮度重启后重置 | 背光驱动是模块，查 `systemd-backlight@` 启动顺序 |
 | 接电脑 USB 掉电 | 电流上限停在 100 mA；原厂靠 USB 枚举抬到 500 mA，内核里没有这个处理 |
 | 音频边角 | 只接受 48k/4ch/24-bit；强制 2ch/S16 的应用会被拒 |
+| persist journal 未 replay | 原厂 persist 带着未 replay 的 ext4 journal，内核拒绝 `ro` 挂载；`provision-liuqin-from-persist.sh` 自动退到 `ro,noload` 并告警，手动 replay 一次的命令见 INSTALL 第 2 节 |
 | 分区迁移 | 当前按新布局（原厂分区表 + `userdata` 单块数据分区）；如需重划分区，先刷 V14 整包，会清空整机 |
 | 升级 7.4 | 等正式版；合并冲突先记在 `archive/kernel-v73-divergence.md` |
 
@@ -64,4 +66,5 @@ deb；动了用户态时，boot.img 和 rootfs 一起换。步骤见
 |---|---|
 | [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) | 刷机、更新、回滚 |
 | [`BUILD.zh-CN.md`](BUILD.zh-CN.md) | 从源码到可刷产物 |
+| [`FEDORA-PLAN.zh-CN.md`](FEDORA-PLAN.zh-CN.md) | 换 Fedora KDE Plasma Mobile 的计划（未执行） |
 | [`archive/`](archive/) | 历史记录，不再维护 |
