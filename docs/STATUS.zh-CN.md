@@ -66,5 +66,4 @@
 |---|---|
 | [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) | 刷机、更新、回滚 |
 | [`BUILD.zh-CN.md`](BUILD.zh-CN.md) | 从源码到可刷产物 |
-| [`FEDORA-PLAN.zh-CN.md`](FEDORA-PLAN.zh-CN.md) | 换 Fedora KDE Plasma Mobile 的计划（未执行） |
 | [`archive/`](archive/) | 历史记录，不再维护 |
