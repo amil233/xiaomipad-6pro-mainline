@@ -7,8 +7,10 @@
 # 里面是 btrfs 的根）。我们用 Live ISO：里面的根是 ext4，和现在 Ubuntu 线的
 # casper 路线是同一个思路，拿到手就能直接当 ext4 根用，不用动 initramfs。
 #
-# ISO 里的结构（Fedora 45）：`LiveOS/squashfs.img` 是 squashfs，解开后里面有
-# `LiveOS/rootfs.img`，那是一个 ext4 的文件系统镜像，挂上就是完整的根。
+# ISO 里的结构：文件还是叫 `LiveOS/squashfs.img`，但 Fedora 42 起里面换成了
+# EROFS（比 squashfs 压缩率更好）。再往里通常是一个 ext4 的 `LiveOS/rootfs.img`，
+# 挂上就是完整的根；如果里面没有这个镜像，那解出来的这棵树本身就是根。
+# 两种都处理，格式靠魔数判断，不靠文件名。
 #
 # 用法：
 #   sudo tools/build-liuqin-fedora-base.sh download   # 下载并核对 ISO
@@ -106,6 +108,40 @@ download_iso() {
 
 # --- 根目录树 ----------------------------------------------------------------
 
+# 判断一个镜像文件是什么格式：只看魔数，不靠文件名。
+image_kind() { # FILE
+	kind_file=$1
+	case $(head -c 4 "$kind_file" | od -An -tx1 2>/dev/null | tr -d ' \n') in
+	68737173) echo squashfs; return 0 ;;
+	1f8b*) echo gzip; return 0 ;;
+	fd377a58) echo xz; return 0 ;;
+	28b52ffd) echo zstd; return 0 ;;
+	esac
+	# EROFS 的魔数在 1024 字节处，ext2/3/4 的在 1080 字节处。
+	[ "$(od -An -tx1 -j1024 -N4 "$kind_file" 2>/dev/null | tr -d ' \n')" = e2e1f5e0 ] &&
+		{ echo erofs; return 0; }
+	[ "$(od -An -tx1 -j1080 -N2 "$kind_file" 2>/dev/null | tr -d ' \n')" = 53ef ] &&
+		{ echo ext4; return 0; }
+	echo unknown
+}
+
+# 容器里那个文件系统镜像：优先按 Fedora 的固定位置找，找不到再在浅层找 *.img。
+find_root_image() { # DIR
+	find_dir=$1
+	if [ -f "$find_dir/LiveOS/rootfs.img" ]; then
+		printf '%s\n' "$find_dir/LiveOS/rootfs.img"
+		return 0
+	fi
+	find "$find_dir" -maxdepth 2 -type f -name '*.img' | head -1
+}
+
+# 复制整棵树，保留属主、权限、ACL 和 SELinux 标签。
+copy_tree() { # SRC DEST
+	tar -C "$1" --xattrs --xattrs-include='*' --acls --selinux -cf - . |
+		tar -C "$2" --xattrs --xattrs-include='*' --acls --selinux -xpf - ||
+		die 'copying the tree failed'
+}
+
 extract_root() {
 	[ "$(id -u)" = 0 ] || die "extract must run as root (loop mount, ownership and labels)"
 	verify_iso
@@ -116,41 +152,80 @@ extract_root() {
 
 	rm -rf "$work"
 	mkdir -p "$work"
+	inner_mounted=0
+	mnt_mounted=0
+	cleanup_mounts() {
+		[ "$mnt_mounted" = 0 ] || umount "$work/mnt" 2>/dev/null || :
+		[ "$inner_mounted" = 0 ] || umount "$work/inner" 2>/dev/null || :
+	}
+	trap cleanup_mounts EXIT HUP INT TERM
 
 	say 'extracting LiveOS/squashfs.img from the ISO'
-	if ! 7z x -so "$iso" LiveOS/squashfs.img >"$work/squashfs.img" 2>"$work/7z.log"; then
+	if ! 7z x -so "$iso" LiveOS/squashfs.img >"$work/live.img" 2>"$work/7z.log"; then
 		say '7z could not read LiveOS/squashfs.img; paths in the ISO that look like it:'
-		7z l "$iso" 2>/dev/null | grep -i 'squashfs\|rootfs' | sed 's/^/  /' || true
+		7z l "$iso" 2>/dev/null | grep -i 'squashfs\|rootfs\|erofs' | sed 's/^/  /' || true
 		die 'unexpected ISO layout; the script needs updating'
 	fi
-	[ -s "$work/squashfs.img" ] || die 'the extracted squashfs image is empty'
-	[ "$(head -c 4 "$work/squashfs.img")" = hsqs ] ||
-		die 'LiveOS/squashfs.img does not start with the squashfs magic'
+	[ -s "$work/live.img" ] || die 'the image extracted from the ISO is empty'
 
-	say 'unpacking the squashfs'
-	unsquashfs -d "$work/live" "$work/squashfs.img" >/dev/null ||
-		die 'unsquashfs failed'
+	kind=$(image_kind "$work/live.img")
+	say "image inside the ISO: $kind ($(stat -c %s "$work/live.img") bytes)"
 
-	image=$work/live/LiveOS/rootfs.img
-	[ -f "$image" ] || image=$(find "$work/live" -maxdepth 2 -name '*.img' -type f | head -1)
-	[ -n "${image:-}" ] && [ -f "$image" ] ||
-		die 'no filesystem image inside the squashfs; the script needs updating'
-	dumpe2fs -h "$image" >/dev/null 2>&1 ||
-		die "the image inside the ISO is not ext2/3/4: $image"
-	say "root filesystem image: $image ($(stat -c %s "$image") bytes)"
+	case $kind in
+	squashfs)
+		unsquashfs -d "$work/inner" "$work/live.img" >/dev/null ||
+			die 'unsquashfs failed'
+		container=$work/inner
+		;;
+	erofs)
+		mkdir -p "$work/inner"
+		# 内核可能把 erofs 编成模块，先尝试加载再挂。
+		modprobe erofs 2>/dev/null || :
+		mount -o loop,ro -t erofs "$work/live.img" "$work/inner" ||
+			die 'cannot mount the EROFS image (the runner kernel needs erofs support)'
+		inner_mounted=1
+		container=$work/inner
+		;;
+	ext4)
+		root_image=$work/live.img
+		;;
+	gzip | xz | zstd)
+		die "the image inside the ISO is $kind-compressed; the script needs updating"
+		;;
+	*)
+		say "unrecognised image; file says: $(file -b "$work/live.img" 2>/dev/null || echo unknown)"
+		say "first 16 bytes: $(head -c 16 "$work/live.img" | od -An -tx1)"
+		die 'unexpected image format inside the ISO; the script needs updating'
+		;;
+	esac
 
-	mkdir -p "$work/mnt"
-	mount -o loop,ro "$image" "$work/mnt" ||
-		die 'cannot loop-mount the image (the runner needs loop device support)'
-	trap 'umount "$work/mnt" 2>/dev/null || :' EXIT HUP INT TERM
-
-	mkdir -p "$root"
-	say 'copying the tree (keeping owners, permissions, ACLs and SELinux labels)'
-	tar -C "$work/mnt" --xattrs --xattrs-include='*' --acls --selinux -cf - . |
-		tar -C "$root" --xattrs --xattrs-include='*' --acls --selinux -xpf - ||
-		die 'copying the tree failed'
-
-	umount "$work/mnt"
+	if [ -z "${root_image:-}" ] && [ -n "${container:-}" ]; then
+		root_image=$(find_root_image "$container")
+	fi
+	if [ -n "${root_image:-}" ] && [ -f "$root_image" ]; then
+		dumpe2fs -h "$root_image" >/dev/null 2>&1 ||
+			die "the root filesystem inside the ISO is not ext2/3/4: $root_image"
+		say "root filesystem image: $root_image"
+		mkdir -p "$work/mnt"
+		mount -o loop,ro "$root_image" "$work/mnt" ||
+			die 'cannot loop-mount the root filesystem (the runner needs loop device support)'
+		mnt_mounted=1
+		say 'copying the tree (keeping owners, permissions, ACLs and SELinux labels)'
+		copy_tree "$work/mnt" "$root"
+		umount "$work/mnt"
+		mnt_mounted=0
+	else
+		# 没有内层镜像：解出来的这棵树本身就是根。
+		[ -n "${container:-}" ] || die 'no root filesystem inside the ISO; the script needs updating'
+		[ -f "$container/etc/os-release" ] ||
+			die 'no root filesystem inside the ISO; the script needs updating'
+		say 'the image itself is the root tree'
+		copy_tree "$container" "$root"
+	fi
+	if [ "$inner_mounted" = 1 ]; then
+		umount "$work/inner"
+		inner_mounted=0
+	fi
 	trap - EXIT HUP INT TERM
 
 	[ -x "$root/usr/lib/systemd/systemd" ] || die "the copied tree has no systemd: $root"
@@ -158,7 +233,7 @@ extract_root() {
 		die 'the copied tree does not look like Fedora (no ID=fedora in os-release)'
 	say "tree: $root"
 
-	rm -f "$work/squashfs.img"
+	rm -f "$work/live.img"
 	write_manifest
 }
 

@@ -68,8 +68,10 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
 
 ## 还没确认的事
 
-- Live ISO 里根的具体结构是按 Fedora 45 的通常做法写的（squashfs 里套一个
-  ext4 的 `rootfs.img`），脚本会自己检查并报错，第一次跑 workflow 就能确认。
+- Live ISO 里那个文件仍叫 `LiveOS/squashfs.img`，但 Fedora 42 起里面换成了
+  EROFS（比 squashfs 压缩率好）。再往里通常是一个 ext4 的 `LiveOS/rootfs.img`。
+  脚本按魔数判断格式，squashfs、EROFS、直接是 ext4 三种都能处理；第一次跑
+  workflow 时已经确认是 EROFS，卡在只认 squashfs 的老假设上，现已改掉。
 - 内核 RPM 的安装脚本会尝试往 `/boot` 写东西，要绕开。
 - 桌面定制（原来的 `device/gnome-overlay`）几乎要重做，工作量最大。
 
