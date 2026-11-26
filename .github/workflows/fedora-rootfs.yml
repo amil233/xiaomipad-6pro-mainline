@@ -131,24 +131,25 @@ jobs:
       - name: Pack the flashable set
         run: |
           set -euo pipefail
-          mkdir -p project/out/upload
+          # 所有要给人拿走的东西放在一个目录里，artifact 里就是平铺的，不带 upload/ 前缀。
+          mkdir -p project/out/artifact
           sudo sh -c "cd '$PWD/project/out/image' &&
             img2simg rootfs.img rootfs.simg &&
             tar -cf - rootfs.simg | gzip -6 > rootfs.tgz &&
             sha256sum rootfs.tgz > SHA256SUMS"
-          sudo cp project/out/image/rootfs.tgz project/out/image/SHA256SUMS project/out/upload/
-          sudo cp project/out/boot/boot-liuqin-native.img project/out/upload/boot.img
-          split -b 1900M -d -a 2 project/out/upload/rootfs.tgz project/out/upload/rootfs.tgz.part-
+          sudo cp project/out/image/rootfs.tgz project/out/image/SHA256SUMS project/out/artifact/
+          sudo cp project/out/boot/boot-liuqin-native.img project/out/artifact/boot.img
+          split -b 1900M -d -a 2 project/out/artifact/rootfs.tgz project/out/artifact/rootfs.tgz.part-
           # 分片已经是完整的一份，整包不用再传一遍。
-          sudo rm -f project/out/upload/rootfs.tgz
-          sudo chown -R "$(id -u):$(id -g)" project/out/upload
-          ls -lh project/out/upload
+          sudo rm -f project/out/artifact/rootfs.tgz
+          sudo chown -R "$(id -u):$(id -g)" project/out/artifact
+          ls -lh project/out/artifact
 
       - name: Report
         run: |
           set -euo pipefail
           mkdir -p project/out
-          report=project/out/fedora-base-report.txt
+          report=project/out/artifact/fedora-report.txt
           # 清单要在这时候写：树里刚换过内核包，之前那份已经过期了。
           sudo sh project/tools/build-liuqin-fedora-base.sh manifest
           sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
@@ -158,11 +159,11 @@ jobs:
           cat "$report"
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/rootfs.manifest \
-            >project/out/rootfs.manifest.gz
+            >project/out/artifact/rootfs.manifest.gz
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/native-root.hashes \
-            >project/out/native-root.hashes.gz
-          cp project/out/fedora-rpm/*.aarch64.rpm project/out/
+            >project/out/artifact/native-root.hashes.gz
+          cp project/out/fedora-rpm/*.aarch64.rpm project/out/artifact/
           ls -lh project/out
           df -h /
 
@@ -171,10 +172,5 @@ jobs:
           name: liuqin-fedora-base-${{ github.sha }}
           if-no-files-found: error
           compression-level: 0
-          path: |
-            project/out/fedora-base-report.txt
-            project/out/rootfs.manifest.gz
-            project/out/native-root.hashes.gz
-            project/out/kernel-liuqin-*.aarch64.rpm
-            project/out/upload/*
+          path: project/out/artifact/
           retention-days: 7

@@ -5,6 +5,8 @@
 
 ## 1. 产物清单
 
+artifact 解开后是平铺的一层（没有 `upload/` 之类的子目录），文件名直接可用。
+
 | 产物 | 内容 |
 |---|---|
 | `boot.img` | 内核 Image + 设备树 + initramfs + ABL overlay，补零到 192 MiB |

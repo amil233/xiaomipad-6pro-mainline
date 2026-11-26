@@ -26,22 +26,47 @@ boot.img 里钉着这次构建的内核版本号，启动时和根里的 `kernel
 
 ## 2. 第一次安装或重装
 
-在刷机主机上：
+artifact 解开后是平铺的一层，没有子目录：
 
-```sh
-# 下载 artifact 后，先合并分片、核对、解开
-cat rootfs.tgz.part-* > rootfs.tgz
-sha256sum -c SHA256SUMS
-tar -xzf rootfs.tgz          # 得到 rootfs.simg
+```
+boot.img                192 MiB
+rootfs.tgz.part-NN      1900 MiB 一片
+SHA256SUMS              对 rootfs.tgz 的哈希
+fedora-report.txt       这次构建的关键数字
+rootfs.manifest.gz      树的清单
+native-root.hashes.gz   树的逐文件哈希
+kernel-liuqin-*.rpm     内核包（只换内核时用）
+```
+
+**Windows（PowerShell）**：
+
+```powershell
+# 合并分片。cmd 的通配符按名字排序，片数多了也不用改命令。
+cmd /c copy /b rootfs.tgz.part-* rootfs.tgz
+
+# 核对：把下面输出和 SHA256SUMS 里的值比
+(Get-FileHash rootfs.tgz -Algorithm SHA256).Hash.ToLower()
+
+# 7-Zip 解两层：rootfs.tgz -> rootfs.tar -> rootfs.simg
+7z x rootfs.tgz
+7z x rootfs.tar
 
 fastboot flash boot_a   boot.img
 fastboot flash userdata rootfs.simg
 fastboot reboot
 ```
 
-Windows 刷机主机：先 `copy /b rootfs.tgz.part-* rootfs.tgz`，再用 7-Zip 把
-`rootfs.tgz` 解两层（先出 `rootfs.tar`，再出 `rootfs.simg`）。`SHA256SUMS` 核对
-的是 `rootfs.tgz`。
+**Linux / macOS**：
+
+```sh
+cat rootfs.tgz.part-* > rootfs.tgz
+sha256sum -c SHA256SUMS
+tar -xzf rootfs.tgz
+
+fastboot flash boot_a   boot.img
+fastboot flash userdata rootfs.simg
+fastboot reboot
+```
 
 第一次启动会进 **plasma-setup**（KDE 的首次设置），创建用户、设语言时区。这条线
 没有 gnome-initial-setup，也没有预置账户。
