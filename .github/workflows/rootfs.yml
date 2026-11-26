@@ -43,7 +43,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             7zip squashfs-tools alsa-utils m4 zstd patch build-essential \
-            git curl dpkg-dev file binutils e2fsprogs android-sdk-libsparse-utils
+            git curl dpkg-dev file binutils e2fsprogs pigz \
+            android-sdk-libsparse-utils
 
       - name: Fetch busybox
         run: sh project/tools/fetch-busybox-arm64.sh
@@ -100,22 +101,32 @@ jobs:
           sudo img2simg project/out/image/dist/rootfs.img \
             project/out/image/dist/rootfs.simg
           sudo chmod 0644 project/out/image/dist/rootfs.simg
-          sudo sh -c "cd '$PWD/project/out/image/dist' && sha256sum rootfs.simg > SHA256SUMS"
-          sudo chmod 0644 project/out/image/dist/SHA256SUMS
 
-      - name: Split the image for upload
+      - name: Package the image for transfer
+        run: |
+          set -euo pipefail
+          cd project/out/image/dist
+          # One tarball per flashable image: the flashing host downloads,
+          # checks and unpacks it with 7-Zip or tar, so nothing on that side
+          # has to understand an Android sparse image before fastboot sees it.
+          pack=$(command -v pigz || command -v gzip)
+          tar -cf - rootfs.simg | "$pack" -6 > rootfs.tgz
+          sha256sum rootfs.tgz > SHA256SUMS
+          ls -l rootfs.tgz SHA256SUMS
+
+      - name: Split the package for upload
         run: |
           set -euo pipefail
           # The assembly and image steps run as root; give this step an upload
           # directory it owns and make the outputs readable before splitting.
           sudo install -d -o "$(id -u)" -g "$(id -g)" project/out/upload
-          sudo chmod 0644 project/out/image/dist/rootfs.simg \
+          sudo chmod 0644 project/out/image/dist/rootfs.tgz \
             project/out/image/dist/SHA256SUMS \
             project/out/image/root/native-root.hashes \
             project/out/image/boot/boot-liuqin-native.img \
             project/out/image/boot/liuqin-firstboot.cpio.gz
-          split -b 1900M -d -a 2 project/out/image/dist/rootfs.simg \
-            project/out/upload/rootfs.simg.part-
+          split -b 1900M -d -a 2 project/out/image/dist/rootfs.tgz \
+            project/out/upload/rootfs.tgz.part-
           cp project/out/image/dist/SHA256SUMS project/out/upload/
           cp project/out/image/root/native-root.hashes project/out/upload/
           cp project/out/image/boot/boot-liuqin-native.img project/out/upload/boot.img

@@ -20,7 +20,7 @@ GitHub Actions ──▶ ci/liuqin-kernel-<commit>/
   Image + DTB + initramfs      Ubuntu + 设备/内核 deb + boot.img
   + ABL overlay                      │
         │                            ▼
-        │                      rootfs.simg（分片）
+        │                      rootfs.tgz（分片，内含 simg）
         ▼                            ▼
   fastboot flash boot_a     fastboot flash userdata
         └───────────────┬────────────┘
@@ -39,8 +39,8 @@ boot.img 里带一份 rootfs 设备文件的哈希清单，启动时核对；清
 # 开发机：从 ci/ 里的内核产物装配 boot.img（加 --deb 同时出内核 deb）
 sh tools/build-liuqin-boot.sh
 
-# 刷机主机：合并 CI 的 img 分片，然后刷入
-cat rootfs.simg.part-* > rootfs.simg
+# 刷机主机：合并 CI 的 tgz 分片并解开，然后刷入
+cat rootfs.tgz.part-* > rootfs.tgz && tar -xzf rootfs.tgz
 fastboot flash boot_a    boot.img
 fastboot flash userdata  rootfs.simg
 ```

@@ -8,7 +8,7 @@
 | 产物 | 内容 | 谁产出 |
 |---|---|---|
 | `ci/liuqin-kernel-<commit>/` | `kernel/`：Image、设备树、`.config`、`build-info.json`、`SHA256SUMS`；`kernel-modules/`：模块包和版本文件 | 内核仓 CI |
-| `rootfs.simg` | `rootfs.img` 的 Android sparse 版本；fastboot 直接识别并展开 | 集成仓 `rootfs` workflow |
+| `rootfs.tgz` | `rootfs.img` 的 Android sparse 版本（`rootfs.simg`）打成的 gzip 包；artifact 里再切成 1900 MiB 的 `rootfs.tgz.part-NN` | 集成仓 `rootfs` workflow |
 | `boot.img` | Image + 设备树 + initramfs + ABL overlay，补零到 192 MiB | 同一次 `rootfs` workflow |
 | `native-root.hashes` | 这次 rootfs 的文件清单 | 同一次 `rootfs` workflow |
 | `liuqin-firstboot.cpio.gz` | boot.img 里的 initramfs | 同一次 `rootfs` workflow |
@@ -36,7 +36,8 @@ commit 或哈希。用到的文件都由脚本当场核对。
 3. 下载 Ubuntu 26.04.1 桌面 ISO，解出桌面 root，随后删除 ISO 和 casper；
 4. 装配 rootfs、对应 boot.img 和 ramdisk；
 5. 生成 ext4 的 `rootfs.img`，再转成 Android sparse 的 `rootfs.simg`；
-6. 把 `rootfs.simg` 分成 1900 MiB 的片，和 `boot.img`、`SHA256SUMS`、
+6. 把 `rootfs.simg` 打进 `rootfs.tgz`（tar + gzip），`SHA256SUMS` 记它；
+7. 把 `rootfs.tgz` 切成 1900 MiB 的片，和 `boot.img`、`SHA256SUMS`、
    `native-root.hashes`、ramdisk 一起上传。
 
 产物名：`liuqin-rootfs-<commit>`。boot 和 root 来自同一次内核 artifact 和
@@ -49,12 +50,20 @@ commit 或哈希。用到的文件都由脚本当场核对。
 下载 artifact 后，在能运行 fastboot 的机器上：
 
 ```sh
-cat rootfs.simg.part-* > rootfs.simg
-sha256sum -c SHA256SUMS
+cat rootfs.tgz.part-* > rootfs.tgz
+sha256sum -c SHA256SUMS      # 核对的是 rootfs.tgz，里面的 simg 一并受它覆盖
+tar -xzf rootfs.tgz          # 得到 rootfs.simg
 
 fastboot flash boot_a   boot.img
 fastboot flash userdata rootfs.simg
 fastboot reboot
+```
+
+在 Windows 刷机主机上先合并分片，再用 7-Zip 解两层（`rootfs.tgz` → `rootfs.tar`
+→ `rootfs.simg`）：
+
+```
+copy /b rootfs.tgz.part-* rootfs.tgz
 ```
 
 首次启动进 `gnome-initial-setup`。进桌面后：
