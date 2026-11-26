@@ -84,7 +84,10 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
   `kde-mobile` 包组带的是它）。第 4 步上机时确认。
 - GitHub Actions 没有 Fedora 的 runner，也没有 aarch64 的 rpm 系环境，所以
   打包和装包都在 `fedora:45` 的 aarch64 容器里做（runner 本身就是 arm64，
-  容器是原生执行，不用模拟）。这一条是第 2 步的前提。
+  容器是原生执行，不用模拟）。统一走 `tools/fedora-container.sh`：它钉
+  `--platform linux/arm64`，并在容器里再核对一次 `uname -m`，防止拉成 x86 镜像
+  在模拟下打包。没有把整个 job 放进 `container:`，因为取根那一步要 loop 挂载、
+  要 root、要用 apt 装的 7z/unsquashfs，这些是宿主机（Ubuntu）这一侧的事。
 - 内核 RPM 的安装脚本会尝试往 `/boot` 写东西，要绕开。
 - 桌面定制（原来的 `device/gnome-overlay`）几乎要重做，工作量最大。
 

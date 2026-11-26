@@ -9,6 +9,7 @@ on:
     paths:
       - 'tools/build-liuqin-fedora-base.sh'
       - 'tools/build-liuqin-kernel-rpm.sh'
+      - 'tools/fedora-container.sh'
       - 'tools/lib/rootfs-manifest.sh'
       - 'tools/lib/kernel-artifact.sh'
       - 'device/configs/liuqin-fedora.config'
@@ -63,20 +64,15 @@ jobs:
           gh run download "$run_id" -R "$repo" -D project/ci
           ls project/ci
 
-      # The runner is Ubuntu: no rpmbuild, no dnf, no Fedora.  The official
-      # aarch64 image gives a native Fedora 45 userland in a container, which
-      # is enough for packaging and for installing into the tree.
-      - name: Build the kernel RPM
+      # The runner is Ubuntu: no rpmbuild, no dnf, no Fedora userland.  A
+      # fedora:45 container gives the native aarch64 RPM tooling; the wrapper
+      # pins the image platform and refuses to run if the container comes up
+      # as anything but the runner's own architecture.
+      - name: Build and install the kernel RPM
         run: |
-          docker run --rm -v "$PWD/project:/work" -w /work \
-            docker.io/library/fedora:45 \
-            bash -lc 'dnf -y install rpm-build tar gzip >/dev/null && sh tools/build-liuqin-kernel-rpm.sh build'
-
-      - name: Install it into the tree
-        run: |
-          docker run --rm -v "$PWD/project:/work" -w /work \
-            docker.io/library/fedora:45 \
-            bash -lc 'sh tools/build-liuqin-kernel-rpm.sh install'
+          sh project/tools/fedora-container.sh \
+            'sh tools/build-liuqin-kernel-rpm.sh build &&
+             sh tools/build-liuqin-kernel-rpm.sh install'
 
       - name: Report
         run: |
@@ -84,9 +80,8 @@ jobs:
           mkdir -p project/out
           report=project/out/fedora-base-report.txt
           sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
-          docker run --rm -v "$PWD/project:/work" -w /work \
-            docker.io/library/fedora:45 \
-            bash -lc 'sh tools/build-liuqin-kernel-rpm.sh check' >>"$report"
+          sh project/tools/fedora-container.sh \
+            'sh tools/build-liuqin-kernel-rpm.sh check' >>"$report"
           cat "$report"
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/rootfs.manifest \
