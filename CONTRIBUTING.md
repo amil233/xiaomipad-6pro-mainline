@@ -12,7 +12,7 @@
   `liuqin-switch` 已移除；参考项目式的安装器（`installer.img` / `install.py` /
   `--layout dual`）已整体移除，不再实现设备端安装流程。上机只保留两条 fastboot：
   `boot.img → boot_a`、`rootfs.img → userdata`（原厂单块数据分区）；rootfs
-  镜像在刷机主机上由 `rootfs.tar.gz` 生成（`tools/build-liuqin-rootfs-image.sh`）。
+  镜像由 `tools/build-liuqin-fedora-image.sh` 从整理好的 Fedora 根目录树生成。
 - ROM 输入只用 `V14.0.9.0.TMYCNXM`；不要引入 `OS2.0.6.0` 的数值或固件。
 - 文档只维护中文；英文版已删除。
 

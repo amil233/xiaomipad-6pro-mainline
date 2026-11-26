@@ -10,6 +10,7 @@ on:
       - 'tools/build-liuqin-fedora-base.sh'
       - 'tools/build-liuqin-kernel-rpm.sh'
       - 'tools/build-liuqin-fedora-rootfs.sh'
+      - 'tools/build-liuqin-fedora-image.sh'
       - 'tools/build-liuqin-fedora-boot.sh'
       - 'tools/lib/build-initramfs.sh'
       - 'initramfs/init'
@@ -81,6 +82,57 @@ jobs:
       - name: Assemble the Fedora root
         run: sudo sh project/tools/build-liuqin-fedora-rootfs.sh assemble
 
+      - name: Install boot and image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            device-tree-compiler m4 alsa-utils e2fsprogs android-sdk-libsparse-utils
+          sh project/tools/fetch-aosp-mkbootimg.sh
+
+      - name: Build the audio topology
+        run: |
+          OUTPUT="$PWD/project/out/Xiaomi-Pad-6-Pro-tplg.bin" \
+          AUDIOREACH_TOPOLOGY_DIR="$PWD/project/device/audio-topology/upstream" \
+            sh project/tools/build-liuqin-audio-topology.sh
+
+      - name: Assemble boot.img
+        run: |
+          set -euo pipefail
+          kernel_dir=$(ls -d project/ci/liuqin-kernel-* | head -1)
+          sudo env \
+            KERNEL_OUT="$PWD/$kernel_dir/kernel" \
+            OUT_DIR="$PWD/project/out/boot" \
+            AUDIO_TOPOLOGY="$PWD/project/out/Xiaomi-Pad-6-Pro-tplg.bin" \
+            FIRMWARE_POOL="$PWD/project/device/firmware-pool" \
+            WLAN_HSP2_TUPLE="$PWD/project/device/wlan-tuple" \
+            STOCK_OVERLAY_DIR="$PWD/project/device/abl-analysis/dtbo" \
+            STOCK_BASE_DIR="$PWD/project/device/abl-analysis/vendor_boot/dtbs" \
+            MKBOOTIMG_DIR="$PWD/project/tools/local/aosp-mkbootimg" \
+            DTC=/usr/bin/dtc FDTOVERLAY=/usr/bin/fdtoverlay \
+            sh project/tools/build-liuqin-fedora-boot.sh
+
+      - name: Build the ext4 image
+        run: |
+          sudo sh project/tools/build-liuqin-fedora-image.sh \
+            --root "$PWD/project/tools/local/fedora-kde-mobile-45-arm64/rootfs" \
+            --out "$PWD/project/out/image"
+
+      - name: Pack the flashable set
+        run: |
+          set -euo pipefail
+          mkdir -p project/out/upload
+          sudo sh -c "cd '$PWD/project/out/image' &&
+            img2simg rootfs.img rootfs.simg &&
+            tar -cf - rootfs.simg | gzip -6 > rootfs.tgz &&
+            sha256sum rootfs.tgz > SHA256SUMS"
+          sudo cp project/out/image/rootfs.tgz project/out/image/SHA256SUMS project/out/upload/
+          sudo cp project/out/boot/boot-liuqin-native.img project/out/upload/boot.img
+          split -b 1900M -d -a 2 project/out/upload/rootfs.tgz project/out/upload/rootfs.tgz.part-
+          # 分片已经是完整的一份，整包不用再传一遍。
+          sudo rm -f project/out/upload/rootfs.tgz
+          sudo chown -R "$(id -u):$(id -g)" project/out/upload
+          ls -lh project/out/upload
+
       # 容器里是 root，project/out 会被它建成 root 拥有的目录；后面的步骤要往
       # 这里写报告和 RPM，所以先把所有权交还给 runner 用户。
       - name: Take ownership of the container output
@@ -120,4 +172,5 @@ jobs:
             project/out/rootfs.manifest.gz
             project/out/native-root.hashes.gz
             project/out/kernel-liuqin-*.aarch64.rpm
+            project/out/upload/*
           retention-days: 7
