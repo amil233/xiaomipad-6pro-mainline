@@ -1,0 +1,2 @@
+# fastrpc 字符设备由 hexagonrpcd 以 fastrpc 用户打开；内核默认给 root:root 0600。
+SUBSYSTEM=="fastrpc", KERNEL=="fastrpc-*", GROUP="fastrpc", MODE="0660"

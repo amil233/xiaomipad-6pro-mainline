@@ -79,13 +79,15 @@ build_rpm() {
 	busybox=$project_root/tools/local/busybox-arm64/usr/bin/busybox
 	[ -d "$overlay" ] || die "no overlay: $overlay"
 	[ -x "$busybox" ] || die "no static busybox at $busybox (run tools/fetch-busybox-arm64.sh)"
-	mkdir -p "$stage/usr/local/bin" "$stage/usr/local/sbin" "$stage/etc/systemd/system/multi-user.target.wants"
+	mkdir -p "$stage/usr/local/bin" "$stage/usr/local/sbin" "$stage/etc/systemd/system/multi-user.target.wants" \
+		"$stage/etc/udev/rules.d"
 	cp "$overlay/usr/local/bin/liuqin-shell" "$stage/usr/local/bin/"
 	cp "$overlay/usr/local/sbin/liuqin-rescue" "$overlay/usr/local/sbin/liuqin-usb-rescue" "$stage/usr/local/sbin/"
 	cp "$busybox" "$stage/usr/local/bin/busybox"
 	cp "$overlay/etc/systemd/system/liuqin-usb-rescue.service" "$stage/etc/systemd/system/"
 	ln -sfn ../liuqin-usb-rescue.service \
 		"$stage/etc/systemd/system/multi-user.target.wants/liuqin-usb-rescue.service"
+	cp "$overlay/etc/udev/rules.d/80-liuqin-fastrpc.rules" "$stage/etc/udev/rules.d/"
 	chmod 0755 "$stage/usr/local/bin/liuqin-shell" "$stage/usr/local/bin/busybox" \
 		"$stage/usr/local/sbin/liuqin-rescue" "$stage/usr/local/sbin/liuqin-usb-rescue"
 
@@ -114,6 +116,7 @@ Pad 6 Pro (liuqin).  Files only: no services and no desktop customisation.
 mkdir -p %{buildroot}
 cp -a $stage/. %{buildroot}/
 %files
+/etc/udev/rules.d/80-liuqin-fastrpc.rules
 /usr/lib/firmware
 /usr/share/alsa/ucm2
 /usr/local/bin/busybox

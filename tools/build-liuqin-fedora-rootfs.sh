@@ -67,6 +67,10 @@ assemble_tree() {
 	rm -f "$tree/var/lib/systemd/random-seed"
 	say 'machine-id: emptied'
 
+	# fastrpc 账户：设备节点由内核建（/dev/fastrpc-*），但 hexagonrpcd 要以这个
+	# 用户运行，provision 脚本也按这个名字查 uid。离线建号，不依赖 RPM 的脚本。
+	ensure_fastrpc_account
+
 	# SELinux：第一次启动先 permissive，标签和策略后面再收紧。
 	if [ -f "$tree/etc/selinux/config" ]; then
 		sed -i 's/^SELINUX=.*/SELINUX=permissive/' "$tree/etc/selinux/config"
@@ -78,6 +82,30 @@ assemble_tree() {
 	fi
 
 	write_hashes
+}
+
+ensure_fastrpc_account() {
+	grep -q '^fastrpc:' "$tree/etc/group" && grep -q '^fastrpc:' "$tree/etc/passwd" && return 0
+	# 取一个没被占用的系统号。980 以下在 Fedora 上通常留给系统服务。
+	gid=$(awk -F: '$3 >= 900 && $3 < 1000 { print $3 }' "$tree/etc/group" | sort -n | tail -1)
+	gid=$(( ${gid:-900} + 1 ))
+	uid=$(awk -F: '$3 >= 900 && $3 < 1000 { print $3 }' "$tree/etc/passwd" | sort -n | tail -1)
+	uid=$(( ${uid:-900} + 1 ))
+	[ "$uid" -lt 1000 ] && [ "$gid" -lt 1000 ] || die 'no free system uid/gid left for fastrpc'
+	if ! grep -q "^fastrpc:" "$tree/etc/group"; then
+		printf 'fastrpc:x:%s:\n' "$gid" >>"$tree/etc/group"
+	fi
+	if ! grep -q "^fastrpc:" "$tree/etc/passwd"; then
+		printf 'fastrpc:x:%s:%s::/var/lib/hexagonrpcd:/usr/sbin/nologin\n' "$uid" "$gid" \
+			>>"$tree/etc/passwd"
+	fi
+	if [ -f "$tree/etc/shadow" ] && ! grep -q '^fastrpc:' "$tree/etc/shadow"; then
+		printf 'fastrpc:*:19000:0:99999:7:::\n' >>"$tree/etc/shadow"
+	fi
+	mkdir -p "$tree/var/lib/hexagonrpcd"
+	chown "$uid:$gid" "$tree/var/lib/hexagonrpcd"
+	chmod 0750 "$tree/var/lib/hexagonrpcd"
+	say "fastrpc account: uid=$uid gid=$gid"
 }
 
 # --- 哈希表 ------------------------------------------------------------------
