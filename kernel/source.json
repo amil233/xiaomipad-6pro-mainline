@@ -1,6 +1,6 @@
 {
   "repo": "https://github.com/amil233/linux-sm8450-liuqin.git",
-  "branch": "liuqin-7.3",
+  "branch": "liuqin-7.3-fedora",
   "dtb": "qcom/sm8475-xiaomi-liuqin.dtb",
   "config_fragments": [
     "device/configs/liuqin-firstboot.config",
@@ -12,6 +12,7 @@
     "device/configs/liuqin-trim.config",
     "device/configs/liuqin-waydroid.config",
     "device/configs/liuqin-camera.config",
-    "device/configs/liuqin-fingerprint.config"
+    "device/configs/liuqin-fingerprint.config",
+    "device/configs/liuqin-fedora.config"
   ]
 }
