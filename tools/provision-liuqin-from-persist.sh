@@ -136,24 +136,34 @@ for ch in TL TR BL BR; do
 done
 
 # --- SSC sensor registry -----------------------------------------------------
-nf_uid=$(awk -F: '$1=="fastrpc"{print $3}' "$tgt/etc/passwd")
-nf_gid=$(awk -F: '$1=="fastrpc"{print $3}' "$tgt/etc/group")
-[ -n "$nf_uid" ] && [ -n "$nf_gid" ] || die 'fastrpc uid/gid not resolvable in the target root'
-mkdir -p "$tgt/var/lib/liuqin-sensors/registry"
-chmod 0750 "$tgt/var/lib/liuqin-sensors/registry"
-chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry"
-count=0
-for f in "$mnt/sensors/registry/registry/"*; do
-	[ -f "$f" ] || continue
-	cp "$f" "$tgt/var/lib/liuqin-sensors/registry/"
-	chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/$(basename "$f")"
-	count=$((count + 1))
-done
-[ "$count" -gt 100 ] || die "suspiciously few registry files: $count"
-( cd "$tgt/var/lib/liuqin-sensors/registry" && find . -maxdepth 1 -type f ! -name SHA256SUMS -print |
-	LC_ALL=C sort | xargs sha256sum ) >"$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
-chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry/"*
-chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
+# The registry is served by hexagonrpcd under the fastrpc account.  Fedora has no
+# such account yet (the sensor stack is not ported), so this part is skipped
+# with a warning instead of refusing to provision the rest.  WLAN/BT addresses
+# and the speaker calibration do not depend on it.
+nf_uid=$(awk -F: '$1=="fastrpc"{print $3}' "$tgt/etc/passwd" 2>/dev/null || true)
+nf_gid=$(awk -F: '$1=="fastrpc"{print $3}' "$tgt/etc/group" 2>/dev/null || true)
+count=skipped
+if [ -n "$nf_uid" ] && [ -n "$nf_gid" ]; then
+	mkdir -p "$tgt/var/lib/liuqin-sensors/registry"
+	chmod 0750 "$tgt/var/lib/liuqin-sensors/registry"
+	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry"
+	count=0
+	for f in "$mnt/sensors/registry/registry/"*; do
+		[ -f "$f" ] || continue
+		cp "$f" "$tgt/var/lib/liuqin-sensors/registry/"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/$(basename "$f")"
+		count=$((count + 1))
+	done
+	[ "$count" -gt 100 ] || die "suspiciously few registry files: $count"
+	( cd "$tgt/var/lib/liuqin-sensors/registry" &&
+		find . -maxdepth 1 -type f ! -name SHA256SUMS -print |
+		LC_ALL=C sort | xargs sha256sum ) >"$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
+	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry/"*
+	chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
+else
+	say 'warning: no fastrpc account in the target; skipping the sensor registry'
+	say 'warning: sensors will work only after the sensor stack is ported'
+fi
 
 say "wlan=$wlan_mac bt=$bt_addr calr=4ch registry=$count -> $tgt"
 say 'PASS'
