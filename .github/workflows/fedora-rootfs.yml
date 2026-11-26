@@ -74,6 +74,13 @@ jobs:
             'sh tools/build-liuqin-kernel-rpm.sh build &&
              sh tools/build-liuqin-kernel-rpm.sh install'
 
+      # 容器里是 root，project/out 会被它建成 root 拥有的目录；后面的步骤要往
+      # 这里写报告和 RPM，所以先把所有权交还给 runner 用户。
+      - name: Take ownership of the container output
+        run: |
+          [ -d project/out ] || exit 0
+          sudo chown -R "$(id -u):$(id -g)" project/out
+
       - name: Report
         run: |
           set -euo pipefail
