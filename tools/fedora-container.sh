@@ -19,7 +19,7 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 image=${FEDORA_CONTAINER_IMAGE:-docker.io/library/fedora:45}
-packages=${FEDORA_CONTAINER_PACKAGES:-rpm-build tar gzip}
+packages=${FEDORA_CONTAINER_PACKAGES:-rpm-build tar gzip python3 findutils}
 
 die() { printf 'fedora-container: %s\n' "$*" >&2; exit 1; }
 say() { printf 'fedora-container: %s\n' "$*"; }

@@ -42,6 +42,10 @@ EOF
 . "$project_root/tools/lib/kernel-artifact.sh"
 
 resolve_inputs() {
+	# 产物的一致性检查用 python3 读 build-info.json；fedora:45 的基础镜像里
+	# 没有它，缺了就会得到一句"没有一致的产物"，看不出真正原因。
+	command -v python3 >/dev/null ||
+		die 'python3 is missing (the artifact check needs it); run this through tools/fedora-container.sh'
 	requested=${KERNEL_DIR:-}
 	resolve_kernel_artifact "$project_root" "$workspace_root" "$requested" || {
 		die 'no consistent kernel artifact (copy one from CI into ci/, or set KERNEL_DIR)'
