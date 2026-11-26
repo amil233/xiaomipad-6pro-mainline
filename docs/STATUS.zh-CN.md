@@ -28,8 +28,12 @@
 Wi-Fi 能用但不代表地址是稳定的。接口名是 `wlp1s0`（systemd 的可预测命名），
 persist 里的文件写的却是 `wlan0=...`。
 
-ath11k 在没有从设备树或 persist 拿到本机地址时，用的是驱动自己生成的地址。要紧的是
-它**每次启动是否变化**，这决定要不要做地址那套：
+**已经确认（2026-11-27）：MAC 重启后不变**，所以地址这套可以往后放——路由器看到的
+是同一台设备，静态 DHCP、租约、MAC 白名单都稳定。只是和机身上印的不一致，没有实际
+影响。等真正需要（比如要设备树里写死地址）再回来做。
+
+原先的担心是：ath11k 在没有从设备树或 persist 拿到本机地址时，用的是驱动自己生成的
+地址，如果每次启动都变就会破坏上面那些东西：
 
 ```sh
 ip link show wlp1s0 | grep ether     # 记下地址，重启，再看一次
@@ -55,7 +59,8 @@ ip link show wlp1s0 | grep ether     # 记下地址，重启，再看一次
 
 | 项 | 现状 |
 |---|---|
-| 设备载荷没移植 | 固件、UCM2、传感器栈、电源键、指纹这些都还只在 Ubuntu 线的 deb 里 |
+| 设备载荷没移植 | 固件和 UCM2 已经打成 `liuqin-device` 装进去了；传感器栈、电源键、指纹还没 |
+| 下一步：传感器栈 | 需要移植三样东西：`hexagonrpcd`（SLPI 上的传感器服务端）、SSC registry 文件（`provision-liuqin-from-persist.sh` 已经能导入，等 `fastrpc` 账户存在时生效）、`iio-sensor-proxy`（Fedora 有包，但 Ubuntu 线替换过一份，要先确认 Fedora 版认不认 `/var/lib/liuqin-sensors/registry` 这套布局）。另外要新增 `fastrpc` 用户和 `/etc/udev/rules.d/80-liuqin-fastrpc.rules` 那套权限 |
 | SELinux | 先 permissive；策略和标签没打全之前不收紧 |
 | 自动登录 | `etc/plasmalogin.conf` 里有 autologin 相关配置，树里没有人类账户，第一次启动走 plasma-setup，上机时确认 |
 | 无 `/etc/fstab` | 根由 initramfs 挂好，systemd 不需要 fstab；确认没有服务因此报错 |
