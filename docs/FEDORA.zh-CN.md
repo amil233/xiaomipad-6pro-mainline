@@ -34,6 +34,35 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
 | 内核里只有 AppArmor，SELinux 没编进去 | 内核编上 SELinux，先用 permissive |
 | 根是 ext4 | 还是 ext4（不用 btrfs） |
 
+## 后续行动（2026-11-27 排定）
+
+**A. 等这次 CI（`0a0e7c9`）**：确认建号、`liuqin-device` 安装、`assemble`、
+`boot.img`、ext4、打包全过。不过就修，不再往下叠。
+
+**B. 传感器栈，分三小步，每步都要 CI 绿：**
+
+1. `hexagonrpcd`：按 `device/sensors/sources.manifest` 取源码，打
+   `device/sensors/patches/0001`、`0002`，在 `fedora:45` 容器里 meson/ninja 编，
+   产物先进 `liuqin-sensors` RPM（只装二进制 + 依赖，不带单元）。
+2. `iio-sensor-proxy`：先比对 3.9 的上游是否已含六份补丁里的某几份，只保留仍然
+   需要的，逐份在新上下文里重打；编过之后替换 Fedora 的 `/usr/libexec/iio-sensor-proxy`。
+3. 单元与数据：`liuqin-slpi.service`、registry 目录、`fastrpc` 权限（已就位），
+   并让 provision 导入的 registry 被真正读到。
+
+**C. 一次性刷机**：A + B 全绿之后出镜像，一次刷完，验证清单：
+
+- `getent passwd fastrpc` 有输出；`ls -l /dev/fastrpc-adsp` 是 `fastrpc:fastrpc 660`；
+- `sudo liuqin-rescue on` 能起监听，Windows 上 `telnet 192.168.7.2 2323` 进得去；
+- provision 跑完 `registry=<数字>`，重启后音频出声
+  （`speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1`）；
+- 传感器：`iio-sensor-proxy` 能看到加速度计（`monitor-sensor` 或 KDE 的传感器页）。
+
+**D. 之后（按价值排）**：电源键策略、指纹、相机；SELinux 从 permissive 收紧；
+`device/gnome-overlay` 只保留 UCM2，其余目录删掉，减少误读。
+
+**E. 长期**：跟 Fedora 45 的更新（`dnf upgrade` 已在设备上验证可用），内核换代
+时重新出 boot.img。
+
 ## 刷机的节奏：攒成一批再刷
 
 刷整镜像要十几分钟，另外还要重装校准、重建用户，所以不按提交刷。规则是：
