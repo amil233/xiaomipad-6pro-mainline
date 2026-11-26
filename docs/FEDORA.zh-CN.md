@@ -34,6 +34,34 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
 | 内核里只有 AppArmor，SELinux 没编进去 | 内核编上 SELinux，先用 permissive |
 | 根是 ext4 | 还是 ext4（不用 btrfs） |
 
+## 传感器栈怎么移植（2026-11-27 定下的路线）
+
+平板上查过：Fedora 仓库里**没有** `hexagonrpc` 包；`iio-sensor-proxy` 是 3.9。
+所以没有"直接用发行版的包"这条捷径，按移植走。
+
+要搬的东西在 Ubuntu 线里已经齐了：
+
+- 源码：`device/sensors/sources.manifest`（三个仓库，按 commit 固定）；
+- 补丁：`device/sensors/patches/` 里两份 `hexagonrpcd` 补丁（SSC registry 版本
+  兄弟文件、`sns_registry` 属性 shim）+ 六份 `iio-sensor-proxy` 补丁（预占位冷插、
+  轮询串行化、释放取消、可用性广播、冷插门）；
+- ROM 侧配置：`device/sensors/rom`（已跟踪）。
+
+现在的 `tools/build-liuqin-sensors-stack.sh` 是**在 Ubuntu 根文件系统上**用
+apt + overlay 编的，Fedora 上跑不了。做法是加一个 Fedora 版：
+`tools/build-liuqin-fedora-sensors.sh`，在 `fedora:45` 容器里取源码、打同样的补丁、
+meson/ninja 编，产物打成 `liuqin-sensors` RPM，内容包括：
+
+- `/usr/bin/hexagonrpcd`、它的 systemd 单元；
+- `/var/lib/liuqin-sensors/registry`（由 provision 从 persist 导入）；
+- 打过补丁的 `iio-sensor-proxy`（装在 `/usr/libexec/`，覆盖 Fedora 的包）。
+
+两个待定的点：
+
+1. `iio-sensor-proxy` 3.9 是否已经包含我们那六个补丁里的某些（上游可能在 3.8/3.9
+   合了），要先看 changelog，能省的补丁就别搬；
+2. 六份补丁是针对 3.x 具体版本的上下文，3.9 上可能不干净地应用，需要重新对齐。
+
 ## 还没做、但上机前必须做的一件事
 
 initramfs 的准入检查（`initramfs/init`）是按 Ubuntu + GNOME 写的：它要求
