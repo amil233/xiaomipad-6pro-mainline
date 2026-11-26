@@ -25,9 +25,20 @@
 | 包管理 | `dnf upgrade` 可用（Fedora 仓库能连上、能装） |
 | Wi-Fi | **没跑 `provision-liuqin-from-persist.sh` 就已经可用** |
 
-Wi-Fi 能用但不代表 MAC 是对的：Fedora 自带 `linux-firmware` 里有 WCN6855 的固件，
-ath11k 没有从 persist 拿到本机 MAC 时会用随机/默认地址，每次启动可能不一样。要确认
-看 `ip link show wlan0`，和 persist 里的 `wlan_mac.bin` 比。
+Wi-Fi 能用但不代表地址是稳定的。接口名是 `wlp1s0`（systemd 的可预测命名），
+persist 里的文件写的却是 `wlan0=...`。
+
+ath11k 在没有从设备树或 persist 拿到本机地址时，用的是驱动自己生成的地址。要紧的是
+它**每次启动是否变化**，这决定要不要做地址那套：
+
+```sh
+ip link show wlp1s0 | grep ether     # 记下地址，重启，再看一次
+```
+
+- 每次一样：只是和原厂地址不同，网络身份稳定，这件事可以往后放；
+- 每次不一样：路由器每次发新租约、静态 DHCP/端口转发/家长控制都会失效，企业 Wi-Fi
+  和需要 MAC 白名单的网络每次都要重新认证，同一网段里还会留下大量过期租约。这时候
+  才值得把 persist 的地址写进去。
 
 ## 还没验证的
 
