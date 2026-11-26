@@ -8,7 +8,9 @@ on:
     branches: [liuqin-installer-fedora]
     paths:
       - 'tools/build-liuqin-fedora-base.sh'
+      - 'tools/build-liuqin-kernel-rpm.sh'
       - 'tools/lib/rootfs-manifest.sh'
+      - 'tools/lib/kernel-artifact.sh'
       - 'device/configs/liuqin-fedora.config'
       - '.github/workflows/fedora-rootfs.yml'
   workflow_dispatch:
@@ -42,15 +44,54 @@ jobs:
       - name: Extract the root tree
         run: sudo sh project/tools/build-liuqin-fedora-base.sh extract
 
+      - name: Download the kernel artifact
+        env:
+          GH_TOKEN: ${{ secrets.PAT_GET_KERNEL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PAT_GET_KERNEL is empty: add it as a repository secret" >&2
+            exit 1
+          fi
+          repo="${{ github.repository_owner }}/linux-sm8450-liuqin"
+          branch=$(python3 -c "import json;print(json.load(open('project/kernel/source.json'))['branch'])")
+          run_id=$(gh run list -R "$repo" --workflow liuqin.yml \
+            --branch "$branch" --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId')
+          [ -n "$run_id" ] || { echo "no successful kernel run on $branch" >&2; exit 1; }
+          mkdir -p project/ci
+          gh run download "$run_id" -R "$repo" -D project/ci
+          ls project/ci
+
+      # The runner is Ubuntu: no rpmbuild, no dnf, no Fedora.  The official
+      # aarch64 image gives a native Fedora 45 userland in a container, which
+      # is enough for packaging and for installing into the tree.
+      - name: Build the kernel RPM
+        run: |
+          docker run --rm -v "$PWD/project:/work" -w /work \
+            docker.io/library/fedora:45 \
+            bash -lc 'dnf -y install rpm-build tar gzip >/dev/null && sh tools/build-liuqin-kernel-rpm.sh build'
+
+      - name: Install it into the tree
+        run: |
+          docker run --rm -v "$PWD/project:/work" -w /work \
+            docker.io/library/fedora:45 \
+            bash -lc 'sh tools/build-liuqin-kernel-rpm.sh install'
+
       - name: Report
         run: |
           set -euo pipefail
           mkdir -p project/out
-          sudo sh project/tools/build-liuqin-fedora-base.sh report |
-            tee project/out/fedora-base-report.txt
+          report=project/out/fedora-base-report.txt
+          sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
+          docker run --rm -v "$PWD/project:/work" -w /work \
+            docker.io/library/fedora:45 \
+            bash -lc 'sh tools/build-liuqin-kernel-rpm.sh check' >>"$report"
+          cat "$report"
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/rootfs.manifest \
             >project/out/rootfs.manifest.gz
+          cp project/out/fedora-rpm/*.aarch64.rpm project/out/
           ls -lh project/out
           df -h /
 
@@ -62,4 +103,5 @@ jobs:
           path: |
             project/out/fedora-base-report.txt
             project/out/rootfs.manifest.gz
+            project/out/kernel-liuqin-*.aarch64.rpm
           retention-days: 7

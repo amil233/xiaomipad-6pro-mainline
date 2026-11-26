@@ -63,9 +63,13 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
   配置（带 SELinux），不会取到 Ubuntu 线那份。
 - 内核的 SELinux 开关写进了 `device/configs/liuqin-fedora.config`，并且加进了
   `kernel/source.json` 的配置列表，所以这个分支构建出来的内核带 SELinux。
-- 第 1 步的脚本 `tools/build-liuqin-fedora-base.sh` 和新的 workflow
-  `.github/workflows/fedora-rootfs.yml` 已经写好，跑过两次，第二次看清了 ISO
-  的内部结构（见下一节），刚改完，还要再跑一次确认。
+- **第 1 步已跑通**（workflow 15 分钟）：Fedora 45 KDE Mobile 的根 6107 MiB、
+  139,950 个文件、1719 个包；`plasma-mobile 6.8.1`、`plasma-workspace 6.8.1`、
+  `plasma-setup 6.8.1`、`selinux-policy-targeted 45.23`、`systemd 262` 都在；
+  SELinux 配置是 `enforcing`，策略已装好。自带内核是 7.2.11，`/boot` 占 515 MiB。
+  这个根能直接放进 8 GiB 的 ext4 镜像。
+- 第 2 步的打包脚本 `tools/build-liuqin-kernel-rpm.sh` 已写好，workflow 里也
+  接上了，还没跑过。
 
 ## 还没确认的事
 
@@ -73,9 +77,14 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
   （2.34 GB）。按日志确认：**这层 EROFS 解出来就是根**，里面没有
   `LiveOS/rootfs.img`，只有 `boot/`、`usr/` 这些正常目录。脚本已按这个改：
   只认 `LiveOS/rootfs.img` 这个固定位置，没有就把打开的树当根。
-- 这棵树里的 `boot/` 装的是 Fedora 自己的内核和 initramfs（`vmlinuz-*`、
-  `initramfs-*.img`）。我们用不上（内核从 `boot_a` 启动，模块在
-  `/usr/lib/modules`），要不要在装配时删掉、能省多少，等报告里的数字出来再定。
+- 这棵树里的 `boot/`（515 MiB）和 7.2.11 的内核是用不上的：我们从 `boot_a`
+  启动自己的内核，模块也由自己的包提供。第 2 步会把这些连同 Fedora 的内核包
+  一起删掉。
+- 树里没有 `sddm`，登录管理器应该是 `plasma-login-manager`（Fedora 45 的
+  `kde-mobile` 包组带的是它）。第 4 步上机时确认。
+- GitHub Actions 没有 Fedora 的 runner，也没有 aarch64 的 rpm 系环境，所以
+  打包和装包都在 `fedora:45` 的 aarch64 容器里做（runner 本身就是 arm64，
+  容器是原生执行，不用模拟）。这一条是第 2 步的前提。
 - 内核 RPM 的安装脚本会尝试往 `/boot` 写东西，要绕开。
 - 桌面定制（原来的 `device/gnome-overlay`）几乎要重做，工作量最大。
 
