@@ -53,7 +53,7 @@ Windows 刷机主机：先 `copy /b rootfs.tgz.part-* rootfs.tgz`，再用 7-Zip
 sudo sh tools/provision-liuqin-from-persist.sh /
 sudo reboot
 
-# 2. 镜像默认只占 6 GiB 左右，把它扩到整个 userdata
+# 2. 镜像默认约 7 GiB，把它扩到整个 userdata
 sudo resize2fs /dev/disk/by-partlabel/userdata
 ```
 
@@ -90,6 +90,23 @@ rootfs 一起换：
 2. 跑工作流，下载新的 artifact；
 3. 按第 2 节合并、解开、刷 `boot_a` 和 `userdata`；
 4. 重启后按第 2 节做一次校准导入，再把 `/home` 放回去。
+
+## 4.5 第一次上机要收集的东西
+
+第一次刷 Fedora 是这条线唯一没验证过的环节。刷之前把上一套 Ubuntu 的
+`boot.img` 和 `rootfs.simg` 留在刷机主机上（回滚用）。
+
+刷完按顺序记录：
+
+1. 开机后是进桌面（plasma-setup 的欢迎/建用户界面），还是停在 initramfs 的
+   救援 shell；
+2. 如果停住：`fastboot` 重新进 bootloader、再 `fastboot boot boot.img` 一次，
+   同时接 USB，在刷机主机上 `telnet 192.168.7.2 2323`，把
+   `dmesg | tail -50`、`cat /proc/cmdline`、`cat /run/liuqin-firstboot.log` 抓下来；
+3. 如果进了桌面：`uname -r`、`getenforce`、`findmnt /`、
+   `ls /usr/lib/modules`，以及屏幕有没有花、触控能不能用。
+
+这一轮不追硬件（音频、传感器、指纹都还没移植），只看"能不能到桌面"。
 
 ## 5. 启动后检查
 

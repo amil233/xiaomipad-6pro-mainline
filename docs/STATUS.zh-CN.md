@@ -13,7 +13,8 @@
 | 内核包 | `kernel-liuqin` RPM 装进树：756 个模块，树降到 5377 MiB（Fedora 自带内核和 `/boot` 已清掉） |
 | 根整理 | marker、`machine-id` 清空、SELinux permissive，`native-root.hashes` 已生成 |
 | 桌面 | `plasma-mobile 6.8.1`、`plasma-workspace 6.8.1`、`plasma-setup 6.8.1`、登录管理器 `plasmalogin` |
-| boot.img / ext4 镜像 | 装配步骤已接入工作流，首次结果以最近一次 run 为准 |
+| 整条流水线 | 一次跑通（16 分 44 秒）：boot.img 192 MiB、ext4 镜像 7,584,350,208 字节（约 7.06 GiB）、`rootfs.tgz` 约 2.25 GiB、切成 2 片（1.9 GiB + 352 MiB） |
+| 版本钉住 | boot.img 里 `expected_release=7.3.0-gb746af962d0c`，与树里的 `kernel.release` 一致 |
 
 ## 还没验证的
 
