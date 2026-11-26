@@ -9,6 +9,10 @@ on:
     paths:
       - 'tools/build-liuqin-fedora-base.sh'
       - 'tools/build-liuqin-kernel-rpm.sh'
+      - 'tools/build-liuqin-device-rpm.sh'
+      - 'device/firmware/**'
+      - 'device/wlan-tuple/**'
+      - 'device/gnome-overlay/usr/share/alsa/ucm2/**'
       - 'tools/build-liuqin-fedora-rootfs.sh'
       - 'tools/build-liuqin-fedora-image.sh'
       - 'tools/build-liuqin-fedora-boot.sh'
@@ -81,6 +85,12 @@ jobs:
 
       # 容器里是 root，project/out 会被它建成 root 拥有的目录。后面编拓扑、装
       # boot.img、跑报告都要以 runner 用户往这里写，所以立刻交还所有权。
+      - name: Build and install the device files
+        run: |
+          sh project/tools/fedora-container.sh \
+            'sh tools/build-liuqin-device-rpm.sh build &&
+             sh tools/build-liuqin-device-rpm.sh install'
+
       - name: Take ownership of the container output
         run: |
           [ -d project/out ] || exit 0
@@ -163,7 +173,8 @@ jobs:
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/native-root.hashes \
             >project/out/artifact/native-root.hashes.gz
-          cp project/out/fedora-rpm/*.aarch64.rpm project/out/artifact/
+          cp project/out/fedora-rpm/kernel-liuqin-*.aarch64.rpm \
+             project/out/fedora-rpm/liuqin-device-*.aarch64.rpm project/out/artifact/
           ls -lh project/out
           df -h /
 
