@@ -63,6 +63,7 @@ ip link show wlp1s0 | grep ether     # 记下地址，重启，再看一次
 | 下一步：传感器栈 | 需要移植三样东西：`hexagonrpcd`（SLPI 上的传感器服务端）、SSC registry 文件（`provision-liuqin-from-persist.sh` 已经能导入，等 `fastrpc` 账户存在时生效）、`iio-sensor-proxy`（Fedora 有包，但 Ubuntu 线替换过一份，要先确认 Fedora 版认不认 `/var/lib/liuqin-sensors/registry` 这套布局）。另外要新增 `fastrpc` 用户和 `/etc/udev/rules.d/80-liuqin-fastrpc.rules` 那套权限 |
 | SELinux | 先 permissive；策略和标签没打全之前不收紧 |
 | 自动登录 | `etc/plasmalogin.conf` 里有 autologin 相关配置，树里没有人类账户，第一次启动走 plasma-setup，上机时确认 |
+| 自动锁屏后触摸失效 | 开着自动锁屏、长时间无操作后熄屏，再唤醒时系统活着（长按电源能弹出登录框）但触摸没有事件。**关闭自动锁屏后不再触发**，属于体验问题，暂不阻塞；根因未定位（怀疑是挂起/恢复时触摸驱动的恢复顺序，见驱动里 `nvt_ts_resume` 对面板就绪的依赖）。要用时要能输入，先 `sudo systemctl mask sleep.target suspend.target` 或关掉自动锁屏 |
 | 无 `/etc/fstab` | 根由 initramfs 挂好，systemd 不需要 fstab；确认没有服务因此报错 |
 | 内核升代 | 现在跟主线 7.3；Fedora 45 自带的也是 7.3.6，同代 |
 
