@@ -1,13 +1,12 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Assemble a native boot image from kernel build outputs and a root manifest.
+# 用内核产物和 Fedora 的根装配 boot.img。
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-out_dir=${OUT_DIR:-"$project_root/out/native-boot"}
+out_dir=${OUT_DIR:-"$project_root/out/fedora-boot"}
 kernel_source=${KERNEL_SOURCE:-"$project_root/../linux-sm8450-liuqin"}
 kernel_out=${KERNEL_OUT:-"$project_root/out/kernel"}
-native_root_hashes=${NATIVE_ROOT_HASHES:?"set NATIVE_ROOT_HASHES to the assembled root's native-root.hashes"}
 audio_topology=${AUDIO_TOPOLOGY:?"set AUDIO_TOPOLOGY to the built AudioReach topology"}
 firmware_pool=${FIRMWARE_POOL:?"set FIRMWARE_POOL to the prepared firmware input directory"}
 wlan_tuple=${WLAN_HSP2_TUPLE:?"set WLAN_HSP2_TUPLE to the prepared WLAN tuple"}
@@ -49,8 +48,8 @@ image=${KERNEL_IMAGE:-$kernel_out/arch/arm64/boot/Image}
 raw_dtb=${KERNEL_DTB:-$kernel_out/arch/arm64/boot/dts/qcom/sm8475-xiaomi-liuqin.dtb}
 cmdline=$(cat "$project_root/device/native-bootargs.txt")
 
-die() { printf 'build-liuqin-native-boot: %s\n' "$*" >&2; exit 1; }
-say() { printf 'build-liuqin-native-boot: %s\n' "$*"; }
+die() { printf 'build-liuqin-fedora-boot: %s\n' "$*" >&2; exit 1; }
+say() { printf 'build-liuqin-fedora-boot: %s\n' "$*"; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 case $out_dir in
@@ -59,7 +58,7 @@ case $out_dir in
 esac
 case $out_dir in */../*|*/..|*/./*) die 'output path must not contain traversal' ;; esac
 [ ! -e "$out_dir" ] && [ ! -L "$out_dir" ] || die "output already exists: $out_dir"
-for input in "$image" "$raw_dtb" "$native_root_hashes" "$audio_topology" "$dtc" "$fdtoverlay"; do
+for input in "$image" "$raw_dtb" "$audio_topology" "$dtc" "$fdtoverlay"; do
 	[ -f "$input" ] || die "input missing: $input"
 done
 [ -d "$firmware_pool" ] && [ -d "$wlan_tuple" ] &&
@@ -99,16 +98,8 @@ if [ ! -f "$release_file" ]; then
 fi
 [ -f "$release_file" ] || die 'kernel release string is unavailable: no build tree and no packaged release'
 
-python3 - "$native_root_hashes" "$release_file" <<'PY'
-import hashlib, sys
-from pathlib import Path
-manifest, release_file = Path(sys.argv[1]), Path(sys.argv[2])
-wanted = hashlib.sha256(release_file.read_bytes()).hexdigest()
-rows = [line.split('  ', 1) for line in manifest.read_text().splitlines()]
-matches = [h for h, p in rows if p == '/usr/share/liuqin/kernel.release']
-if matches != [wanted]:
-    raise SystemExit('root filesystem and kernel release do not match')
-PY
+release=$(cat "$release_file")
+[ -n "$release" ] || die 'kernel release string is empty'
 if [ "$kernel_source_kind" = git ]; then
 	source_epoch=$(git -C "$kernel_source" show -s --format=%ct HEAD)
 else
@@ -116,15 +107,12 @@ else
 	source_epoch=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('source_date_epoch', 0))" "$kernel_info")
 	[ -n "$source_epoch" ] || source_epoch=0
 fi
-# New install/update flow: a persistent GNOME/native root holds the charger
-# while it runs; LIUQIN_CHARGER_MODE=auto resolves to 1 in build-initramfs.sh.
+# 常驻根在运行时接管充电；LIUQIN_CHARGER_MODE=auto 由 build-initramfs.sh 解析。
 charger_mode=${LIUQIN_CHARGER_MODE:-auto}
 mkdir -p "$out_dir"
 
-python3 "$project_root/tools/lib/build-root-contract.py" --profile native \
-	--device-layer-manifest "$native_root_hashes" --output "$out_dir/native-root.contract"
-
-LIUQIN_STORAGE_MODE=persistent LIUQIN_ROOT_PROFILE=native LIUQIN_EMBED_ROOTFS=0 \
+LIUQIN_STORAGE_MODE=persistent LIUQIN_ROOT_PROFILE=fedora LIUQIN_EMBED_ROOTFS=0 \
+	EXPECTED_RELEASE="$release" \
 	LIUQIN_CHARGER_MODE="$charger_mode" \
 	ROOTFS=none SOURCE_DATE_EPOCH="$source_epoch" SLOT_SUCCESS_GCC="$slot_cc" \
 	TOUCH_FIRMWARE_DIR="$firmware_pool/touch-nt36532/vendor/firmware" \
@@ -136,7 +124,6 @@ LIUQIN_STORAGE_MODE=persistent LIUQIN_ROOT_PROFILE=native LIUQIN_EMBED_ROOTFS=0 
 	GPU_FIRMWARE_DIR="$firmware_pool/gpu-adreno730/vendor" \
 	DSP_FIRMWARE_DIR="$firmware_pool/dsp-sm8475/vendor/qcom/sm8475/liuqin" \
 	AUDIO_TOPOLOGY="$audio_topology" \
-	NATIVE_ROOT_CONTRACT="$out_dir/native-root.contract" NATIVE_ROOT_MANIFEST="$native_root_hashes" \
 	OUT_DIR="$out_dir/initramfs" sh "$project_root/tools/lib/build-initramfs.sh"
 
 python3 - "$out_dir/initramfs/liuqin-firstboot.cpio.gz" "$out_dir/liuqin-firstboot.cpio.gz" <<'PY'
@@ -173,8 +160,7 @@ mv "$out_dir/boot/boot-liuqin-firstboot.img" "$out_dir/boot-liuqin-native.img"
 	printf 'source_date_epoch=%s\n' "$source_epoch"
 	printf 'image_sha256=%s\n' "$(sha "$image")"
 	printf 'raw_dtb_sha256=%s\n' "$(sha "$raw_dtb")"
-	printf 'native_root_hashes_sha256=%s\n' "$(sha "$native_root_hashes")"
-	printf 'root_file_list_sha256=%s\n' "$(sha "$out_dir/native-root.contract")"
+	printf 'expected_release=%s\n' "$release"
 	printf 'ramdisk_sha256=%s\n' "$(sha "$out_dir/liuqin-firstboot.cpio.gz")"
 	printf 'boot_sha256=%s\n' "$(sha "$out_dir/boot-liuqin-native.img")"
 } >"$out_dir/native-boot.identity"

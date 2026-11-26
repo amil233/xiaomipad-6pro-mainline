@@ -5,7 +5,7 @@ umask 022
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 busybox=${BUSYBOX:-"$project_root/tools/local/busybox-arm64/usr/bin/busybox"}
-# Explicitly select a stage-2 image, or ROOTFS=none for a native persistent root.
+# Explicitly select a stage-2 image, or ROOTFS=none for a persistent root.
 if [ -z "${ROOTFS+isset}" ]; then
 	echo "error: ROOTFS is not set, and it has no default." >&2
 	echo "       ROOTFS=out/rootfs/rootfs.squashfs" >&2
@@ -74,10 +74,7 @@ out_dir=${OUT_DIR:-"$project_root/out/initramfs-liuqin"}
 source_epoch=${SOURCE_DATE_EPOCH:-0}
 storage_mode=${LIUQIN_STORAGE_MODE:-readonly}
 embed_rootfs=${LIUQIN_EMBED_ROOTFS:-1}
-root_profile=${LIUQIN_ROOT_PROFILE:-legacy}
-gnome_root_contract=${GNOME_ROOT_CONTRACT:-"$project_root/device/rootfs-artifacts/gnome-root.contract"}
-native_root_contract=${NATIVE_ROOT_CONTRACT:-}
-native_root_manifest=${NATIVE_ROOT_MANIFEST:-"$project_root/out/native-root/native-root.hashes"}
+root_profile=${LIUQIN_ROOT_PROFILE:-fedora}
 case $storage_mode in
 readonly|persistent) ;;
 *)
@@ -97,17 +94,17 @@ if [ "$embed_rootfs" = 0 ] && [ "$storage_mode" != persistent ]; then
 	exit 1
 fi
 case $root_profile in
-legacy|gnome|native) ;;
-*) echo "error: LIUQIN_ROOT_PROFILE must be legacy, gnome or native" >&2; exit 1 ;;
+fedora) ;;
+*) echo "error: LIUQIN_ROOT_PROFILE must be fedora on this branch" >&2; exit 1 ;;
 esac
-if [ "$root_profile" != legacy ] && [ "$storage_mode" != persistent ]; then
+if [ "$root_profile" = fedora ] && [ "$storage_mode" != persistent ]; then
 	echo "error: the $root_profile root profile requires persistent mode" >&2
 	exit 1
 fi
 charger_mode=${LIUQIN_CHARGER_MODE:-auto}
 case $charger_mode in
 auto)
-	if [ "$storage_mode" = persistent ] && [ "$root_profile" != legacy ]; then
+	if [ "$storage_mode" = persistent ] && [ "$root_profile" = fedora ]; then
 		charger_mode=1
 	else
 		charger_mode=0
@@ -116,11 +113,11 @@ auto)
 0|1) ;;
 *) echo "error: LIUQIN_CHARGER_MODE must be auto, 0 or 1" >&2; exit 1 ;;
 esac
-if [ "$root_profile" != legacy ] && [ "$charger_mode" != 1 ]; then
-	echo "error: a persistent GNOME/native image must include charger-mode hold" >&2
+if [ "$root_profile" = fedora ] && [ "$charger_mode" != 1 ]; then
+	echo "error: a persistent image must include charger-mode hold" >&2
 	exit 1
 fi
-if [ "$root_profile" != legacy ]; then
+if [ "$root_profile" = fedora ]; then
 	[ -d "$wlan_hsp2_tuple/hw2.0" ] && [ -d "$wlan_hsp2_tuple/hw2.1" ] || {
 		echo "error: the GNOME image requires the reviewed HSP2 WLAN tuple: $wlan_hsp2_tuple" >&2
 		exit 1
@@ -173,175 +170,16 @@ if [ -n "$rootfs" ] && [ ! -r "$rootfs" ]; then
 	exit 1
 fi
 
-# A persistent initramfs must prove the exact stage-2 storage guard it will
-# hand execution to.  The rootfs builder emits this sidecar with the squashfs;
-# it binds the supplied squashfs and the complete PID 1 chain.  Stage 1 keeps
-# the whole contract outside LIUQIN_ROOT, so no mutable root bytes can alter a
-# hash or link target before validation.
-storage_root_contract=
-if [ "$storage_mode" = persistent ]; then
-	if [ "$root_profile" != native ]; then
-		if [ -z "$rootfs" ]; then
-			echo "error: persistent mode requires a stage-2 root filesystem, not ROOTFS=none" >&2
-			exit 1
-		fi
-		storage_rcs_contract="$rootfs.persistent-rcS.contract"
-		if [ ! -f "$storage_rcs_contract" ] || [ -L "$storage_rcs_contract" ] ||
-			[ "$(stat -c '%a' "$storage_rcs_contract" 2>/dev/null || true)" != 644 ]; then
-			echo "error: persistent rootfs file list is missing or has an unsafe mode: $storage_rcs_contract" >&2
-			exit 1
-		fi
-		storage_rootfs_sha256=$(sha256sum "$rootfs" | cut -d' ' -f1)
-		if ! awk -v rootfs_sha256="$storage_rootfs_sha256" '
-			NR == 1 { valid = ($0 == "LIUQIN_PERSISTENT_ROOT_CONTRACT_V2") }
-			NR == 2 { valid = valid && ($0 == "rootfs_sha256=" rootfs_sha256) }
-			NR == 3 { valid = valid && ($0 ~ /^rcs_sha256=[0-9a-f]{64}$/) }
-			NR == 4 { valid = valid && ($0 ~ /^inittab_sha256=[0-9a-f]{64}$/) }
-			NR == 5 { valid = valid && ($0 ~ /^busybox_sha256=[0-9a-f]{64}$/) }
-			NR == 6 { valid = valid && ($0 == "sbin_link=usr/sbin") }
-			NR == 7 { valid = valid && ($0 == "usr_sbin_init_link=/usr/local/bin/busybox") }
-			NR == 8 { valid = valid && ($0 == "rcs_interpreter=/usr/local/bin/busybox sh") }
-			END { exit !(NR == 8 && valid) }
-		' "$storage_rcs_contract"; then
-			echo "error: persistent rootfs file list does not match the selected rootfs: $storage_rcs_contract" >&2
-			exit 1
-		fi
-		storage_root_contract=$storage_rcs_contract
-	fi
-	if [ "$root_profile" = native ]; then
-		[ -n "$native_root_contract" ] || {
-			echo "error: the native profile requires NATIVE_ROOT_CONTRACT (tools/lib/build-root-contract.py --profile native)" >&2
-			exit 1
-		}
-		if [ ! -f "$native_root_contract" ] || [ -L "$native_root_contract" ] ||
-			[ "$(stat -c '%a' "$native_root_contract" 2>/dev/null || true)" != 644 ] ||
-			[ "$(sed -n '1p' "$native_root_contract")" != LIUQIN_NATIVE_ROOT_CONTRACT_V1 ]; then
-			echo "error: root file list is unavailable or invalid: $native_root_contract" >&2
-			exit 1
-		fi
-		if [ ! -f "$native_root_manifest" ] || [ -L "$native_root_manifest" ]; then
-			echo "error: native root hash manifest is unavailable: $native_root_manifest (run build-liuqin-native-root.sh)" >&2
-			exit 1
-		fi
-		# Same relation as the GNOME check below, against the assembled native
-		# root's hash list: every contract pin must be in the tree at the same
-		# hash, so the image and the root can never describe different trees.
-		tail -n +2 "$native_root_contract" | while IFS= read -r contract_line; do
-			[ -n "$contract_line" ] || continue
-			contract_hash=${contract_line%%  *}
-			contract_path=${contract_line#*  }
-			# Exact field comparison: hash is 64 chars, two spaces, then the
-			# path.  An index()-based suffix match false-matches any line one
-			# character shorter than the needle (index 0 equals length diff 0),
-			# which the 234k-entry native manifest actually contains.
-			tree_hash=$(awk -v p="$contract_path" \
-				'{ h=substr($0,1,64); if (substr($0,67) == p) { print h; exit } }' \
-				"$native_root_manifest")
-			if [ -z "$tree_hash" ]; then
-				echo "error: the root file list names a path the assembled root does not carry: $contract_path" >&2
-				exit 1
-			fi
-			if [ "$tree_hash" != "$contract_hash" ]; then
-				echo "error: the root file list disagrees with the assembled root on $contract_path" >&2
-				exit 1
-			fi
-		done
-		native_contract_pins=$(tail -n +2 "$native_root_contract" | grep -c . || :)
-		if [ "$native_contract_pins" -lt 9 ]; then
-			echo "error: root file list names only $native_contract_pins files;" >&2
-			echo "       stage 1 rejects a file list shorter than 10 lines" >&2
-			exit 1
-		fi
-	fi
-	if [ "$root_profile" = gnome ]; then
-		if [ ! -f "$gnome_root_contract" ] || [ -L "$gnome_root_contract" ] ||
-			[ "$(stat -c '%a' "$gnome_root_contract" 2>/dev/null || true)" != 644 ] ||
-			[ "$(sed -n '1p' "$gnome_root_contract")" != LIUQIN_GNOME_ROOT_CONTRACT_V1 ]; then
-			echo "error: GNOME root file list is unavailable or invalid: $gnome_root_contract" >&2
-			exit 1
-		fi
-		# Only once the contract is known to exist and be well formed. The
-		# contract is generated from the device layer's manifest, so a layer
-		# rebuilt afterwards leaves the two describing different trees; stage 1
-		# then rejects a root that is perfectly fine and falls back, which on a
-		# console reads like a boot failure. It cost a QEMU round here after a
-		# dconf change was followed by regenerating the contract and nothing
-		# else. Ordering is load-bearing: layer, contract, initramfs, boot.
-		gnome_layer_manifest=${GNOME_LAYER_MANIFEST:-"$project_root/out/gnome-device-layer/device-layer.manifest"}
-		if [ ! -f "$gnome_layer_manifest" ] || [ -L "$gnome_layer_manifest" ]; then
-			echo "error: GNOME device-layer manifest is unavailable: $gnome_layer_manifest" >&2
-			exit 1
-		fi
-		# Every path the contract pins must be in the layer at the same hash.
-		#
-		# Driven from the contract itself. This used to be a second, hand-kept
-		# copy of the pin list, and a second copy is a second place to forget:
-		# contract v2 stopped pinning the dconf pair, gdm3/custom.conf and the
-		# two GPU blobs at their old dpkg-owned path, and the hardcoded list
-		# went on demanding all five -- so the build failed on the very change
-		# that fixed the boot bug, complaining about paths that were removed on
-		# purpose. Iterating over the contract states the relation that is
-		# actually wanted (contract is a subset of the layer, hashes agree)
-		# without naming a single file, so the next scope change needs no edit
-		# here at all.
-		#
-		# The `exit 1` below is inside a pipeline, so it leaves a subshell
-		# rather than the script; `set -eu` at the top of this file is what
-		# turns the pipeline's non-zero status into the build stopping. That is
-		# the pre-existing shape of this check and it does work -- noted
-		# because it does not look like it does.
-		tail -n +2 "$gnome_root_contract" | while IFS= read -r contract_line; do
-			[ -n "$contract_line" ] || continue
-			contract_hash=${contract_line%%  *}
-			contract_path=${contract_line#*  }
-			# Exact field comparison (hash is 64 chars, two spaces, then the
-			# path).  The previous index()-based suffix match false-matched a
-			# line one character shorter than the needle: index() then yields 0
-			# and the length difference is also 0.
-			layer_hash=$(awk -v p="$contract_path" \
-				'{ h=substr($0,1,64); if (substr($0,67) == p) { print h; exit } }' \
-				"$gnome_layer_manifest")
-			if [ -z "$layer_hash" ]; then
-				echo "error: the GNOME file list names a path the device layer does not carry: $contract_path" >&2
-				exit 1
-			fi
-			if [ "$layer_hash" != "$contract_hash" ]; then
-				echo "error: the GNOME file list disagrees with the device layer on $contract_path" >&2
-				echo "       file list $contract_hash" >&2
-				echo "       layer    $layer_hash" >&2
-				echo "       regenerate the contract from the current layer manifest" >&2
-				exit 1
-			fi
-		done
-		# A contract that pins nothing satisfies every comparison above. Stage 1
-		# refuses a contract shorter than ten lines including the header
-		# (initramfs/init:238), so hold the same floor here rather than ship an
-		# image whose own contract the tablet will reject. `grep -c` exits 1 on
-		# a count of zero, which under set -e would abort with no message.
-		gnome_contract_pins=$(tail -n +2 "$gnome_root_contract" | grep -c . || :)
-		if [ "$gnome_contract_pins" -lt 9 ]; then
-			echo "error: GNOME root contract pins only $gnome_contract_pins files;" >&2
-			echo "       stage 1 rejects a file list shorter than 10 lines" >&2
-			exit 1
-		fi
-	fi
-	if [ ! -r "$slot_success_source" ] || [ ! -x "$slot_success_gcc" ]; then
-		echo "error: persistent slot-success source/toolchain is unavailable" >&2
-		exit 1
-	fi
+# boot.img 和 rootfs 是分别刷进去的。这里把这次构建的内核版本号钉进
+# initramfs，stage 1 拿它和根里的 /usr/share/liuqin/kernel.release 比，不一致
+# 就拒绝挂载——这是“两个一起刷”这条规则的执行方式。
+if [ -z "${EXPECTED_RELEASE:-}" ]; then
+	echo "error: set EXPECTED_RELEASE to the kernel release this image boots" >&2
+	exit 1
 fi
-# Naming the file explicitly stops the build from picking a stale rootfs on its
-# own; it does not stop a stale path from being copied out of an old shell
-# history. So say when a newer one exists. A warning and not an error, because
-# rebuilding an older image on purpose is a legitimate thing to want -- the
-# failure being guarded against is the one where nobody was thinking about it.
-if [ -n "$rootfs" ]; then
-	find "$project_root/out" -maxdepth 2 -name rootfs.squashfs -newer "$rootfs" \
-		2>/dev/null | LC_ALL=C sort | while read -r newer_rootfs; do
-		echo "warning: a newer stage-2 root filesystem exists: $newer_rootfs" >&2
-	done
-	echo "stage 2: $rootfs" >&2
-fi
+case $EXPECTED_RELEASE in
+'' | *[!A-Za-z0-9._+-]*) echo "error: unsafe kernel release: $EXPECTED_RELEASE" >&2; exit 1 ;;
+esac
 
 mkdir -p "$out_dir"
 # The cpio below runs inside `cd "$staging"`, so every path it is handed has to
@@ -369,27 +207,9 @@ chmod 0644 "$staging/etc/mdev.conf"
 chmod 0755 "$staging/init" "$staging/bin/busybox"
 printf '%s\n' "$storage_mode" >"$staging/etc/liuqin-storage-mode"
 chmod 0644 "$staging/etc/liuqin-storage-mode"
-if [ "$root_profile" = gnome ]; then
-	printf '%s\n' gnome >"$staging/etc/liuqin-root-profile"
-	chmod 0644 "$staging/etc/liuqin-root-profile"
-fi
-if [ "$root_profile" = native ]; then
-	printf '%s\n' native >"$staging/etc/liuqin-root-profile"
-	chmod 0644 "$staging/etc/liuqin-root-profile"
-fi
+printf '%s\n' "$EXPECTED_RELEASE" >"$staging/etc/liuqin-expected-release"
+chmod 0644 "$staging/etc/liuqin-expected-release"
 if [ "$storage_mode" = persistent ]; then
-	if [ -n "$storage_root_contract" ]; then
-		cp "$storage_root_contract" "$staging/etc/liuqin-persistent-root.contract"
-		chmod 0644 "$staging/etc/liuqin-persistent-root.contract"
-	fi
-	if [ "$root_profile" = gnome ]; then
-		cp "$gnome_root_contract" "$staging/etc/liuqin-gnome-root.contract"
-		chmod 0644 "$staging/etc/liuqin-gnome-root.contract"
-	fi
-	if [ "$root_profile" = native ]; then
-		cp "$native_root_contract" "$staging/etc/liuqin-native-root.contract"
-		chmod 0644 "$staging/etc/liuqin-native-root.contract"
-	fi
 	"$slot_success_gcc" -static -Os -s "$slot_success_source" \
 		-o "$staging/bin/liuqin-mark-slot-successful"
 	chmod 0755 "$staging/bin/liuqin-mark-slot-successful"
@@ -474,7 +294,7 @@ for firmware_name in amss.bin.zst board-2.bin.zst m3.bin.zst regdb.bin.zst; do
 done
 rm -rf "$wlan_zst_tmp"
 
-if [ "$root_profile" = gnome ] || [ "$root_profile" = native ]; then
+if [ "$root_profile" = fedora ]; then
 	for wlan_revision in hw2.0 hw2.1; do
 		for wlan_name in amss.bin m3.bin board-2.bin regdb.bin; do
 			install -D -m 0644 "$wlan_hsp2_tuple/$wlan_revision/$wlan_name" \

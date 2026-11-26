@@ -53,25 +53,8 @@ case $storage_mode in
 		;;
 esac
 
-storage_profile=legacy
-storage_profile_file=/etc/liuqin-root-profile
-if [ "${LIUQIN_INIT_STORAGE_TEST_ONLY:-0}" = 1 ]; then
-	storage_profile_file=${LIUQIN_STORAGE_PROFILE_FILE:-$storage_profile_file}
-fi
-if [ -r "$storage_profile_file" ]; then
-	storage_profile=invalid
-	if [ -f "$storage_profile_file" ] && [ ! -L "$storage_profile_file" ] &&
-		[ "$("$BB" stat -c '%a %u %g' "$storage_profile_file" 2>/dev/null || true)" = "644 0 0" ]; then
-		storage_profile=$("$BB" cat "$storage_profile_file" 2>/dev/null || true)
-	fi
-fi
-case $storage_profile in
-	legacy|gnome|native) ;;
-	*)
-		log "warning: invalid root profile; forcing legacy"
-		storage_profile=legacy
-		;;
-esac
+# 这个分支只服务 Fedora 的根：没有发行版配置文件、没有第二套布局要兼容。
+storage_profile=fedora
 
 # Qualcomm A/B: which slot this boot came from.  ABL spells it
 # `androidboot.slot_suffix=_a`; a hand-written or QEMU cmdline may use the bare
@@ -113,33 +96,13 @@ storage_target=
 storage_home_name=
 storage_home=
 storage_parent=$storage_dev_root/sda
-storage_marker=etc/liuqin-persistent-root
-storage_marker_text=LIUQIN_PERSISTENT_ROOT_V1
-storage_root_contract=/etc/liuqin-persistent-root.contract
-storage_root_subdir=
-storage_init=/sbin/init
-storage_gnome_contract=/etc/liuqin-gnome-root.contract
-storage_native_contract=/etc/liuqin-native-root.contract
-if [ "$storage_profile" = gnome ]; then
-	storage_marker=etc/liuqin-gnome-root
-	storage_marker_text=LIUQIN_GNOME_ROOT_V1
-	storage_root_subdir=gnome-root
-	storage_init=/usr/lib/systemd/systemd
-fi
-if [ "$storage_profile" = native ]; then
-	storage_marker=etc/liuqin-native-root
-	storage_marker_text=liuqin-native-root-v1
-	storage_root_subdir=native-root
-	storage_init=/usr/lib/systemd/systemd
-fi
-if [ "${LIUQIN_INIT_STORAGE_TEST_ONLY:-0}" = 1 ]; then
-	storage_root_contract=${LIUQIN_STORAGE_ROOT_CONTRACT:-$storage_root_contract}
-	storage_gnome_contract=${LIUQIN_STORAGE_GNOME_CONTRACT:-$storage_gnome_contract}
-	storage_native_contract=${LIUQIN_STORAGE_NATIVE_CONTRACT:-$storage_native_contract}
-fi
-storage_rcs_expected_sha256=
-storage_inittab_expected_sha256=
-storage_busybox_expected_sha256=
+# 根在 userdata 的 native-root/ 下：标记文件、systemd、以及 boot.img 里钉住的
+# 内核版本号，就是全部的准入条件。
+storage_marker=etc/liuqin-native-root
+storage_marker_text=liuqin-native-root-v1
+storage_root_subdir=native-root
+storage_init=/usr/lib/systemd/systemd
+storage_expected_release_file=/etc/liuqin-expected-release
 storage_probe_mounted=false
 storage_root_mounted=false
 storage_fallback_safe=true
@@ -301,341 +264,49 @@ storage_identity_ok() {
 	return 0
 }
 
-storage_root_contract_ok() {
-	[ -f "$storage_root_contract" ] || return 1
-	[ ! -L "$storage_root_contract" ] || return 1
-	[ "$("$BB" stat -c '%a %u %g %s' "$storage_root_contract" 2>/dev/null || true)" = "644 0 0 453" ] || return 1
-	storage_root_contract_lines=0
-	storage_rcs_expected_sha256=
-	storage_inittab_expected_sha256=
-	storage_busybox_expected_sha256=
-	while IFS= read -r storage_root_contract_line; do
-		storage_root_contract_lines=$((storage_root_contract_lines + 1))
-		case $storage_root_contract_lines:$storage_root_contract_line in
-		1:LIUQIN_PERSISTENT_ROOT_CONTRACT_V2) ;;
-		2:rootfs_sha256=????????????????????????????????????????????????????????????????) ;;
-		3:rcs_sha256=????????????????????????????????????????????????????????????????)
-			storage_rcs_expected_sha256=${storage_root_contract_line#rcs_sha256=} ;;
-		4:inittab_sha256=????????????????????????????????????????????????????????????????)
-			storage_inittab_expected_sha256=${storage_root_contract_line#inittab_sha256=} ;;
-		5:busybox_sha256=????????????????????????????????????????????????????????????????)
-			storage_busybox_expected_sha256=${storage_root_contract_line#busybox_sha256=} ;;
-		6:sbin_link=usr/sbin) ;;
-		7:usr_sbin_init_link=/usr/local/bin/busybox) ;;
-		8:rcs_interpreter=/usr/local/bin/busybox\ sh) ;;
-		*) return 1 ;;
-		esac
-		case $storage_root_contract_line in
-		*_sha256=*[!0123456789abcdef]*) return 1 ;;
-		esac
-	done <"$storage_root_contract"
-	[ "$storage_root_contract_lines" = 8 ] && [ -n "$storage_rcs_expected_sha256" ] &&
-		[ -n "$storage_inittab_expected_sha256" ] && [ -n "$storage_busybox_expected_sha256" ]
-}
-
-# Each rejection says which check refused.  "marker or root contract is
-# invalid" covers twenty-odd conditions, and narrowing it down otherwise means
-# a QEMU round per hypothesis -- which is how this session spent an hour after
-# a contract and a device layer drifted apart.
-storage_gnome_reject() {
-	log "gnome root rejected: $1"
+# 准入只看四件事，都是这份镜像自己保证的：标记文件、systemd、boot.img 里钉
+# 住的 kernel release 和根里的一致、对应的 modules.dep 在。发行版文件清单和
+# 桌面应用的检查属于 Ubuntu 那条线，这里不重复。
+storage_reject() {
+	log "persistent root rejected: $1"
 	return 1
-}
-
-storage_gnome_root_ok() {
-	storage_checked_root=$1
-	storage_checked_marker=$storage_checked_root/$storage_marker
-	[ -f "$storage_checked_marker" ] && [ ! -L "$storage_checked_marker" ] ||
-		storage_gnome_reject "marker missing or a symlink" || return 1
-	[ "$("$BB" stat -c '%a %u %g %s' "$storage_checked_marker" 2>/dev/null || true)" = "644 0 0 21" ] ||
-		storage_gnome_reject "marker metadata is not 644 0 0 21" || return 1
-	[ "$("$BB" cat "$storage_checked_marker" 2>/dev/null)" = "$storage_marker_text" ] || return 1
-	[ -f "$storage_gnome_contract" ] && [ ! -L "$storage_gnome_contract" ] ||
-		storage_gnome_reject "contract missing from the initramfs" || return 1
-	storage_gnome_contract_size=$("$BB" stat -c '%s' "$storage_gnome_contract" 2>/dev/null || true)
-	case $storage_gnome_contract_size in ''|*[!0-9]*) return 1 ;; esac
-	# The project-owned closure has more independent enforcement edges than
-	# the legacy nine pins.  Keep input bounded while leaving headroom for a
-	# reviewed future addition; the generator enforces this same 256..16384 B
-	# envelope before an initramfs is built.
-	[ "$storage_gnome_contract_size" -ge 256 ] && [ "$storage_gnome_contract_size" -le 16384 ] || return 1
-	storage_gnome_lines=0
-	while IFS= read -r storage_gnome_line; do
-		storage_gnome_lines=$((storage_gnome_lines + 1))
-		if [ "$storage_gnome_lines" = 1 ]; then
-			[ "$storage_gnome_line" = LIUQIN_GNOME_ROOT_CONTRACT_V1 ] || return 1
-			continue
-		fi
-		storage_gnome_hash=${storage_gnome_line%%  *}
-		storage_gnome_path=${storage_gnome_line#*  }
-		[ "$storage_gnome_hash  $storage_gnome_path" = "$storage_gnome_line" ] || return 1
-		printf '%s\n' "$storage_gnome_hash" | "$BB" grep -Eq '^[0-9a-f]{64}$' || return 1
-		case $storage_gnome_path in /*) ;; *) return 1 ;; esac
-		case $storage_gnome_path in *'/../'*|*'/..') return 1 ;; esac
-		storage_gnome_file=$storage_checked_root$storage_gnome_path
-		[ -f "$storage_gnome_file" ] && [ ! -L "$storage_gnome_file" ] ||
-			storage_gnome_reject "not a regular file: $storage_gnome_path" || return 1
-		[ "$("$BB" stat -c '%u %g' "$storage_gnome_file" 2>/dev/null || true)" = "0 0" ] ||
-			storage_gnome_reject "not owned by root: $storage_gnome_path" || return 1
-		[ "$("$BB" sha256sum "$storage_gnome_file" | "$BB" cut -d' ' -f1)" = "$storage_gnome_hash" ] ||
-			storage_gnome_reject "hash differs from the contract: $storage_gnome_path" || return 1
-	done <"$storage_gnome_contract"
-	[ "$storage_gnome_lines" -ge 10 ] && [ "$storage_gnome_lines" -le 128 ] || return 1
-	# Content hashes alone do not prove that systemd can execute the guard or
-	# that the unit is enabled.  These topology/mode gates are deliberately
-	# outside the regular-file contract because symlinks have no stable file
-	# payload to hash.
-	for storage_gnome_executable in \
-		/usr/lib/systemd/systemd /usr/sbin/gdm3 /usr/bin/gnome-shell \
-		/usr/bin/hexagonrpcd /usr/bin/ssccli \
-		/usr/local/bin/busybox /usr/local/bin/liuqin-shell \
-		/usr/local/libexec/liuqin-iio-sensor-proxy \
-		/usr/local/sbin/liuqin-gnome-storage-guard \
-		/usr/local/sbin/liuqin-gnome-usb-rescue \
-		/usr/local/libexec/liuqin-power-keyd \
-		/usr/local/libexec/liuqin-power-key-action \
-		/usr/local/libexec/liuqin-uinput-automation \
-		/usr/local/libexec/liuqin-audio-hwparams-probe \
-		/usr/local/sbin/liuqin-snap-root-admission \
-		/usr/local/sbin/liuqin-bt-public-addr \
-		/usr/local/sbin/liuqin-wlan-mac \
-		/usr/libexec/liuqin-ssc-sample-gate; do
-		[ "$("$BB" stat -c '%a' "$storage_checked_root$storage_gnome_executable" 2>/dev/null || true)" = 755 ] ||
-			storage_gnome_reject "not executable: $storage_gnome_executable" || return 1
-	done
-	for storage_gnome_regular in \
-		/etc/dconf/db/local.d/locks/00-liuqin-power \
-		/etc/systemd/system/liuqin-gnome-storage-guard.service \
-		/etc/systemd/system/liuqin-gnome-usb-rescue.service \
-		/etc/systemd/system/liuqin-power-keyd.service \
-		/etc/systemd/system/liuqin-snap-root-admission.service \
-		/etc/systemd/system/bluetooth.service.d/20-liuqin-public-address.conf \
-		/etc/systemd/system/liuqin-bt-preconfigure.service \
-		/etc/systemd/system/liuqin-hexagonrpcd-sdsp.service \
-		/etc/systemd/system/liuqin-ssc-sample-gate.service \
-		/etc/systemd/system/liuqin-sensor-stack.target \
-		/etc/systemd/system/liuqin-wlan-mac.service \
-		/etc/systemd/system/NetworkManager.service.d/20-liuqin-wlan-mac.conf \
-		/etc/udev/rules.d/80-liuqin-fastrpc.rules \
-		/usr/lib/firmware/qcom/sm8450/Xiaomi-Pad-6-Pro-tplg.bin \
-		/usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/sns_reg_version; do
-		[ "$("$BB" stat -c '%a' "$storage_checked_root$storage_gnome_regular" 2>/dev/null || true)" = 644 ] ||
-			storage_gnome_reject "project regular-file mode is invalid: $storage_gnome_regular" || return 1
-	done
-	[ -L "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-gnome-storage-guard.service" ] ||
-		storage_gnome_reject "storage guard is not required by basic.target" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-gnome-storage-guard.service")" = ../liuqin-gnome-storage-guard.service ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-snap-root-admission.service" ] ||
-		storage_gnome_reject "Snap admission is not required by basic.target" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-snap-root-admission.service")" = ../liuqin-snap-root-admission.service ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-gnome-usb-rescue.service" ] ||
-		storage_gnome_reject "USB rescue service is not enabled" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-gnome-usb-rescue.service")" = ../liuqin-gnome-usb-rescue.service ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-power-keyd.service" ] ||
-		storage_gnome_reject "power-key policy is not enabled" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-power-keyd.service")" = ../liuqin-power-keyd.service ] || return 1
-	"$BB" grep -qx 'Requires=liuqin-bt-preconfigure.service' \
-		"$storage_checked_root/etc/systemd/system/bluetooth.service.d/20-liuqin-public-address.conf" ||
-		storage_gnome_reject "Bluetooth preconfiguration is not required by BlueZ" || return 1
-	"$BB" grep -qx 'After=liuqin-bt-preconfigure.service' \
-		"$storage_checked_root/etc/systemd/system/bluetooth.service.d/20-liuqin-public-address.conf" || return 1
-	"$BB" grep -qx 'Before=bluetooth.service' \
-		"$storage_checked_root/etc/systemd/system/liuqin-bt-preconfigure.service" || return 1
-	"$BB" grep -qx 'ExecStart=/usr/local/sbin/liuqin-bt-public-addr' \
-		"$storage_checked_root/etc/systemd/system/liuqin-bt-preconfigure.service" || return 1
-	for storage_gnome_obsolete_bt_link in \
-		/etc/systemd/system/bluetooth.service.wants/liuqin-bt-public-addr.service \
-		/etc/systemd/system/bluetooth.service.requires/liuqin-bt-public-addr.service; do
-		[ ! -e "$storage_checked_root$storage_gnome_obsolete_bt_link" ] &&
-			[ ! -L "$storage_checked_root$storage_gnome_obsolete_bt_link" ] ||
-			storage_gnome_reject "obsolete Bluetooth helper activation remains" || return 1
-	done
-	[ -L "$storage_checked_root/usr/sbin/init" ] ||
-		storage_gnome_reject "/usr/sbin/init is not a symlink" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/usr/sbin/init")" = ../lib/systemd/systemd ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/default.target" ] ||
-		storage_gnome_reject "default.target is not a symlink" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/default.target")" = /usr/lib/systemd/system/graphical.target ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/display-manager.service" ] ||
-		storage_gnome_reject "display-manager.service is not a symlink" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/display-manager.service")" = /lib/systemd/system/gdm3.service ] || return 1
-	"$BB" chroot "$storage_checked_root" /usr/lib/systemd/systemd --version >/dev/null 2>&1 ||
-		storage_gnome_reject "systemd will not execute under chroot" || return 1
-	return 0
-}
-
-storage_native_reject() {
-	log "native root rejected: $1"
-	return 1
-}
-
-# Native-install profile:
-# the fresh root lives in the native-root subdir of LIUQIN_ROOT and every pinned
-# path is project-owned.  Development evidence tools (uinput-automation,
-# audio-hwparams-probe, ssccli) and the snap admission text check deliberately
-# appear in no gate here: they must not decide whether the system boots.
-storage_native_root_ok() {
-	storage_checked_root=$1
-	storage_checked_marker=$storage_checked_root/$storage_marker
-	[ -f "$storage_checked_marker" ] && [ ! -L "$storage_checked_marker" ] ||
-		storage_native_reject "marker missing or a symlink" || return 1
-	[ "$("$BB" stat -c '%a %u %g %s' "$storage_checked_marker" 2>/dev/null || true)" = "644 0 0 22" ] ||
-		storage_native_reject "marker metadata is not 644 0 0 22" || return 1
-	[ "$("$BB" cat "$storage_checked_marker" 2>/dev/null)" = "$storage_marker_text" ] ||
-		storage_native_reject "marker content mismatch" || return 1
-	[ -f "$storage_native_contract" ] && [ ! -L "$storage_native_contract" ] ||
-		storage_native_reject "contract missing from the initramfs" || return 1
-	storage_native_contract_size=$("$BB" stat -c '%s' "$storage_native_contract" 2>/dev/null || true)
-	case $storage_native_contract_size in ''|*[!0-9]*) return 1 ;; esac
-	[ "$storage_native_contract_size" -ge 256 ] && [ "$storage_native_contract_size" -le 16384 ] || return 1
-	storage_native_lines=0
-	while IFS= read -r storage_native_line; do
-		storage_native_lines=$((storage_native_lines + 1))
-		if [ "$storage_native_lines" = 1 ]; then
-			[ "$storage_native_line" = LIUQIN_NATIVE_ROOT_CONTRACT_V1 ] || return 1
-			continue
-		fi
-		storage_native_hash=${storage_native_line%%  *}
-		storage_native_path=${storage_native_line#*  }
-		[ "$storage_native_hash  $storage_native_path" = "$storage_native_line" ] || return 1
-		printf '%s\n' "$storage_native_hash" | "$BB" grep -Eq '^[0-9a-f]{64}$' || return 1
-		case $storage_native_path in /*) ;; *) return 1 ;; esac
-		case $storage_native_path in *'/../'*|*'/..') return 1 ;; esac
-		storage_native_file=$storage_checked_root$storage_native_path
-		[ -f "$storage_native_file" ] && [ ! -L "$storage_native_file" ] ||
-			storage_native_reject "not a regular file: $storage_native_path" || return 1
-		[ "$("$BB" stat -c '%u %g' "$storage_native_file" 2>/dev/null || true)" = "0 0" ] ||
-			storage_native_reject "not owned by root: $storage_native_path" || return 1
-		[ "$("$BB" sha256sum "$storage_native_file" | "$BB" cut -d' ' -f1)" = "$storage_native_hash" ] ||
-			storage_native_reject "hash differs from the contract: $storage_native_path" || return 1
-	done <"$storage_native_contract"
-	[ "$storage_native_lines" -ge 10 ] && [ "$storage_native_lines" -le 128 ] || return 1
-	for storage_native_executable in \
-		/usr/lib/systemd/systemd /usr/sbin/gdm3 /usr/bin/gnome-shell \
-		/usr/bin/hexagonrpcd \
-		/usr/local/bin/busybox /usr/local/bin/liuqin-shell \
-		/usr/libexec/iio-sensor-proxy \
-		/usr/local/sbin/liuqin-gnome-storage-guard \
-		/usr/local/sbin/liuqin-gnome-usb-rescue \
-		/usr/local/libexec/liuqin-power-keyd \
-		/usr/local/libexec/liuqin-power-key-action \
-		/usr/local/sbin/liuqin-bt-public-addr \
-		/usr/local/sbin/liuqin-wlan-mac \
-		/usr/libexec/liuqin-ssc-sample-gate; do
-		[ "$("$BB" stat -c '%a' "$storage_checked_root$storage_native_executable" 2>/dev/null || true)" = 755 ] ||
-			storage_native_reject "not executable: $storage_native_executable" || return 1
-	done
-	for storage_native_regular in \
-		/etc/dconf/db/local.d/locks/00-liuqin-power \
-		/etc/systemd/system/liuqin-gnome-storage-guard.service \
-		/etc/systemd/system/liuqin-gnome-usb-rescue.service \
-		/etc/systemd/system/liuqin-power-keyd.service \
-		/etc/systemd/system/liuqin-backlight-default.service \
-		/etc/systemd/system/bluetooth.service.d/20-liuqin-public-address.conf \
-		/etc/systemd/system/liuqin-bt-preconfigure.service \
-		/etc/systemd/system/liuqin-hexagonrpcd-sdsp.service \
-		/etc/systemd/system/liuqin-ssc-sample-gate.service \
-		/etc/systemd/system/liuqin-sensor-stack.target \
-		/etc/systemd/system/liuqin-wlan-mac.service \
-		/etc/systemd/system/NetworkManager.service.d/20-liuqin-wlan-mac.conf \
-		/etc/udev/rules.d/80-liuqin-fastrpc.rules \
-		/usr/lib/firmware/qcom/sm8450/Xiaomi-Pad-6-Pro-tplg.bin \
-		/usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/sns_reg_version; do
-		[ "$("$BB" stat -c '%a' "$storage_checked_root$storage_native_regular" 2>/dev/null || true)" = 644 ] ||
-			storage_native_reject "project regular-file mode is invalid: $storage_native_regular" || return 1
-	done
-	[ -L "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-gnome-storage-guard.service" ] ||
-		storage_native_reject "storage guard is not required by basic.target" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-gnome-storage-guard.service")" = ../liuqin-gnome-storage-guard.service ] || return 1
-	[ ! -e "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-snap-root-admission.service" ] &&
-		[ ! -L "$storage_checked_root/etc/systemd/system/basic.target.requires/liuqin-snap-root-admission.service" ] ||
-		storage_native_reject "snap admission still gates basic.target" || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-gnome-usb-rescue.service" ] ||
-		storage_native_reject "USB rescue service is not enabled" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-gnome-usb-rescue.service")" = ../liuqin-gnome-usb-rescue.service ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-power-keyd.service" ] ||
-		storage_native_reject "power-key policy is not enabled" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/multi-user.target.wants/liuqin-power-keyd.service")" = ../liuqin-power-keyd.service ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/graphical.target.wants/liuqin-backlight-default.service" ] ||
-		storage_native_reject "backlight default is not enabled" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/graphical.target.wants/liuqin-backlight-default.service")" = ../liuqin-backlight-default.service ] || return 1
-	"$BB" grep -qx 'Requires=liuqin-bt-preconfigure.service' \
-		"$storage_checked_root/etc/systemd/system/bluetooth.service.d/20-liuqin-public-address.conf" ||
-		storage_native_reject "Bluetooth preconfiguration is not required by BlueZ" || return 1
-	"$BB" grep -qx 'After=liuqin-bt-preconfigure.service' \
-		"$storage_checked_root/etc/systemd/system/bluetooth.service.d/20-liuqin-public-address.conf" || return 1
-	"$BB" grep -qx 'Before=bluetooth.service' \
-		"$storage_checked_root/etc/systemd/system/liuqin-bt-preconfigure.service" || return 1
-	"$BB" grep -qx 'ExecStart=/usr/local/sbin/liuqin-bt-public-addr' \
-		"$storage_checked_root/etc/systemd/system/liuqin-bt-preconfigure.service" || return 1
-	for storage_native_obsolete_bt_link in \
-		/etc/systemd/system/bluetooth.service.wants/liuqin-bt-public-addr.service \
-		/etc/systemd/system/bluetooth.service.requires/liuqin-bt-public-addr.service; do
-		[ ! -e "$storage_checked_root$storage_native_obsolete_bt_link" ] &&
-			[ ! -L "$storage_checked_root$storage_native_obsolete_bt_link" ] ||
-			storage_native_reject "obsolete Bluetooth helper activation remains" || return 1
-	done
-	[ -L "$storage_checked_root/usr/sbin/init" ] ||
-		storage_native_reject "/usr/sbin/init is not a symlink" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/usr/sbin/init")" = ../lib/systemd/systemd ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/default.target" ] ||
-		storage_native_reject "default.target is not a symlink" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/default.target")" = /usr/lib/systemd/system/graphical.target ] || return 1
-	[ -L "$storage_checked_root/etc/systemd/system/display-manager.service" ] ||
-		storage_native_reject "display-manager.service is not a symlink" || return 1
-	[ "$("$BB" readlink "$storage_checked_root/etc/systemd/system/display-manager.service")" = /lib/systemd/system/gdm3.service ] || return 1
-	"$BB" chroot "$storage_checked_root" /usr/lib/systemd/systemd --version >/dev/null 2>&1 ||
-		storage_native_reject "systemd will not execute under chroot" || return 1
-	return 0
 }
 
 storage_root_ok() {
 	storage_checked_root=$1
-	if [ "$storage_profile" = native ]; then
-		storage_native_root_ok "$storage_checked_root"
-		return $?
-	fi
-	if [ "$storage_profile" = gnome ]; then
-		storage_gnome_root_ok "$storage_checked_root"
-		return $?
-	fi
 	storage_checked_marker=$storage_checked_root/$storage_marker
-	[ -f "$storage_checked_marker" ] || return 1
-	[ ! -L "$storage_checked_marker" ] || return 1
-	[ "$("$BB" stat -c '%a %u %g %s' "$storage_checked_marker" 2>/dev/null || true)" = "644 0 0 26" ] || return 1
-	[ "$("$BB" cat "$storage_checked_marker" 2>/dev/null)" = "$storage_marker_text" ] || return 1
-	storage_checked_busybox=$storage_checked_root/usr/local/bin/busybox
-	[ -f "$storage_checked_busybox" ] || return 1
-	[ ! -L "$storage_checked_busybox" ] || return 1
-	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_busybox" 2>/dev/null || true)" = "755 0 0" ] || return 1
-	storage_checked_inittab=$storage_checked_root/etc/inittab
-	[ -f "$storage_checked_inittab" ] || return 1
-	[ ! -L "$storage_checked_inittab" ] || return 1
-	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_inittab" 2>/dev/null || true)" = "644 0 0" ] || return 1
-	storage_root_contract_ok || return 1
-	storage_checked_rcs=$storage_checked_root/etc/init.d/rcS
-	[ -f "$storage_checked_rcs" ] || return 1
-	[ ! -L "$storage_checked_rcs" ] || return 1
-	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_rcs" 2>/dev/null || true)" = "755 0 0" ] || return 1
-	[ "$("$BB" sha256sum "$storage_checked_rcs" 2>/dev/null | "$BB" cut -d' ' -f1)" = "$storage_rcs_expected_sha256" ] || return 1
-	[ "$("$BB" sha256sum "$storage_checked_inittab" 2>/dev/null | "$BB" cut -d' ' -f1)" = "$storage_inittab_expected_sha256" ] || return 1
-	[ "$("$BB" sha256sum "$storage_checked_busybox" 2>/dev/null | "$BB" cut -d' ' -f1)" = "$storage_busybox_expected_sha256" ] || return 1
-	[ "$("$BB" head -n 1 "$storage_checked_rcs" 2>/dev/null || true)" = '#!/usr/local/bin/busybox sh' ] || return 1
-	storage_checked_sbin=$storage_checked_root/sbin
-	[ -L "$storage_checked_sbin" ] || return 1
-	[ "$("$BB" readlink "$storage_checked_sbin" 2>/dev/null || true)" = usr/sbin ] || return 1
-	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_sbin" 2>/dev/null || true)" = "777 0 0" ] || return 1
-	storage_checked_init=$storage_checked_root/usr/sbin/init
-	[ -L "$storage_checked_init" ] || return 1
-	[ "$("$BB" readlink "$storage_checked_init" 2>/dev/null || true)" = /usr/local/bin/busybox ] || return 1
-	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_init" 2>/dev/null || true)" = "777 0 0" ] || return 1
-	"$BB" chroot "$storage_checked_root" /usr/local/bin/busybox true || return 1
-	"$BB" chroot "$storage_checked_root" /usr/local/bin/busybox test -x /sbin/init || return 1
-	# This is the rcS interpreter itself, not merely the PID 1 target.  The
-	# preceding digest binds its bytes; executing its `sh` applet proves the
-	# statically pinned BusyBox can supply the kernel shebang interpreter.
-	"$BB" chroot "$storage_checked_root" /usr/local/bin/busybox sh -c \
-		'test -x /etc/init.d/rcS' || return 1
+	[ -f "$storage_checked_marker" ] || storage_reject "marker missing" || return 1
+	[ ! -L "$storage_checked_marker" ] || storage_reject "marker is a symlink" || return 1
+	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_marker" 2>/dev/null || true)" = "644 0 0" ] ||
+		storage_reject "marker is not 644 root:root" || return 1
+	[ "$("$BB" cat "$storage_checked_marker" 2>/dev/null)" = "$storage_marker_text" ] ||
+		storage_reject "marker content mismatch" || return 1
+
+	storage_checked_systemd=$storage_checked_root/usr/lib/systemd/systemd
+	[ -f "$storage_checked_systemd" ] && [ ! -L "$storage_checked_systemd" ] ||
+		storage_reject "systemd missing" || return 1
+	[ "$("$BB" stat -c '%a %u %g' "$storage_checked_systemd" 2>/dev/null || true)" = "755 0 0" ] ||
+		storage_reject "systemd is not 755 root:root" || return 1
+
+	"$BB" grep -q '^ID=fedora' "$storage_checked_root/etc/os-release" 2>/dev/null ||
+		storage_reject "os-release does not say fedora" || return 1
+
+	# boot.img 和 rootfs 是分别刷进去的：boot.img 里钉住的 release 必须等于根里
+	# 记的 release，否则内核和模块不是一个构建，不能启动。
+	[ -f "$storage_expected_release_file" ] ||
+		storage_reject "the initramfs carries no expected kernel release" || return 1
+	storage_expected_release=$("$BB" cat "$storage_expected_release_file" 2>/dev/null || true)
+	[ -n "$storage_expected_release" ] ||
+		storage_reject "expected kernel release is empty" || return 1
+	storage_checked_release_file=$storage_checked_root/usr/share/liuqin/kernel.release
+	[ -f "$storage_checked_release_file" ] ||
+		storage_reject "the root carries no kernel.release" || return 1
+	storage_root_release=$("$BB" cat "$storage_checked_release_file" 2>/dev/null || true)
+	[ "$storage_root_release" = "$storage_expected_release" ] ||
+		storage_reject "kernel release mismatch: boot image $storage_expected_release, root ${storage_root_release:-missing}" ||
+		return 1
+	[ -f "$storage_checked_root/usr/lib/modules/$storage_root_release/modules.dep" ] ||
+		storage_reject "no modules.dep for $storage_root_release" || return 1
 	return 0
 }
 
@@ -1050,7 +721,7 @@ charger_boot=false
 case " $(cat /proc/cmdline 2>/dev/null) " in
 *' androidboot.mode=charger '*) charger_boot=true ;;
 esac
-if { [ "$storage_profile" = gnome ] || [ "$storage_profile" = native ]; } && [ "$charger_boot" = true ]; then
+if [ "$charger_boot" = true ]; then
 	charger_marker=/etc/liuqin-charger-mode
 	charger_marker_ok=false
 	if [ -f "$charger_marker" ] && [ ! -L "$charger_marker" ] &&
