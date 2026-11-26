@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            7zip squashfs-tools e2fsprogs rpm curl
+            7zip squashfs-tools e2fsprogs rpm curl sqlite3 file
 
       - name: Download and verify the Live ISO
         run: sudo sh project/tools/build-liuqin-fedora-base.sh download

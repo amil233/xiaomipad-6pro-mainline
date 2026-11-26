@@ -168,6 +168,7 @@ open_image() { # IMAGE DIR
 
 # 复制整棵树，保留属主、权限、ACL 和 SELinux 标签。
 copy_tree() { # SRC DEST
+	mkdir -p "$2"
 	tar -C "$1" --xattrs --xattrs-include='*' --acls --selinux -cf - . |
 		tar -C "$2" --xattrs --xattrs-include='*' --acls --selinux -xpf - ||
 		die 'copying the tree failed'
@@ -258,18 +259,27 @@ report() {
 		"$(ls "$root/boot" 2>/dev/null | tr '\n' ' ')"
 	printf 'layout:           %s\n' "$(grep -h '^ID=' "$root/etc/os-release" 2>/dev/null) $(grep -h '^VARIANT_ID=' "$root/etc/os-release" 2>/dev/null)"
 
+	pkg_count=
 	if command -v rpm >/dev/null 2>&1; then
-		printf 'packages:         %s\n' "$(rpm --root "$root" -qa 2>/dev/null | wc -l | tr -d ' ')"
-		for pkg in plasma-mobile plasma-workspace plasma-setup sddm selinux-policy-targeted systemd; do
-			if rpm --root "$root" -q "$pkg" >/dev/null 2>&1; then
-				printf '  %-24s %s\n' "$pkg" "$(rpm --root "$root" -q "$pkg")"
-			else
-				printf '  %-24s %s\n' "$pkg" 'missing'
-			fi
-		done
-	else
-		printf 'packages:         rpm is not installed on this host, skipped\n'
+		pkg_count=$(rpm --root "$root" -qa 2>/dev/null | wc -l | tr -d ' ')
 	fi
+	if [ -z "$pkg_count" ] || [ "$pkg_count" = 0 ]; then
+		# 主机上的 rpm 可能读不了 Fedora 的包数据库；退一步直接数数据库里的行。
+		if [ -f "$root/var/lib/rpm/rpmdb.sqlite" ] && command -v sqlite3 >/dev/null 2>&1; then
+			pkg_count="$(sqlite3 "$root/var/lib/rpm/rpmdb.sqlite" 'select count(*) from Packages' 2>/dev/null) (counted from the database; rpm could not read it)"
+		else
+			pkg_count='unknown (neither rpm nor sqlite3 could read the package database)'
+		fi
+	fi
+	printf 'packages:         %s\n' "$pkg_count"
+
+	for pkg in plasma-mobile plasma-workspace plasma-setup sddm selinux-policy-targeted systemd; do
+		if command -v rpm >/dev/null 2>&1 && rpm --root "$root" -q "$pkg" >/dev/null 2>&1; then
+			printf '  %-24s %s\n' "$pkg" "$(rpm --root "$root" -q "$pkg")"
+		else
+			printf '  %-24s %s\n' "$pkg" 'not readable from here'
+		fi
+	done
 }
 
 case ${1:-} in
