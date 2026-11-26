@@ -9,7 +9,9 @@
 #
 # TARGET_ROOT defaults to / (the running system); the RAM-install flow passes
 # the fresh tree (e.g. /native-root).  persist is only ever mounted read-only
-# and is never written.
+# and is never written: when its ext4 journal was left unreplayed (the kernel
+# then refuses a plain ro mount) the fallback is `ro,noload`, which reads the
+# on-disk state without replaying and says so.
 #
 # Provisioned items (consumer in parentheses):
 #   persist/wlan/wlan_mac.bin          text "wlan0=AABBCCDDEEFF" ->
@@ -35,6 +37,36 @@ part=${PERSIST_PART:-/dev/disk/by-partlabel/persist}
 die() { printf 'provision-liuqin-from-persist: %s\n' "$*" >&2; exit 1; }
 say() { printf 'provision-liuqin-from-persist: %s\n' "$*"; }
 
+# Where $1 is mounted right now, if anywhere.  The by-partlabel path is a
+# symlink and /proc/mounts records the real node, so compare resolved paths.
+mounted_at() {
+	dev=$(readlink -f -- "$1" 2>/dev/null) || return 1
+	[ -n "$dev" ] || return 1
+	awk -v dev="$dev" '$1 == dev { print $2; exit }' /proc/mounts
+}
+
+# Mount persist read-only.  Some units' factory persist was left with an
+# unreplayed ext4 journal, and the kernel refuses a read-only mount of such a
+# filesystem ("recovery required on readonly filesystem"): replaying a
+# non-empty journal needs write access.  The fallback mounts with noload, which
+# reads the on-disk state without replaying it and without writing anything.
+# A pending transaction may not be checkpointed, so say so instead of hiding
+# it.  Repairing the journal is a deliberate manual step; this script never
+# writes to persist.
+mount_persist_ro() {
+	if err=$(mount -o ro "$part" "$mnt" 2>&1); then
+		return 0
+	fi
+	if err2=$(mount -o ro,noload "$part" "$mnt" 2>&1); then
+		say "warning: $part has an unreplayed ext4 journal; mounted with noload, nothing written"
+		say "warning: values read may predate its last write; to replay the journal once:"
+		say "warning:   umount $part 2>/dev/null; mount -o rw $part /mnt && umount /mnt"
+		return 0
+	fi
+	rmdir "$mnt" 2>/dev/null || :
+	die "cannot mount $part read-only (ro: $err; noload: $err2)"
+}
+
 [ "$(id -u)" = 0 ] || die 'root privileges are required'
 [ -d "$tgt" ] || die "target root is not a directory: $tgt"
 [ -f "$tgt/etc/liuqin-native-root" ] || [ -f "$tgt/etc/os-release" ] ||
@@ -49,9 +81,16 @@ if [ -z "$mnt" ]; then
 	# /run is present and writable in every environment it runs in.
 	work=${LIUQIN_PROVISION_WORK:-/run}
 	mkdir -p "$work" || die "cannot create the scratch directory: $work"
-	mnt=$(mktemp -d "$work/persist-ro.XXXXXX")
-	mount -o ro "$part" "$mnt" || { rmdir "$mnt"; die "cannot mount $part read-only"; }
-	mounted_here=1
+	# Already mounted (udisks, an earlier run, the rescue shell): read it where
+	# it is instead of failing on EBUSY.  Nothing below writes to it.
+	mnt=$(mounted_at "$part") || mnt=
+	if [ -n "$mnt" ]; then
+		say "using the existing mount of $part at $mnt"
+	else
+		mnt=$(mktemp -d "$work/persist-ro.XXXXXX")
+		mount_persist_ro
+		mounted_here=1
+	fi
 fi
 cleanup() {
 	[ -z "$mounted_here" ] || { umount "$mnt" 2>/dev/null || :; rmdir "$mnt" 2>/dev/null || :; }
