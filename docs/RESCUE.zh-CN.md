@@ -17,14 +17,20 @@ stage 1 的 initramfs 自带 BusyBox、USB 网卡和 **telnet**（不是 SSH）�
 
 ## 生成一个只用于救援的 boot.img
 
-用当前的 `native-root.hashes` 和对应的内核产物，故意改坏一个被清单钉住的
-文件哈希：
+准入看的是 boot.img 里钉的 `EXPECTED_RELEASE` 和根里的 `kernel.release` 是否
+相等，所以做救援镜像只要故意钉一个对不上的值：
 
 ```sh
-sh tools/build-liuqin-rescue-boot.sh \
-  --hashes native-root.hashes \
-  --kernel ci/liuqin-kernel-<commit> \
-  --out out/rescue-boot
+sudo env EXPECTED_RELEASE=0-rescue \
+  KERNEL_OUT="$PWD/ci/liuqin-kernel-<commit>/kernel" \
+  OUT_DIR="$PWD/out/rescue-boot" \
+  AUDIO_TOPOLOGY="$PWD/out/Xiaomi-Pad-6-Pro-tplg.bin" \
+  FIRMWARE_POOL="$PWD/device/firmware-pool" \
+  WLAN_HSP2_TUPLE="$PWD/device/wlan-tuple" \
+  STOCK_OVERLAY_DIR="$PWD/device/abl-analysis/dtbo" \
+  STOCK_BASE_DIR="$PWD/device/abl-analysis/vendor_boot/dtbs" \
+  MKBOOTIMG_DIR="$PWD/tools/local/aosp-mkbootimg" \
+  sh tools/build-liuqin-fedora-boot.sh
 ```
 
 产物：
@@ -33,45 +39,6 @@ sh tools/build-liuqin-rescue-boot.sh \
 out/rescue-boot/boot-liuqin-native.img   192 MiB
 out/rescue-boot/liuqin-firstboot.cpio.gz
 ```
-
-它只改 ramdisk 里的文件清单，不动 rootfs、不动 GPT。刷入：
-
-```sh
-fastboot flash boot_a out/rescue-boot/boot-liuqin-native.img
-fastboot reboot
-```
-
-## 从主机连接
-
-平板启动后，主机会多一个 USB 网卡。可以等 DHCP，或手动配地址：
-
-```sh
-sudo ip address add 192.168.7.1/24 dev <usb网卡>
-telnet 192.168.7.2 2323
-```
-
-进入的是 BusyBox 的 root shell，没有登录认证，只应直连自己的电脑。
-
-## shell 里有什么
-
-`busybox --list` 里可用：
-
-```
-fdisk dd mke2fs mount umount nc wget tar telnet
-```
-
-**没有 `sgdisk`**。所以：
-
-- 只是查看分区：`fdisk -l /dev/sda`；
-- 要写块设备：先确认 `blockdev --getro /dev/sda`，必要时
-  `blockdev --setrw /dev/sda`；
-- 完整恢复原厂 GPT 不建议在这个 shell 里手工做；用 fastboot 的
-  `flash partition`、EDL/QFIL，或者回到正常的系统里用 `sgdisk`。
-- 如果只是要把 `linux_home` 改名成 `userdata`，在正常的系统里做更安全：
-
-  ```sh
-  sudo sgdisk --change-name=37:userdata /dev/sda
-  ```
 
 ## 退出救援
 

@@ -43,5 +43,5 @@
 | [`FEDORA.zh-CN.md`](FEDORA.zh-CN.md) | 换发行版的来龙去脉、五个阶段、还没确认的事 |
 | [`BUILD.zh-CN.md`](BUILD.zh-CN.md) | 从 ISO 到可刷产物 |
 | [`INSTALL.zh-CN.md`](INSTALL.zh-CN.md) | 刷机、更新、回滚 |
-| [`RESCUE.zh-CN.md`](RESCUE.zh-CN.md) | initramfs 救援 shell |
+| [`RESCUE.zh-CN.md`](RESCUE.zh-CN.md) | initramfs 救援 shell、救援 boot.img 的生成 |
 | [`archive/`](archive/) | 历史记录，不再维护 |
