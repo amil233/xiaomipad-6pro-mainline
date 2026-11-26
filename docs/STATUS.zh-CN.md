@@ -16,6 +16,19 @@
 | 整条流水线 | 一次跑通（16 分 44 秒）：boot.img 192 MiB、ext4 镜像 7,584,350,208 字节（约 7.06 GiB）、`rootfs.tgz` 约 2.25 GiB、切成 2 片（1.9 GiB + 352 MiB） |
 | 版本钉住 | boot.img 里 `expected_release=7.3.0-gb746af962d0c`，与树里的 `kernel.release` 一致 |
 
+## 真机上已经验证的（2026-11-27，第一次刷机）
+
+| 项 | 结果 |
+|---|---|
+| 启动 | 刷 `boot_a` + `userdata` 后进到 **plasma-setup** 的建用户界面，说明准入、initramfs、systemd、显示都过了 |
+| 根分区 | `resize2fs /dev/disk/by-partlabel/userdata` 正常，`df -h` 显示 `/dev/sda36` 105 GiB |
+| 包管理 | `dnf upgrade` 可用（Fedora 仓库能连上、能装） |
+| Wi-Fi | **没跑 `provision-liuqin-from-persist.sh` 就已经可用** |
+
+Wi-Fi 能用但不代表 MAC 是对的：Fedora 自带 `linux-firmware` 里有 WCN6855 的固件，
+ath11k 没有从 persist 拿到本机 MAC 时会用随机/默认地址，每次启动可能不一样。要确认
+看 `ip link show wlan0`，和 persist 里的 `wlan_mac.bin` 比。
+
 ## 还没验证的
 
 | 项 | 状态 | 说明 |
