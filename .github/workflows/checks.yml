@@ -1,55 +1,37 @@
-name: Integration checks
+name: Fedora checks
+# 这个分支只服务 Fedora 那条线：能离线检查的就是脚本语法，装配和启动检查在
+# fedora-rootfs 工作流里做。
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
-  checks:
+  syntax:
     runs-on: ubuntu-26.04-arm
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Python and shell syntax
+      - name: Shell and Python syntax
         run: |
           python3 - <<'PY'
           import ast
           import subprocess
           from pathlib import Path
-          for path in Path('tools').rglob('*.py'):
-              ast.parse(path.read_text(), filename=str(path))
-          for path in sorted(Path('device/gnome-overlay/usr/local/libexec').iterdir()):
-              if path.is_file() and path.read_bytes().startswith(b'#!/usr/bin/env python3'):
-                  ast.parse(path.read_text(), filename=str(path))
-          for path in Path('tools').rglob('*.sh'):
-              subprocess.run(['sh', '-n', str(path)], check=True)
-          PY
-      - name: Rootfs archive offline checks
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y gdisk
-          sudo python3 tests/rootfs-archive.py
-      - name: Persistent-root fail-closed policy
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y busybox-static
-          sh tests/persistent-root.sh
-      - name: GNOME storage guard policy
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y busybox-static
-          sh tests/storage-guard.sh
-      - name: Free runner disk
-        uses: ./.github/actions/free-disk
 
-      - name: Boot and rootfs image assembly offline checks
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y e2fsprogs
-          python3 tests/boot-assembly.py
-          python3 tests/rootfs-image.py
-      - name: Sensor startup policy
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y bubblewrap
-          sudo python3 tests/sensor-startup.py
+          for path in sorted(Path('tools').rglob('*.py')):
+              ast.parse(path.read_text(), filename=str(path))
+          failures = []
+          for path in sorted(Path('tools').rglob('*.sh')):
+              if 'tools/local/' in str(path):
+                  continue
+              result = subprocess.run(['sh', '-n', str(path)])
+              if result.returncode:
+                  failures.append(str(path))
+          for path in ('initramfs/init',):
+              if subprocess.run(['sh', '-n', path]).returncode:
+                  failures.append(path)
+          if failures:
+              raise SystemExit('shell syntax failures: ' + ', '.join(failures))
+          print('syntax ok')
+          PY

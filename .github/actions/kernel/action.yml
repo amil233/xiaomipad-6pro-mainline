@@ -67,7 +67,7 @@ runs:
         sha256sum modules.tar modules.manifest kernel.release kernel.commit > SHA256SUMS
         # Record the prepared module set in build-info.json so downstream
         # assembly can reuse the CI artifact without a local Kbuild:
-        # build-liuqin-image.py consumes this kernel-modules/ directory
+        # The Fedora image assembly consumes this kernel-modules/ directory
         # through the same prepared_modules contract as an imported
         # clean-repro build.
         python3 - <<'PY'

@@ -63,4 +63,4 @@ mkdir -p "$dest"
 [ -f "$dest/firmware/vpu20_4v.mbn" ] || die 'the vendor tree carries no /firmware/vpu20_4v.mbn'
 sensor_files=$(find "$dest/etc/sensors" -type f | wc -l | tr -d ' ')
 say "vendor tree ready: $dest ($sensor_files sensor files)"
-say 'next: python3 tools/prepare-image-inputs.py check'
+say 'next: build the Fedora root from the Live ISO (tools/build-liuqin-fedora-base.sh)'
