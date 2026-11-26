@@ -1,0 +1,15 @@
+[Unit]
+Description=liuqin USB NCM rescue shell
+Before=display-manager.service
+# 免认证的 root telnet 是维护通道，不是产品默认值：只有操作者在设备上显式打开
+# 才启动（sudo liuqin-rescue on 会创建这个标记文件）。
+ConditionPathExists=/etc/liuqin-rescue-enabled
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/liuqin-usb-rescue start
+ExecStop=/usr/local/sbin/liuqin-usb-rescue stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

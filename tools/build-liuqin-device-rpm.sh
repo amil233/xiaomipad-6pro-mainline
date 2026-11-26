@@ -74,6 +74,21 @@ build_rpm() {
 		cp "$stage/usr/lib/firmware/updates/ath11k/WCN6855/hw2.0/regdb.bin" \
 			"$stage/usr/lib/firmware/updates/ath11k/WCN6855/hw2.1/regdb.bin"
 
+	say 'staging the rescue channel'
+	overlay=$project_root/device/fedora-overlay
+	busybox=$project_root/tools/local/busybox-arm64/usr/bin/busybox
+	[ -d "$overlay" ] || die "no overlay: $overlay"
+	[ -x "$busybox" ] || die "no static busybox at $busybox (run tools/fetch-busybox-arm64.sh)"
+	mkdir -p "$stage/usr/local/bin" "$stage/usr/local/sbin" "$stage/etc/systemd/system/multi-user.target.wants"
+	cp "$overlay/usr/local/bin/liuqin-shell" "$stage/usr/local/bin/"
+	cp "$overlay/usr/local/sbin/liuqin-rescue" "$overlay/usr/local/sbin/liuqin-usb-rescue" "$stage/usr/local/sbin/"
+	cp "$busybox" "$stage/usr/local/bin/busybox"
+	cp "$overlay/etc/systemd/system/liuqin-usb-rescue.service" "$stage/etc/systemd/system/"
+	ln -sfn ../liuqin-usb-rescue.service \
+		"$stage/etc/systemd/system/multi-user.target.wants/liuqin-usb-rescue.service"
+	chmod 0755 "$stage/usr/local/bin/liuqin-shell" "$stage/usr/local/bin/busybox" \
+		"$stage/usr/local/sbin/liuqin-rescue" "$stage/usr/local/sbin/liuqin-usb-rescue"
+
 	say 'staging UCM2'
 	cp "$ucm/conf.d/sm8450/Xiaomi-Pad-6-Pro.conf" "$stage/usr/share/alsa/ucm2/conf.d/sm8450/"
 	cp "$ucm/Qualcomm/sm8450/Xiaomi-Pad-6-Pro/HiFi.conf" \
@@ -101,6 +116,12 @@ cp -a $stage/. %{buildroot}/
 %files
 /usr/lib/firmware
 /usr/share/alsa/ucm2
+/usr/local/bin/busybox
+/usr/local/bin/liuqin-shell
+/usr/local/sbin/liuqin-rescue
+/usr/local/sbin/liuqin-usb-rescue
+/etc/systemd/system/liuqin-usb-rescue.service
+/etc/systemd/system/multi-user.target.wants/liuqin-usb-rescue.service
 EOF
 
 	say "building $pkg_name-$version-1.aarch64.rpm"
@@ -127,6 +148,9 @@ install_into_tree() {
 check_tree() {
 	[ -d "$tree" ] || die "no Fedora tree at $tree"
 	for path in \
+		/usr/local/sbin/liuqin-rescue \
+		/usr/local/bin/busybox \
+		/etc/systemd/system/multi-user.target.wants/liuqin-usb-rescue.service \
 		/usr/lib/firmware/updates/ath11k/WCN6855/hw2.0/board-2.bin \
 		/usr/lib/firmware/updates/ath11k/WCN6855/hw2.1/board-2.bin \
 		/usr/share/alsa/ucm2/conf.d/sm8450/Xiaomi-Pad-6-Pro.conf \

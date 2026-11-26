@@ -12,6 +12,7 @@ on:
       - 'tools/build-liuqin-device-rpm.sh'
       - 'device/firmware/**'
       - 'device/wlan-tuple/**'
+      - 'device/fedora-overlay/**'
       - 'device/gnome-overlay/usr/share/alsa/ucm2/**'
       - 'tools/build-liuqin-fedora-rootfs.sh'
       - 'tools/build-liuqin-fedora-image.sh'
@@ -85,6 +86,12 @@ jobs:
 
       # 容器里是 root，project/out 会被它建成 root 拥有的目录。后面编拓扑、装
       # boot.img、跑报告都要以 runner 用户往这里写，所以立刻交还所有权。
+      - name: Fetch the static busybox
+        run: |
+          # 取根那一步用 sudo 建的 tools/local 是 root 拥有的；这里要往里写。
+          [ -d project/tools/local ] && sudo chown "$(id -u):$(id -g)" project/tools/local
+          sh project/tools/fetch-busybox-arm64.sh
+
       - name: Build and install the device files
         run: |
           sh project/tools/fedora-container.sh \
@@ -108,7 +115,6 @@ jobs:
           # 往里 clone mkbootimg，先把这一层目录交还给 runner 用户。
           [ -d project/tools/local ] && sudo chown "$(id -u):$(id -g)" project/tools/local
           sh project/tools/fetch-aosp-mkbootimg.sh
-          sh project/tools/fetch-busybox-arm64.sh
 
       - name: Build the audio topology
         run: |
