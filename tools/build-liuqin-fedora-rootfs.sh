@@ -86,12 +86,17 @@ assemble_tree() {
 
 ensure_fastrpc_account() {
 	grep -q '^fastrpc:' "$tree/etc/group" && grep -q '^fastrpc:' "$tree/etc/passwd" && return 0
-	# 取一个没被占用的系统号。980 以下在 Fedora 上通常留给系统服务。
-	gid=$(awk -F: '$3 >= 900 && $3 < 1000 { print $3 }' "$tree/etc/group" | sort -n | tail -1)
-	gid=$(( ${gid:-900} + 1 ))
-	uid=$(awk -F: '$3 >= 900 && $3 < 1000 { print $3 }' "$tree/etc/passwd" | sort -n | tail -1)
-	uid=$(( ${uid:-900} + 1 ))
-	[ "$uid" -lt 1000 ] && [ "$gid" -lt 1000 ] || die 'no free system uid/gid left for fastrpc'
+	# Fedora 的系统号段是 201–999，而且这套镜像已经用掉不少，所以从 999 往下
+	# 找第一个空位，而不是"最大的加一"。
+	pick_free_id() { # FILE
+		for candidate in $(seq 999 -1 201); do
+			awk -F: -v id="$candidate" '$3 == id { found = 1 } END { exit !found }' "$1" ||
+				{ printf '%s\n' "$candidate"; return 0; }
+		done
+		return 1
+	}
+	uid=$(pick_free_id "$tree/etc/passwd") || die 'no free system uid for fastrpc'
+	gid=$(pick_free_id "$tree/etc/group") || die 'no free system gid for fastrpc'
 	if ! grep -q "^fastrpc:" "$tree/etc/group"; then
 		printf 'fastrpc:x:%s:\n' "$gid" >>"$tree/etc/group"
 	fi
