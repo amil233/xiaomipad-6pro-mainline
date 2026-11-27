@@ -157,25 +157,18 @@ build_rpm() {
 
 	say 'staging our own units'
 	overlay=$project_root/device/fedora-overlay/etc/systemd/system
-	# 上游单元在前面被删掉了，这两个目录要自己建回来再往里拷。
+	# 这个目录被删掉过（不要上游的单元），所以先建回来放我们自己的。
 	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants" \
-		"$out_dir/stage/usr/local/sbin" \
-		"$out_dir/stage/usr/lib/systemd/system"
+		"$out_dir/stage/usr/local/sbin"
 	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
 		"$overlay/liuqin-slpi.service" "$out_dir/stage/etc/systemd/system/"
 	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-slpi" "$out_dir/stage/usr/local/sbin/"
-	# iio-sensor-proxy 的 D-Bus 激活靠这三个文件：上游 meson 不装它们（Fedora 是靠
-	# RPM 里的 %files 补的），我们卸掉了 Fedora 的包，就得自己带。
-	for unit in iio-sensor-proxy.service; do
-		cp "$project_root/device/fedora-overlay/usr/lib/systemd/system/$unit" \
-			"$out_dir/stage/usr/lib/systemd/system/"
-		ln -sfn "../$unit" "$out_dir/stage/etc/systemd/system/multi-user.target.wants/$unit"
-	done
-	mkdir -p "$out_dir/stage/usr/share/dbus-1/system-services" "$out_dir/stage/usr/share/dbus-1/system.d"
+	# iio-sensor-proxy 的单元、bus policy、udev 规则和 polkit 策略都由上游
+	# meson install 自己装（data/meson.build），我们不再手写一份。唯一要补的是
+	# D-Bus 激活文件：上游不装 system-services 条目，Fedora 的 RPM 才有。
+	mkdir -p "$out_dir/stage/usr/share/dbus-1/system-services"
 	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system-services/"*.service \
 		"$out_dir/stage/usr/share/dbus-1/system-services/"
-	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system.d/"*.conf \
-		"$out_dir/stage/usr/share/dbus-1/system.d/"
 	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-slpi"
 	ln -sfn ../liuqin-slpi.service \
 		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service"
