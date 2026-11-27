@@ -181,8 +181,8 @@ build_rpm() {
 		"$out_dir/stage/usr/libexec/"
 	cp "$project_root/device/fedora-overlay/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf" \
 		"$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d/"
-	ln -sfn ../liuqin-ssc-sample-gate.service \
-		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-ssc-sample-gate.service"
+	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 通过 Requires 拉起来，
+	# 而 iio-sensor-proxy 由 D-Bus 按需激活——开机时没有节点，早启动只会失败。
 	chmod 0755 "$out_dir/stage/usr/libexec/liuqin-ssc-sample-gate"
 	# iio-sensor-proxy 的单元、bus policy、udev 规则和 polkit 策略都由上游
 	# meson install 自己装（data/meson.build），我们不再手写一份。唯一要补的是
@@ -191,10 +191,12 @@ build_rpm() {
 	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system-services/"*.service \
 		"$out_dir/stage/usr/share/dbus-1/system-services/"
 	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-slpi"
+	# 只启用 liuqin-slpi：它负责把 SLPI 拉起来、sdsp 节点才会出现。
+	# hexagonrpcd 和 gate 由 udev 的 SYSTEMD_WANTS 在设备事件里拉起
+	# （Ubuntu 线明确写了不要开机启用它们：节点还不存在时会被跳过，之后
+	# udev 的 SYSTEMD_WANTS 也会变成 no-op）。
 	ln -sfn ../liuqin-slpi.service \
 		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service"
-	ln -sfn ../liuqin-hexagonrpcd-sdsp.service \
-		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service"
 
 	# 文件清单从 stage 里生成，而不是手写：上游的单元名、udev 规则名、
 	# 库的 soname 都会随版本变，写死一个就可能在 rpmbuild 上报"找不到文件"。

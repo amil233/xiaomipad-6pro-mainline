@@ -1,5 +1,13 @@
-# fastrpc 的字符设备由 misc_register() 注册（drivers/misc/fastrpc.c:2468-2473），
-# 名字是 "fastrpc-<domain>" 或 "fastrpc-<domain>-secure"，所以 udev 里
-# SUBSYSTEM 是 misc、KERNEL 是 fastrpc-*。内核不设权限，默认 root:root 0600，
-# 而 hexagonrpcd 以 fastrpc 用户运行，需要显式交出来。
-SUBSYSTEM=="misc", KERNEL=="fastrpc-*", GROUP="fastrpc", MODE="0660"
+# 只给专用守护进程访问权，并按设备事件拉起整条传感器栈。
+#
+# 三条都是必需的，全部来自 Ubuntu 线验证过的规则：
+#   - MODE/GROUP：内核用 misc_register() 建节点，默认 root:root 0600；
+#   - IIO_SENSOR_PROXY_TYPE="ssc-accel"：iio-sensor-proxy 靠这个 udev 属性
+#     判断设备是 SSC 加速度计（src/drv-ssc-accel.c 的 drv_check_udev_sensor_type），
+#     没有它设备根本不会被当作加速度计；
+#   - SYSTEMD_WANTS：设备出现时才启动 liuqin-sensor-stack.target，避免开机时
+#     节点还不存在、服务被 ConditionPathExists 跳过。
+SUBSYSTEM=="misc", KERNEL=="fastrpc-sdsp", GROUP="fastrpc", MODE="0660", ENV{IIO_SENSOR_PROXY_TYPE}+="ssc-accel", TAG+="systemd", ENV{SYSTEMD_WANTS}+="liuqin-sensor-stack.target"
+# 竖屏不变、横屏相对首版翻转 180 度（原始轴：USB 向下为 +Y、向右为 +X，
+# 面板横屏两者都取反）。
+SUBSYSTEM=="misc", KERNEL=="fastrpc-sdsp", ENV{ACCEL_MOUNT_MATRIX}="-1,0,0;0,-1,0;0,0,1"
