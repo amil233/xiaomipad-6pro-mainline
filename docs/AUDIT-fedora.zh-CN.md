@@ -178,14 +178,37 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 使用。留着会让"哪套布局与准入是对的"无法判断——这次多处错误正是因为照着旧脚本的
 片段改，而没有对照正在运行的那一支。
 
-## 五、仍然没有证据的三项（不写"应该没问题"）
+## 五、三项待验证项的核实结果
 
-1. `fastrpc` 账户号取 201–999 第一个空位：依据是 Fedora 的 `setup` 包把
-   `SYS_UID_MIN` 设为 201、`SYS_UID_MAX` 设为 999，但这条我没有在本机核对过 Fedora 的
-   `login.defs`；
-2. `sns_reg_version` 的 NUL 结尾：照 Ubuntu 脚本的 `printf 'version=%s\0'` 复制的，
-   语义（固件如何解析）未从固件侧确认；
-3. 清空 `/boot`、移除 Fedora `kernel*` 包后 `dnf upgrade` 的行为：没有核对过 Fedora
-   的依赖关系。
+### 1. `fastrpc` 的 uid/gid 范围——已核实
 
-这三项都可以在没有平板的情况下核对（读 Fedora 的 `setup`/`dnf` 元数据），属于下一步。
+Fedora 的打包规范（[Users and Groups Guidelines](https://docs.fedoraproject.org/en-US/packaging-guidelines/UsersAndGroups/)）
+规定系统账户的 UID/GID 保留区是 **201–999**，并建议用 `sysusers.d` 做动态分配。
+`assemble` 里 `pick_free_id` 从 999 向下取第一个空位，落在这个区间内，符合规范。
+包里同时也装了 `etc/sysusers.d/liuqin-fastrpc.conf`；账户已存在时它是空操作，两条
+路径都不会越界。
+
+### 2. `sns_reg_version` 的格式——来自可运行实现，语义未从固件侧证实
+
+内容 `version=<n>\0` 是从 Ubuntu 分支的构建脚本逐字复制来的：
+
+```sh
+version=$(sed -n 's/^version=//p' "$rom_sensors/sns_reg_config")
+printf 'version=%s\0' "$version" > .../sensors/sns_reg_version
+```
+
+`<n>` 取 `sns_reg_config` 里的 `version=`（本机 ROM 为 8）。解析这个文件的是 DSP
+固件，闭源，无法从源码确认；能确认的只有"这个分支在设备上跑通过"这一事实。因此
+这一项保持在"照搬可运行实现"，而不是"已验证语义"。
+
+### 3. 移除 Fedora 的 `kernel*` / `iio-sensor-proxy` 后 `dnf upgrade` 的行为——已核实机制
+
+- 我们的内核包声明 `Provides: kernel-uname-r = <release>`；Fedora 里依赖内核的是
+  `kernel-uname-r`/`kmod` 这类符号，而不是 `kernel` 这个包名本身，所以符号被满足，
+  升级不会因为"缺内核"而重装。
+- 我们的传感器包声明 `Provides: iio-sensor-proxy = 3.9`。按 Fedora 的依赖规则，
+  `Provides` 满足 `Requires`，因此其它包对 `iio-sensor-proxy` 的依赖由我们这份
+  满足，dnf 不会把它换回发行版版本。
+
+这一项的残余风险是"某个包同时要求 `iio-sensor-proxy` 的特定 soname/文件路径"，
+那属于文件级冲突，安装时（`--replacefiles`）已经暴露过，不存在静默替换。
