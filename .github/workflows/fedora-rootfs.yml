@@ -155,17 +155,20 @@ jobs:
       - name: Pack the flashable set
         run: |
           set -euo pipefail
-          # 所有要给人拿走的东西放在一个目录里，artifact 里就是平铺的，不带 upload/ 前缀。
-          mkdir -p project/out/artifact
-          sudo sh -c "cd '$PWD/project/out/image' &&
-            img2simg rootfs.img rootfs.simg &&
-            tar -cf - rootfs.simg | gzip -6 > rootfs.tgz &&
-            sha256sum rootfs.tgz > SHA256SUMS"
-          sudo cp project/out/image/rootfs.tgz project/out/image/SHA256SUMS project/out/artifact/
-          sudo cp project/out/boot/boot-liuqin-native.img project/out/artifact/boot.img
-          split -b 1900M -d -a 2 project/out/artifact/rootfs.tgz project/out/artifact/rootfs.tgz.part-
-          # 分片已经是完整的一份，整包不用再传一遍。
-          sudo rm -f project/out/artifact/rootfs.tgz
+          # 所有要交出去的东西先收进一个目录，再整目录进 7z：固实压缩、按 1900 MiB
+          # 分卷，产物就是 liuqin-fedora.7z.001/.002/…，7-Zip 直接能打开第一份。
+          sudo install -d -o "$(id -u)" -g "$(id -g)" project/out/stage7z project/out/artifact
+          sudo sh -c "cd '$PWD/project/out/image' && img2simg rootfs.img rootfs.simg"
+          sudo cp project/out/image/rootfs.simg project/out/stage7z/
+          sudo cp project/out/boot/boot-liuqin-native.img project/out/stage7z/boot.img
+          sudo cp project/out/fedora-rpm/*.aarch64.rpm \
+                  project/out/fedora-device/*.aarch64.rpm \
+                  project/out/fedora-sensors/*.aarch64.rpm project/out/stage7z/
+          sudo sh -c "cd '$PWD/project/out/stage7z' && sha256sum * > SHA256SUMS"
+          sudo sh -c "cd '$PWD/project/out/stage7z' && \
+            7z a -t7z -mx=5 -ms=on -v1900m '$PWD/project/out/artifact/liuqin-fedora.7z' ."
+          sudo sh -c "cd '$PWD/project/out/artifact' && sha256sum liuqin-fedora.7z.* > SHA256SUMS"
+          sudo rm -rf project/out/stage7z
           sudo chown -R "$(id -u):$(id -g)" project/out/artifact
           ls -lh project/out/artifact
 
@@ -173,7 +176,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p project/out
-          report=project/out/artifact/fedora-report.txt
+          report=project/out/fedora-report.txt
           # 清单要在这时候写：树里刚换过内核包，之前那份已经过期了。
           sudo sh project/tools/build-liuqin-fedora-base.sh manifest
           sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
@@ -183,13 +186,10 @@ jobs:
           cat "$report"
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/rootfs.manifest \
-            >project/out/artifact/rootfs.manifest.gz
+            >project/out/rootfs.manifest.gz
           gzip -6 -c \
             project/tools/local/fedora-kde-mobile-45-arm64/native-root.hashes \
-            >project/out/artifact/native-root.hashes.gz
-          cp project/out/fedora-rpm/kernel-liuqin-*.aarch64.rpm \
-             project/out/fedora-device/liuqin-device-*.aarch64.rpm \
-             project/out/fedora-sensors/liuqin-sensors-*.aarch64.rpm project/out/artifact/
+            >project/out/native-root.hashes.gz
           ls -lh project/out
           df -h /
 
@@ -198,5 +198,9 @@ jobs:
           name: liuqin-fedora-base-${{ github.sha }}
           if-no-files-found: error
           compression-level: 0
-          path: project/out/artifact/
+          path: |
+            project/out/artifact/*
+            project/out/fedora-report.txt
+            project/out/rootfs.manifest.gz
+            project/out/native-root.hashes.gz
           retention-days: 7

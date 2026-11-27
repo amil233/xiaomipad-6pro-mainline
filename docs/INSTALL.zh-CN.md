@@ -26,30 +26,28 @@ boot.img 里钉着这次构建的内核版本号，启动时和根里的 `kernel
 
 ## 2. 第一次安装或重装
 
-artifact 解开后是平铺的一层，没有子目录：
+产物是一个 7z 分卷包加一份校验文件：
 
 ```
-boot.img                192 MiB
-rootfs.tgz.part-NN      1900 MiB 一片
-SHA256SUMS              对 rootfs.tgz 的哈希
-fedora-report.txt       这次构建的关键数字
-rootfs.manifest.gz      树的清单
-native-root.hashes.gz   树的逐文件哈希
-kernel-liuqin-*.rpm     内核包（只换内核时用）
+liuqin-fedora.7z.001     1900 MiB 一卷
+liuqin-fedora.7z.002     ...
+SHA256SUMS              对上面每个分卷的哈希
+fedora-report.txt       这次构建的关键数字（单独放，不用解包就能看）
 ```
+
+包里是所有要刷的东西：`rootfs.simg`、`boot.img`、三个 RPM、包内 `SHA256SUMS`
+（对包内文件）。7-Zip 会自动校验包内 CRC，解压出来就是可用的文件。
 
 **Windows（PowerShell）**：
 
 ```powershell
-# 合并分片。cmd 的通配符按名字排序，片数多了也不用改命令。
-cmd /c copy /b rootfs.tgz.part-* rootfs.tgz
+# 先核对分卷：逐个和 SHA256SUMS 里的值比
+Get-ChildItem liuqin-fedora.7z.* | ForEach-Object {
+  "$($_.Name) $((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())"
+}
 
-# 核对：把下面输出和 SHA256SUMS 里的值比
-(Get-FileHash rootfs.tgz -Algorithm SHA256).Hash.ToLower()
-
-# 7-Zip 解两层：rootfs.tgz -> rootfs.tar -> rootfs.simg
-7z x rootfs.tgz
-7z x rootfs.tar
+# 只指定第一卷，7-Zip 会自己找其余卷
+7z x liuqin-fedora.7z.001
 
 fastboot flash boot_a   boot.img
 fastboot flash userdata rootfs.simg
@@ -59,9 +57,8 @@ fastboot reboot
 **Linux / macOS**：
 
 ```sh
-cat rootfs.tgz.part-* > rootfs.tgz
 sha256sum -c SHA256SUMS
-tar -xzf rootfs.tgz
+7z x liuqin-fedora.7z.001
 
 fastboot flash boot_a   boot.img
 fastboot flash userdata rootfs.simg
