@@ -185,6 +185,7 @@ Summary:        Xiaomi Pad 6 Pro (liuqin) SSC sensor userspace
 License:        BSD-3-Clause
 BuildArch:      aarch64
 AutoReqProv:    no
+Provides:       iio-sensor-proxy = 3.9
 %description
 hexagonrpcd (with the liuqin SSC registry patches) for the Xiaomi Pad 6
 Pro.  Built from the pinned sources in device/sensors/sources.manifest.
@@ -209,8 +210,15 @@ install_into_tree() {
 	# shellcheck disable=SC2012
 	rpm_file=$(ls -t "$out_dir"/$pkg_name-*.aarch64.rpm 2>/dev/null | head -1)
 	[ -n "$rpm_file" ] || die "no RPM in $out_dir; run the build action first"
+	# Fedora 自带 iio-sensor-proxy，和我们的包装同一批文件。先把它卸掉——设备上
+	# 只应该有一份，而且我们这份是打过补丁的。
+	if rpm --root "$tree" -q iio-sensor-proxy >/dev/null 2>&1; then
+		say "removing Fedora's iio-sensor-proxy (ours replaces it)"
+		rpm --root "$tree" -e --noscripts --nodeps iio-sensor-proxy ||
+			die 'could not remove the Fedora iio-sensor-proxy package'
+	fi
 	say "installing $rpm_file"
-	rpm --root "$tree" -U --replacepkgs --noscripts --nosignature --nodeps "$rpm_file" ||
+	rpm --root "$tree" -U --replacepkgs --replacefiles --noscripts --nosignature --nodeps "$rpm_file" ||
 		die 'rpm could not install the package'
 	check_tree
 }
