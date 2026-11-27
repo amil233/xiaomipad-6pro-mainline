@@ -315,6 +315,9 @@ index 0000000..af68193
 +#define SNS_PROPERTY_VALUE_MAX 92
 +
 +static const char property_prefix[] = "persist.vendor.sensors.";
++/* The unit test references these two by name; the runtime check is the prefix. */
++static const char property0[] = "persist.vendor.sensors.enable.property";
++static const char property1[] = "persist.vendor.sensors.enable.property1";
 +
 +/*
 + * The firmware asks for whatever sensor properties its registry needs, and the

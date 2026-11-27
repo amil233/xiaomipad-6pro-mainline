@@ -103,7 +103,8 @@ build_rpm() {
 		>"$out_dir/hexagonrpc-configure.log" 2>&1 ||
 		{ tail -40 "$out_dir/hexagonrpc-configure.log" >&2; die 'meson configure failed for hexagonrpc'; }
 	meson compile -C "$work/hexagonrpc" >"$out_dir/hexagonrpc-compile.log" 2>&1 ||
-		{ tail -40 "$out_dir/hexagonrpc-compile.log" >&2; die 'compiling hexagonrpc failed'; }
+		{ grep -nE '(error|FAILED)' "$out_dir/hexagonrpc-compile.log" | head -20 >&2;
+		   tail -20 "$out_dir/hexagonrpc-compile.log" >&2; die 'compiling hexagonrpc failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/hexagonrpc" >/dev/null ||
 		die 'installing hexagonrpc into the staging tree failed'
 	[ -x "$out_dir/stage/usr/bin/hexagonrpcd" ] || die 'hexagonrpcd was not installed'
@@ -114,7 +115,8 @@ build_rpm() {
 		>"$out_dir/libssc-configure.log" 2>&1 ||
 		{ tail -40 "$out_dir/libssc-configure.log" >&2; die 'meson configure failed for libssc'; }
 	meson compile -C "$work/libssc" >"$out_dir/libssc-compile.log" 2>&1 ||
-		{ tail -40 "$out_dir/libssc-compile.log" >&2; die 'compiling libssc failed'; }
+		{ grep -nE '(error|FAILED)' "$out_dir/libssc-compile.log" | head -20 >&2;
+		   tail -20 "$out_dir/libssc-compile.log" >&2; die 'compiling libssc failed'; }
 	# 装两遍：一遍进容器自己的 /usr（iio-sensor-proxy 的 configure 从 .pc 里读到
 	# 的是 /usr/include/libssc，头文件得真的在那里），一遍进 stage 供打包。
 	meson install -C "$work/libssc" >/dev/null 2>&1 ||
@@ -132,7 +134,8 @@ build_rpm() {
 		>"$out_dir/iio-sensor-proxy-configure.log" 2>&1 ||
 		{ tail -40 "$out_dir/iio-sensor-proxy-configure.log" >&2; die 'meson configure failed for iio-sensor-proxy'; }
 	meson compile -C "$work/iio-sensor-proxy" >"$out_dir/iio-sensor-proxy-compile.log" 2>&1 ||
-		{ tail -40 "$out_dir/iio-sensor-proxy-compile.log" >&2; die 'compiling iio-sensor-proxy failed'; }
+		{ grep -nE '(error|FAILED)' "$out_dir/iio-sensor-proxy-compile.log" | head -20 >&2;
+		   tail -20 "$out_dir/iio-sensor-proxy-compile.log" >&2; die 'compiling iio-sensor-proxy failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/iio-sensor-proxy" >/dev/null ||
 		die 'installing iio-sensor-proxy into the staging tree failed'
 	[ -x "$out_dir/stage/usr/libexec/iio-sensor-proxy" ] ||
