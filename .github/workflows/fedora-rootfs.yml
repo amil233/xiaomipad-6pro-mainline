@@ -181,7 +181,9 @@ jobs:
           sudo sh project/tools/build-liuqin-fedora-base.sh manifest
           sudo sh project/tools/build-liuqin-fedora-base.sh report >"$report"
           sudo sh project/tools/build-liuqin-fedora-rootfs.sh report >>"$report"
-          sh project/tools/fedora-container.sh \
+          # check 只需要 rpm 和 python3，不用把整套 rpm-build 装一遍。
+          FEDORA_CONTAINER_PACKAGES='rpm python3 findutils' \
+            sh project/tools/fedora-container.sh \
             'sh tools/build-liuqin-kernel-rpm.sh check' >>"$report"
           cat "$report"
           gzip -6 -c \
