@@ -100,7 +100,12 @@ assemble_tree() {
 }
 
 ensure_fastrpc_account() {
-	grep -q '^fastrpc:' "$tree/etc/group" && grep -q '^fastrpc:' "$tree/etc/passwd" && return 0
+	if grep -q '^fastrpc:' "$tree/etc/group" && grep -q '^fastrpc:' "$tree/etc/passwd"; then
+		# 已经建过：把号取出来，后面 chown ROM 文件时要用。
+		fastrpc_uid=$(awk -F: '$1 == "fastrpc" { print $3 }' "$tree/etc/passwd")
+		fastrpc_gid=$(awk -F: '$1 == "fastrpc" { print $3 }' "$tree/etc/group")
+		return 0
+	fi
 	# Fedora 的系统号段是 201–999，而且这套镜像已经用掉不少，所以从 999 往下
 	# 找第一个空位，而不是"最大的加一"。
 	pick_free_id() { # FILE
