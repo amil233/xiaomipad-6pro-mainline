@@ -70,7 +70,7 @@ build_rpm() {
 	dnf -y install --setopt=install_weak_deps=False \
 		gcc gcc-c++ meson ninja-build pkgconf-pkg-config git \
 		glib2-devel libgudev-devel json-glib-devel polkit-devel systemd-devel \
-		libqmi-devel \
+		libqmi-devel python3-devel \
 		protobuf-c-devel qrtr-devel >/dev/null 2>&1 ||
 		die 'dnf could not install the build dependencies; the package names need checking for Fedora 45'
 	need meson; need ninja; need rpmbuild; need git
