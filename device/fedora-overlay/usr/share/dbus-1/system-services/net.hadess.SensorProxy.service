@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=net.hadess.SensorProxy
+Exec=/usr/bin/systemctl start iio-sensor-proxy.service
+User=root

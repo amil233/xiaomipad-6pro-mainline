@@ -155,6 +155,20 @@ build_rpm() {
 	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
 		"$overlay/liuqin-slpi.service" "$out_dir/stage/etc/systemd/system/"
 	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-slpi" "$out_dir/stage/usr/local/sbin/"
+	# iio-sensor-proxy 的 D-Bus 激活靠这三个文件：上游 meson 不装它们（Fedora 是靠
+	# RPM 里的 %files 补的），我们卸掉了 Fedora 的包，就得自己带。
+	for unit in iio-sensor-proxy.service; do
+		cp "$project_root/device/fedora-overlay/usr/lib/systemd/system/$unit" \
+			"$out_dir/stage/usr/lib/systemd/system/"
+		ln -sfn "../$unit" "$out_dir/stage/etc/systemd/system/multi-user.target.wants/$unit"
+	done
+	mkdir -p "$out_dir/stage/usr/share/dbus-1/system-services" "$out_dir/stage/usr/share/dbus-1/system.d"
+	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system-services/"*.service \
+		"$out_dir/stage/usr/share/dbus-1/system-services/"
+	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system.d/"*.conf \
+		"$out_dir/stage/usr/share/dbus-1/system.d/"
+	mkdir -p "$out_dir/stage/usr/lib/systemd/system"
+	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants"
 	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-slpi"
 	ln -sfn ../liuqin-slpi.service \
 		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service"
