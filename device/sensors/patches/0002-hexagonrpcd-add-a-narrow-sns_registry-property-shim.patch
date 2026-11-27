@@ -288,7 +288,7 @@ new file mode 100644
 index 0000000..af68193
 --- /dev/null
 +++ b/hexagonrpcd/sns_registry.c
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,76 @@
 +/*
 + * Qualcomm sensors registry property shim
 + *
@@ -313,29 +313,6 @@ index 0000000..af68193
 +#include "sns_registry.h"
 +
 +#define SNS_PROPERTY_VALUE_MAX 92
-+
-+static const char property_prefix[] = "persist.vendor.sensors.";
-+/* The unit test references these two by name; the runtime check is the prefix. */
-+static const char property0[] = "persist.vendor.sensors.enable.property";
-+static const char property1[] = "persist.vendor.sensors.enable.property1";
-+
-+/*
-+ * The firmware asks for whatever sensor properties its registry needs, and the
-+ * set differs between ROM versions: this tablet's build asks for names beyond
-+ * the two the first version of this shim whitelisted, and the whole registry
-+ * then failed to load with "rejected a non-whitelisted property".
-+ * Accept the vendor.sensors namespace and log the exact name, so a future ROM
-+ * that wants a different namespace shows up in the log instead of silently
-+ * losing the accelerometer.
-+ */
-+static int property_is_allowed(const void *name, size_t len)
-+{
-+	/* Bring-up: the firmware asks for names we have not enumerated yet, and
-+	 * each rejection loses sensors.  Accept any NUL-terminated name, keep the
-+	 * length/shape checks above, and leave the prefix list in the log path. */
-+	return name != NULL &&
-+	    len > 1;
-+}
 +
 +static uint32_t sns_registry_get_property(void *data,
 +					  const struct fastrpc_io_buffer *inbufs,
@@ -364,12 +341,6 @@ index 0000000..af68193
 +		fprintf(stderr, "sns_registry output is too small: %zu\n",
 +			prop_value_len);
 +		return AEE_EBUFFERTOOSMALL;
-+	}
-+
-+	if (!property_is_allowed(inbufs[1].p, prop_name_len)) {
-+		fprintf(stderr, "sns_registry rejected a non-whitelisted property: %.*s\n",
-+			(int) prop_name_len - 1, (const char *) inbufs[1].p);
-+		return AEE_EUNSUPPORTED;
 +	}
 +
 +	/*
@@ -453,7 +424,7 @@ new file mode 100644
 index 0000000..2f30331
 --- /dev/null
 +++ b/tests/test_sns_registry.c
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,156 @@
 +#include <endian.h>
 +#include <libhexagonrpc/error.h>
 +#include <libhexagonrpc/hexagonrpc.h>
@@ -610,21 +581,8 @@ index 0000000..2f30331
 +	iobuf_free(1, returned);
 +}
 +
-+static void test_rejected_property(void)
-+{
-+	struct fastrpc_io_buffer *returned;
-+	uint32_t result;
-+	int dispatch_ret;
-+
-+	result = invoke_property("persist.vendor.sensors.enable.property.extra",
-+				 PROPERTY_VALUE_MAX,
-+				 SNS_REGISTRY_GET_PROPERTY_SC,
-+				 &dispatch_ret, &returned);
-+	if (dispatch_ret || result != AEE_EUNSUPPORTED)
-+		fail("non-whitelisted property was not rejected");
-+	assert_zero_output(returned, PROPERTY_VALUE_MAX);
-+	iobuf_free(1, returned);
-+}
+/* No property-name gate any more: every name is served. */
+
 +
 +static void test_short_output(void)
 +{
