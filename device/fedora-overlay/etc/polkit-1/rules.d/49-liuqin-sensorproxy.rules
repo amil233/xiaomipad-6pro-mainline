@@ -1,0 +1,24 @@
+// liuqin: 不要让 claim-sensor 受 logind "session active" 时序影响。
+//
+// 上游默认规则要求 allow_active，而桌面会话第一次 claim 时可能还没完成
+// session 注册，于是 net.hadess.SensorProxy.claim-sensor 被拒，整个 boot 期间
+// 自动旋转都拿不到数据（Ubuntu 线实测过这个问题，gnome-shell 与 KDE 的启动
+// 顺序都属于同一类竞争）。
+//
+// 这块单用户平板上的方向与环境光读数不构成安全边界，任何本地进程都可以 claim。
+polkit.addRule(function(action, subject) {
+    if (action.id == "net.hadess.SensorProxy.claim-sensor" && subject.local) {
+        return polkit.Result.YES;
+    }
+});
+
+// 刷新技术用 systemd --user 单元在会话内重启代理，请求到 systemd 时既不是
+// logind 会话、也不是 active 状态。按单元和动作限定授权，风险是一次亚秒级的
+// 采样中断。
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "iio-sensor-proxy.service" &&
+        action.lookup("verb") == "restart") {
+        return polkit.Result.YES;
+    }
+});

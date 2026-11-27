@@ -175,6 +175,12 @@ build_rpm() {
 	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-sensor-registry-import" \
 		"$out_dir/stage/usr/local/sbin/"
 	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-sensor-registry-import"
+	# polkit：claim-sensor 不受 session-active 时序影响（Ubuntu 线实测的必要条件），
+	# 否则桌面第一次 claim 被拒，整个会话拿不到方向数据。
+	mkdir -p "$out_dir/stage/etc/polkit-1/rules.d"
+	cp "$project_root/device/fedora-overlay/etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules" \
+		"$out_dir/stage/etc/polkit-1/rules.d/"
+	chmod 0644 "$out_dir/stage/etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules"
 	# 加速度计的预热门禁：ssccli 真实取一次测量，才允许 iio-sensor-proxy 发布。
 	mkdir -p "$out_dir/stage/usr/libexec" "$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d"
 	cp "$project_root/device/fedora-overlay/usr/libexec/liuqin-ssc-sample-gate" \
