@@ -156,7 +156,10 @@ build_rpm() {
 
 	# 文件清单从 stage 里生成，而不是手写：上游的单元名、udev 规则名、
 	# 库的 soname 都会随版本变，写死一个就可能在 rpmbuild 上报"找不到文件"。
+	# man/doc 不打包：rpmbuild 会在安装之后把它们压缩成 .gz，清单里写的原名
+	# 就不存在了，打包会报"File not found"。设备上不需要这些手册页。
 	find "$out_dir/stage" \( -type f -o -type l \) -printf '%P\n' |
+		grep -vE '^usr/share/(man|doc|info)/' |
 		sed 's|^|/|' | sort >"$out_dir/files.list"
 	[ -s "$out_dir/files.list" ] || die 'the staging tree is empty'
 	spec=$out_dir/$pkg_name.spec
