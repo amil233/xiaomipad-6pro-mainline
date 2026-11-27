@@ -154,6 +154,11 @@ build_rpm() {
 	ln -sfn ../liuqin-hexagonrpcd-sdsp.service \
 		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service"
 
+	# 文件清单从 stage 里生成，而不是手写：上游的单元名、udev 规则名、
+	# 库的 soname 都会随版本变，写死一个就可能在 rpmbuild 上报"找不到文件"。
+	find "$out_dir/stage" \( -type f -o -type l \) -printf '%P\n' |
+		sed 's|^|/|' | sort >"$out_dir/files.list"
+	[ -s "$out_dir/files.list" ] || die 'the staging tree is empty'
 	spec=$out_dir/$pkg_name.spec
 	cat >"$spec" <<EOF
 %define debug_package %{nil}
@@ -173,18 +178,8 @@ Pro.  Built from the pinned sources in device/sensors/sources.manifest.
 %install
 mkdir -p %{buildroot}
 cp -a $out_dir/stage/. %{buildroot}/
-%files
-/usr/local/sbin/liuqin-slpi
-/etc/systemd/system/liuqin-slpi.service
-/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service
-/etc/systemd/system/liuqin-hexagonrpcd-sdsp.service
-/etc/systemd/system/liuqin-sensor-stack.target
-/etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service
-/usr/bin/hexagonrpcd
-/usr/lib64/libssc.so*
-/usr/libexec/iio-sensor-proxy
-/usr/lib/udev/rules.d/*
-/usr/lib/systemd/system/iio-sensor-proxy.service
+%files -f $out_dir/files.list
+
 EOF
 	say "building $pkg_name-$version-1.aarch64.rpm"
 	rpmbuild -bb --quiet --define "_topdir $out_dir/rpmbuild" "$spec" \
