@@ -132,9 +132,14 @@ build_rpm() {
 
 	say 'staging our own units'
 	overlay=$project_root/device/fedora-overlay/etc/systemd/system
-	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants"
+	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants" \
+		"$out_dir/stage/usr/local/sbin"
 	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
-		"$out_dir/stage/etc/systemd/system/"
+		"$overlay/liuqin-slpi.service" "$out_dir/stage/etc/systemd/system/"
+	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-slpi" "$out_dir/stage/usr/local/sbin/"
+	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-slpi"
+	ln -sfn ../liuqin-slpi.service \
+		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service"
 	ln -sfn ../liuqin-hexagonrpcd-sdsp.service \
 		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service"
 
@@ -158,6 +163,9 @@ Pro.  Built from the pinned sources in device/sensors/sources.manifest.
 mkdir -p %{buildroot}
 cp -a $out_dir/stage/. %{buildroot}/
 %files
+/usr/local/sbin/liuqin-slpi
+/etc/systemd/system/liuqin-slpi.service
+/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service
 /etc/systemd/system/liuqin-hexagonrpcd-sdsp.service
 /etc/systemd/system/liuqin-sensor-stack.target
 /etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service
