@@ -153,8 +153,10 @@ build_rpm() {
 
 	say 'staging our own units'
 	overlay=$project_root/device/fedora-overlay/etc/systemd/system
+	# 上游单元在前面被删掉了，这两个目录要自己建回来再往里拷。
 	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants" \
-		"$out_dir/stage/usr/local/sbin"
+		"$out_dir/stage/usr/local/sbin" \
+		"$out_dir/stage/usr/lib/systemd/system"
 	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
 		"$overlay/liuqin-slpi.service" "$out_dir/stage/etc/systemd/system/"
 	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-slpi" "$out_dir/stage/usr/local/sbin/"
