@@ -153,7 +153,7 @@ if [ -n "$nf_uid" ] && [ -n "$nf_gid" ]; then
 	count=0
 	for f in "$mnt/sensors/registry/registry/"*; do
 		[ -f "$f" ] || continue
-		cp "$f" "$tgt/var/lib/liuqin-sensors/registry/"
+		cp "$f" "$tgt/var/lib/liuqin-sensors/sensors/registry/"
 		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/registry/$(basename "$f")"
 		count=$((count + 1))
 	done
