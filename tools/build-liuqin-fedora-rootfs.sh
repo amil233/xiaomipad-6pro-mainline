@@ -94,6 +94,13 @@ assemble_tree() {
 			chown "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors/registry"
 			chmod 0750 "$tree/var/lib/liuqin-sensors/registry"
 		fi
+	# 固件按 /mnt/vendor/persist/sensors/<name> 读这些文件，映射到
+	# <prefix>/sensors/<name>；可写数据实际放在 /var/lib/liuqin-sensors。用软链把
+	# 两边接上，provision 导入的文件才看得见。
+	for name in acc_caldata.txt gyro_caldata.txt Lux_F_channel_data.txt \
+		sensors_list.txt sns_reg_version; do
+		ln -sfn "/var/lib/liuqin-sensors/$name" "$sensors_dir/$name"
+	done
 		say "sensor data: $device_data (sns_reg.conf, $(find "$sensors_dir/config" -type f | wc -l | tr -d ' ') config files, registry -> /var/lib/liuqin-sensors/registry)"
 	fi
 
