@@ -63,13 +63,14 @@ apply_patch() { # REPO PATCH
 }
 
 build_rpm() {
-	need meson; need ninja; need rpmbuild; need git
+	# 先装依赖再检查工具：镜像里本来什么构建工具都没有。
 	command -v dnf >/dev/null || die 'dnf is missing; run through tools/fedora-container.sh'
 	say 'installing build dependencies'
 	dnf -y install --setopt=install_weak_deps=False \
 		gcc gcc-c++ meson ninja-build pkgconf-pkg-config git \
 		protobuf-c-devel qrtr-devel systemd-devel >/dev/null 2>&1 ||
 		die 'dnf could not install the build dependencies; the package names need checking for Fedora 45'
+	need meson; need ninja; need rpmbuild; need git
 
 	hexagonrpc=$(fetch_source hexagonrpc)
 	libssc=$(fetch_source libssc)
