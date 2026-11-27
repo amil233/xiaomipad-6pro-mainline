@@ -172,8 +172,6 @@ build_rpm() {
 		"$out_dir/stage/usr/share/dbus-1/system-services/"
 	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system.d/"*.conf \
 		"$out_dir/stage/usr/share/dbus-1/system.d/"
-	mkdir -p "$out_dir/stage/usr/lib/systemd/system"
-	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants"
 	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-slpi"
 	ln -sfn ../liuqin-slpi.service \
 		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-slpi.service"
