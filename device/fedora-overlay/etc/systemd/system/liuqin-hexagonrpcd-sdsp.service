@@ -7,6 +7,10 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+# udev 规则之外再兜一层：节点权限不对时，用 root 身份先把组和权限改好，
+# 再切到 fastrpc。+ 前缀表示这一行不以 User= 的身份执行。
+ExecStartPre=+/usr/bin/chgrp fastrpc /dev/fastrpc-sdsp
+ExecStartPre=+/usr/bin/chmod 0660 /dev/fastrpc-sdsp
 User=fastrpc
 Group=fastrpc
 ExecStart=/usr/bin/hexagonrpcd -f /dev/fastrpc-sdsp -d sdsp -s -R /var/lib/liuqin-sensors/registry
