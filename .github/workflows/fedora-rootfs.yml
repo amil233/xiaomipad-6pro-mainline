@@ -106,6 +106,14 @@ jobs:
             'OUT=/work/out/fedora-sensors sh tools/build-liuqin-sensors-rpm.sh build &&
              OUT=/work/out/fedora-sensors sh tools/build-liuqin-sensors-rpm.sh install'
 
+      - name: Verify the packaged files
+        run: |
+          # 离线断言：每个 RPM 里是否包含整条传感器链需要的文件。
+          # 漏装一个文件不会让构建失败，但会让平板上的传感器链断掉。
+          FEDORA_CONTAINER_PACKAGES='rpm grep coreutils' \
+            sh project/tools/fedora-container.sh \
+            'sh tools/verify-liuqin-rpms.sh /work/out/fedora-device /work/out/fedora-sensors /work/out/fedora-rpm'
+
       - name: Take ownership of the container output
         run: |
           [ -d project/out ] || exit 0
