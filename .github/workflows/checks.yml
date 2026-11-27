@@ -17,6 +17,7 @@ jobs:
           python3 - <<'PY'
           import ast
           import subprocess
+          import sys
           from pathlib import Path
 
           for path in sorted(Path('tools').rglob('*.py')):
@@ -28,6 +29,9 @@ jobs:
               result = subprocess.run(['sh', '-n', str(path)])
               if result.returncode:
                   failures.append(str(path))
+          result = subprocess.run([sys.executable, 'tools/verify-unit-references.py'])
+          if result.returncode:
+              failures.append('tools/verify-unit-references.py')
           for path in ('initramfs/init',):
               if subprocess.run(['sh', '-n', path]).returncode:
                   failures.append(path)
