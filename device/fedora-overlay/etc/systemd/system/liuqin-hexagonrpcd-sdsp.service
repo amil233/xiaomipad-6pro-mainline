@@ -1,7 +1,10 @@
 [Unit]
 Description=liuqin SLPI FastRPC reverse tunnel
+# 节点要等 liuqin-slpi 把 SLPI 拉起来才出现，所以必须先启动它；否则
+# ConditionPathExists 在开机时判为不满足，整个服务被跳过（事实如此）。
+Requires=liuqin-slpi.service
+After=systemd-udevd.service systemd-tmpfiles-setup.service liuqin-slpi.service
 ConditionPathExists=/dev/fastrpc-sdsp
-After=systemd-udevd.service systemd-tmpfiles-setup.service
 StartLimitIntervalSec=30s
 StartLimitBurst=3
 
