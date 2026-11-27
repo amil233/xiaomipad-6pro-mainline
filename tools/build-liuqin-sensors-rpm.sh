@@ -98,18 +98,22 @@ build_rpm() {
 	mkdir -p "$work" "$out_dir/stage"
 	say 'building hexagonrpcd'
 	meson setup "$work/hexagonrpc" "$src_dir/hexagonrpc" \
-		--prefix=/usr --libdir=lib64 --buildtype=release --wrap-mode=nodownload >/dev/null ||
-		die 'meson configure failed for hexagonrpc'
-	meson compile -C "$work/hexagonrpc" >/dev/null || die 'compiling hexagonrpc failed'
+		--prefix=/usr --libdir=lib64 --buildtype=release --wrap-mode=nodownload \
+		>"$out_dir/hexagonrpc-configure.log" 2>&1 ||
+		{ tail -40 "$out_dir/hexagonrpc-configure.log" >&2; die 'meson configure failed for hexagonrpc'; }
+	meson compile -C "$work/hexagonrpc" >"$out_dir/hexagonrpc-compile.log" 2>&1 ||
+		{ tail -40 "$out_dir/hexagonrpc-compile.log" >&2; die 'compiling hexagonrpc failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/hexagonrpc" >/dev/null ||
 		die 'installing hexagonrpc into the staging tree failed'
 	[ -x "$out_dir/stage/usr/bin/hexagonrpcd" ] || die 'hexagonrpcd was not installed'
 
 	say 'building libssc'
 	meson setup "$work/libssc" "$src_dir/libssc" \
-		--prefix=/usr --libdir=lib64 --buildtype=release --wrap-mode=nodownload >/dev/null ||
-		die 'meson configure failed for libssc'
-	meson compile -C "$work/libssc" >/dev/null || die 'compiling libssc failed'
+		--prefix=/usr --libdir=lib64 --buildtype=release --wrap-mode=nodownload \
+		>"$out_dir/libssc-configure.log" 2>&1 ||
+		{ tail -40 "$out_dir/libssc-configure.log" >&2; die 'meson configure failed for libssc'; }
+	meson compile -C "$work/libssc" >"$out_dir/libssc-compile.log" 2>&1 ||
+		{ tail -40 "$out_dir/libssc-compile.log" >&2; die 'compiling libssc failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/libssc" >/dev/null ||
 		die 'installing libssc into the staging tree failed'
 
@@ -120,8 +124,10 @@ build_rpm() {
 		-Dudevrulesdir=/usr/lib/udev/rules.d \
 		-Dsystemdsystemunitdir=/usr/lib/systemd/system \
 		--pkg-config-path="$out_dir/stage/usr/lib64/pkgconfig:$out_dir/stage/usr/share/pkgconfig" \
-		>/dev/null || die 'meson configure failed for iio-sensor-proxy'
-	meson compile -C "$work/iio-sensor-proxy" >/dev/null || die 'compiling iio-sensor-proxy failed'
+		>"$out_dir/iio-sensor-proxy-configure.log" 2>&1 ||
+		{ tail -40 "$out_dir/iio-sensor-proxy-configure.log" >&2; die 'meson configure failed for iio-sensor-proxy'; }
+	meson compile -C "$work/iio-sensor-proxy" >"$out_dir/iio-sensor-proxy-compile.log" 2>&1 ||
+		{ tail -40 "$out_dir/iio-sensor-proxy-compile.log" >&2; die 'compiling iio-sensor-proxy failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/iio-sensor-proxy" >/dev/null ||
 		die 'installing iio-sensor-proxy into the staging tree failed'
 	[ -x "$out_dir/stage/usr/libexec/iio-sensor-proxy" ] ||
