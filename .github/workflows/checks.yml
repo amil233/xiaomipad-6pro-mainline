@@ -29,9 +29,9 @@ jobs:
               result = subprocess.run(['sh', '-n', str(path)])
               if result.returncode:
                   failures.append(str(path))
-          result = subprocess.run([sys.executable, 'tools/verify-unit-references.py'])
-          if result.returncode:
-              failures.append('tools/verify-unit-references.py')
+          for check in ('tools/verify-unit-references.py', 'tools/verify-patches.py'):
+              if subprocess.run([sys.executable, check]).returncode:
+                  failures.append(check)
           for path in ('initramfs/init',):
               if subprocess.run(['sh', '-n', path]).returncode:
                   failures.append(path)
