@@ -1,4 +1,5 @@
-# fastrpc 的字符设备由内核建成 root:root 0600（major 10，misc 设备），
-# hexagonrpcd 以 fastrpc 用户运行，必须显式交出权限。
-# 不写 SUBSYSTEM：节点挂在 misc 下，不同内核版本可能不同，按名字匹配最稳。
-KERNEL=="fastrpc-*", GROUP="fastrpc", MODE="0660"
+# fastrpc 的字符设备由 misc_register() 注册（drivers/misc/fastrpc.c:2468-2473），
+# 名字是 "fastrpc-<domain>" 或 "fastrpc-<domain>-secure"，所以 udev 里
+# SUBSYSTEM 是 misc、KERNEL 是 fastrpc-*。内核不设权限，默认 root:root 0600，
+# 而 hexagonrpcd 以 fastrpc 用户运行，需要显式交出来。
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", GROUP="fastrpc", MODE="0660"
