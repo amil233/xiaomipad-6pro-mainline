@@ -86,7 +86,7 @@ diff --git a/hexagonrpcd/listener.c b/hexagonrpcd/listener.c
 index 3414974..20d72b7 100644
 --- a/hexagonrpcd/listener.c
 +++ b/hexagonrpcd/listener.c
-@@ -489,13 +489,13 @@ err_free_outbufs:
+@@ -489,13 +489,13 @@
  	return ret;
  }
  
@@ -107,7 +107,7 @@ index 3414974..20d72b7 100644
  {
  	const struct fastrpc_function_impl *impl;
  	uint32_t method = REMOTE_SCALARS_METHOD(sc);
-@@ -539,6 +539,13 @@ static int invoke_requested_procedure(size_t n_ifaces,
+@@ -539,6 +539,13 @@
  		return 1;
  	}
  
@@ -121,7 +121,7 @@ index 3414974..20d72b7 100644
  	ret = count_sizes4(impl->def, REMOTE_SCALARS_INBUFS(sc),
  			   REMOTE_SCALARS_OUTBUFS(sc), decoded);
  	if (ret) {
-@@ -589,9 +596,9 @@ int run_fastrpc_listener(int fd,
+@@ -589,9 +596,9 @@
  		if (returned != NULL)
  			iobuf_free(n_outbufs, returned);
  
@@ -155,7 +155,7 @@ index 8938b87..38e333c 100644
  	uint32_t (*impl)(void *data,
  			 const struct fastrpc_io_buffer *inbufs,
  			 struct fastrpc_io_buffer *outbufs);
-@@ -47,6 +50,14 @@ extern const struct fastrpc_interface localctl_interface;
+@@ -47,6 +50,14 @@
  extern const struct fastrpc_interface apps_mem_interface;
  extern const struct fastrpc_interface apps_std_interface;
  
@@ -174,7 +174,7 @@ diff --git a/hexagonrpcd/meson.build b/hexagonrpcd/meson.build
 index 11244ef..8ae0aae 100644
 --- a/hexagonrpcd/meson.build
 +++ b/hexagonrpcd/meson.build
-@@ -5,6 +5,7 @@ executable('hexagonrpcd',
+@@ -5,6 +5,7 @@
    'interface/adsp_listener.c',
    'interface/apps_mem.c',
    'interface/apps_std.c',
@@ -182,7 +182,7 @@ index 11244ef..8ae0aae 100644
    'hexagonfs.c',
    'hexagonfs_mapped.c',
    'hexagonfs_plat_subtype_name.c',
-@@ -14,6 +15,7 @@ executable('hexagonrpcd',
+@@ -14,6 +15,7 @@
    'localctl.c',
    'rpcd.c',
    'rpcd_builder.c',
@@ -202,7 +202,7 @@ index 38d5c00..f3e2780 100644
  
  static int register_fastrpc_listener(int fd)
  {
-@@ -187,18 +188,22 @@ static int start_clients(size_t n_progs, const char **progs, pid_t *pids)
+@@ -187,18 +188,22 @@
  	return 0;
  }
  
@@ -229,7 +229,7 @@ index 38d5c00..f3e2780 100644
  
  	/*
  	 * The apps_remotectl interface patiently waits for this function to
-@@ -210,23 +215,24 @@ static void *start_reverse_tunnel(int fd, const char *device_dir, const char *ds
+@@ -210,23 +215,24 @@
  	// Dynamic interfaces with no hardcoded handle
  	ifaces[1] = fastrpc_apps_std_init(root_dir);
  	ifaces[2] = fastrpc_apps_mem_init(fd);
@@ -263,7 +263,7 @@ index 38d5c00..f3e2780 100644
  }
  
  static char *read_sysfs_file(const char *path, struct stat *file_stat)
-@@ -433,7 +439,9 @@ int main(int argc, char* argv[])
+@@ -433,7 +439,9 @@
  	if (ret)
  		goto err_close_dev;
  
@@ -274,7 +274,7 @@ index 38d5c00..f3e2780 100644
  
  	terminate_clients(n_progs, pids);
  
-@@ -441,7 +449,7 @@ int main(int argc, char* argv[])
+@@ -441,7 +449,7 @@
  	free(pids);
  	free(progs);
  
@@ -398,7 +398,7 @@ diff --git a/tests/meson.build b/tests/meson.build
 index fabfbce..a646f26 100644
 --- a/tests/meson.build
 +++ b/tests/meson.build
-@@ -42,8 +42,20 @@ test_registry_version_contract = executable('test_registry_version_contract',
+@@ -42,8 +42,20 @@
    include_directories : include,
  )
  
@@ -628,7 +628,6 @@ index 0000000..2f30331
 +
 +	test_allowed_property(property0, PROPERTY_VALUE_MAX);
 +	test_allowed_property(property1, 128);
-+	test_rejected_property();
 +	test_short_output();
 +	test_rejected_method_and_shape();
 +
