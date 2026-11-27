@@ -314,13 +314,21 @@ index 0000000..af68193
 +
 +#define SNS_PROPERTY_VALUE_MAX 92
 +
-+static const char property0[] = "persist.vendor.sensors.enable.property";
-+static const char property1[] = "persist.vendor.sensors.enable.property1";
++static const char property_prefix[] = "persist.vendor.sensors.";
 +
++/*
++ * The firmware asks for whatever sensor properties its registry needs, and the
++ * set differs between ROM versions: this tablet's build asks for names beyond
++ * the two the first version of this shim whitelisted, and the whole registry
++ * then failed to load with "rejected a non-whitelisted property".
++ * Accept the vendor.sensors namespace and log the exact name, so a future ROM
++ * that wants a different namespace shows up in the log instead of silently
++ * losing the accelerometer.
++ */
 +static int property_is_allowed(const void *name, size_t len)
 +{
-+	return (len == sizeof(property0) && !memcmp(name, property0, len))
-+	    || (len == sizeof(property1) && !memcmp(name, property1, len));
++	return len > sizeof(property_prefix) &&
++	    !memcmp(name, property_prefix, sizeof(property_prefix) - 1);
 +}
 +
 +static uint32_t sns_registry_get_property(void *data,
@@ -353,7 +361,8 @@ index 0000000..af68193
 +	}
 +
 +	if (!property_is_allowed(inbufs[1].p, prop_name_len)) {
-+		fprintf(stderr, "sns_registry rejected a non-whitelisted property\n");
++		fprintf(stderr, "sns_registry rejected a non-whitelisted property: %.*s\n",
++			(int) prop_name_len - 1, (const char *) inbufs[1].p);
 +		return AEE_EUNSUPPORTED;
 +	}
 +
