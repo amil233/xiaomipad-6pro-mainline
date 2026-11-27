@@ -13,6 +13,8 @@
 | 内核包 | `kernel-liuqin` RPM 装进树：756 个模块，树降到 5377 MiB（Fedora 自带内核和 `/boot` 已清掉） |
 | 根整理 | marker、`machine-id` 清空、SELinux permissive，`native-root.hashes` 已生成 |
 | 桌面 | `plasma-mobile 6.8.1`、`plasma-workspace 6.8.1`、`plasma-setup 6.8.1`、登录管理器 `plasmalogin` |
+| 传感器用户态 | `hexagonrpcd`（2 份补丁）、`libssc`、`iio-sensor-proxy` 3.9（6 份补丁）都编出来了，打成 `liuqin-sensors`，替换 Fedora 自带的 iio-sensor-proxy，随 `liuqin-slpi` 一起启用 |
+| 产物打包 | 改成 7z 固实分卷（`liuqin-fedora.7z.001…`），总量 1.71 GB，比之前 tgz 的 2.25 GiB 小约 24%；包内含 simg、boot.img、三个 RPM，包外有分卷校验和报告 |
 | 整条流水线 | 一次跑通（16 分 44 秒）：boot.img 192 MiB、ext4 镜像 7,584,350,208 字节（约 7.06 GiB）、`rootfs.tgz` 约 2.25 GiB、切成 2 片（1.9 GiB + 352 MiB） |
 | 版本钉住 | boot.img 里 `expected_release=7.3.0-gb746af962d0c`，与树里的 `kernel.release` 一致 |
 

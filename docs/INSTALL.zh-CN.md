@@ -113,7 +113,33 @@ rootfs 一起换：
 3. 按第 2 节合并、解开、刷 `boot_a` 和 `userdata`；
 4. 重启后按第 2 节做一次校准导入，再把 `/home` 放回去。
 
-## 4.5 第一次上机要收集的东西
+## 4.5 这一批要验证的清单
+
+这一批同时带来了：设备载荷（固件/WLAN/UCM2）、USB telnet 救援、`fastrpc` 账户
+与权限、`hexagonrpcd` + `libssc` + patched `iio-sensor-proxy`、`liuqin-slpi`。
+
+刷完按顺序：
+
+1. 进 plasma-setup 建用户，**立刻**在终端里执行
+   `sudo liuqin-rescue on` 并把自动锁屏关掉（触摸在自动锁屏唤醒后会失效）；
+2. 把仓库里的 `tools/provision-liuqin-from-persist.sh` 拷到平板，跑
+   `sudo sh provision-liuqin-from-persist.sh /`，期望输出里 `registry=<数字>`；
+3. 重启，逐项看：
+   ```sh
+   getent passwd fastrpc                  # 有输出
+   ls -l /dev/fastrpc-adsp                # group=fastrpc, 660
+   systemctl status liuqin-slpi           # active (exited)
+   ls -l /dev/fastrpc-sdsp                # 期望出现
+   systemctl status liuqin-hexagonrpcd-sdsp
+   rpm -q liuqin-sensors iio-sensor-proxy
+   monitor-sensor                         # 期望看到加速度计
+   speaker-test -D hw:0,0 -c 4 -r 48000 -F S24_LE -t sine -l 1
+   ```
+
+如果 `/dev/fastrpc-sdsp` 不出现，传感器这条链就断在 SLPI 启动那一步，把
+`journalctl -u liuqin-slpi -u liuqin-hexagonrpcd-sdsp -b` 抓下来。
+
+## 4.6 第一次上机要收集的东西
 
 第一次刷 Fedora 是这条线唯一没验证过的环节。刷之前把上一套 Ubuntu 的
 `boot.img` 和 `rootfs.simg` 留在刷机主机上（回滚用）。
