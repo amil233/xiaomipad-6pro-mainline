@@ -101,7 +101,6 @@ jobs:
              OUT=/work/out/fedora-device sh tools/build-liuqin-device-rpm.sh install'
 
       - name: Build and install the sensor userspace
-        continue-on-error: true
         run: |
           sh project/tools/fedora-container.sh \
             'OUT=/work/out/fedora-sensors sh tools/build-liuqin-sensors-rpm.sh build &&
@@ -190,7 +189,7 @@ jobs:
             >project/out/artifact/native-root.hashes.gz
           cp project/out/fedora-rpm/kernel-liuqin-*.aarch64.rpm \
              project/out/fedora-device/liuqin-device-*.aarch64.rpm \
-             project/out/fedora-sensors/liuqin-sensors-*.aarch64.rpm project/out/artifact/ 2>/dev/null || true
+             project/out/fedora-sensors/liuqin-sensors-*.aarch64.rpm project/out/artifact/
           ls -lh project/out
           df -h /
 
