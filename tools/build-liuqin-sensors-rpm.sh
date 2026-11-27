@@ -115,6 +115,10 @@ build_rpm() {
 		{ tail -40 "$out_dir/libssc-configure.log" >&2; die 'meson configure failed for libssc'; }
 	meson compile -C "$work/libssc" >"$out_dir/libssc-compile.log" 2>&1 ||
 		{ tail -40 "$out_dir/libssc-compile.log" >&2; die 'compiling libssc failed'; }
+	# 装两遍：一遍进容器自己的 /usr（iio-sensor-proxy 的 configure 从 .pc 里读到
+	# 的是 /usr/include/libssc，头文件得真的在那里），一遍进 stage 供打包。
+	meson install -C "$work/libssc" >/dev/null 2>&1 ||
+		die 'installing libssc into the container failed'
 	DESTDIR=$out_dir/stage meson install -C "$work/libssc" >/dev/null ||
 		die 'installing libssc into the staging tree failed'
 
