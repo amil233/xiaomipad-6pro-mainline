@@ -103,8 +103,8 @@ build_rpm() {
 		>"$out_dir/hexagonrpc-configure.log" 2>&1 ||
 		{ tail -40 "$out_dir/hexagonrpc-configure.log" >&2; die 'meson configure failed for hexagonrpc'; }
 	meson compile -C "$work/hexagonrpc" >"$out_dir/hexagonrpc-compile.log" 2>&1 ||
-		{ grep -nE '(error|FAILED)' "$out_dir/hexagonrpc-compile.log" | head -20 >&2;
-		   tail -20 "$out_dir/hexagonrpc-compile.log" >&2; die 'compiling hexagonrpc failed'; }
+		{ grep -nE -B4 -A8 '(error:|FAILED)' "$out_dir/hexagonrpc-compile.log" | head -40 >&2;
+		   tail -40 "$out_dir/hexagonrpc-compile.log" >&2; die 'compiling hexagonrpc failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/hexagonrpc" >/dev/null ||
 		die 'installing hexagonrpc into the staging tree failed'
 	[ -x "$out_dir/stage/usr/bin/hexagonrpcd" ] || die 'hexagonrpcd was not installed'
