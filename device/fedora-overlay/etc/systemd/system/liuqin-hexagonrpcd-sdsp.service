@@ -13,7 +13,7 @@ ExecStartPre=+/usr/bin/chgrp fastrpc /dev/fastrpc-sdsp
 ExecStartPre=+/usr/bin/chmod 0660 /dev/fastrpc-sdsp
 User=fastrpc
 Group=fastrpc
-ExecStart=/usr/bin/hexagonrpcd -f /dev/fastrpc-sdsp -d sdsp -s -R /var/lib/liuqin-sensors/registry
+ExecStart=/usr/bin/hexagonrpcd -f /dev/fastrpc-sdsp -d sdsp -s -R /var/lib/liuqin-sensors
 # The patched daemon maps every listener teardown to a non-zero process exit.
 # Retry transient FastRPC loss, but fail closed after three rapid crashes.
 Restart=on-failure
@@ -28,7 +28,7 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_UNIX AF_LOCAL
-ReadOnlyPaths=/var/lib/liuqin-sensors/registry
+ReadOnlyPaths=/var/lib/liuqin-sensors
 DevicePolicy=closed
 DeviceAllow=/dev/fastrpc-sdsp rw
 

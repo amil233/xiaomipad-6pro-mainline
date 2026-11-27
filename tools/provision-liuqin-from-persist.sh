@@ -22,7 +22,7 @@
 #     $TGT/usr/lib/firmware/cirrus/cs35l41-liuqin-<ch>-calr.bin
 #     (cs35l41 per-channel calibration; crus_calr.txt carries the same order)
 #   persist/sensors/registry/registry/ ->
-#     $TGT/var/lib/liuqin-sensors/registry/ + SHA256SUMS
+#     $TGT/var/lib/liuqin-sensors/sensors/registry/ + SHA256SUMS
 #     (hexagonrpcd serves it to the SLPI; fastrpc:fastrpc 0640/0750)
 #
 # The persist sibling sns_reg_version is runtime-consumed by hexagonrpcd only
@@ -144,22 +144,35 @@ nf_uid=$(awk -F: '$1=="fastrpc"{print $3}' "$tgt/etc/passwd" 2>/dev/null || true
 nf_gid=$(awk -F: '$1=="fastrpc"{print $3}' "$tgt/etc/group" 2>/dev/null || true)
 count=skipped
 if [ -n "$nf_uid" ] && [ -n "$nf_gid" ]; then
-	mkdir -p "$tgt/var/lib/liuqin-sensors/registry"
-	chmod 0750 "$tgt/var/lib/liuqin-sensors/registry"
-	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry"
+	# hexagonrpcd 把 -R 当作前缀，往里拼 /sensors/registry/ 和
+	# /sensors/sns_reg_version（见 device/sensors/patches/0001）。所以 registry
+	# 必须落在 <prefix>/sensors/registry 下，不能直接放 <prefix>/registry。
+	mkdir -p "$tgt/var/lib/liuqin-sensors/sensors/registry"
+	chmod 0750 "$tgt/var/lib/liuqin-sensors/sensors/registry"
+	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/registry"
 	count=0
 	for f in "$mnt/sensors/registry/registry/"*; do
 		[ -f "$f" ] || continue
 		cp "$f" "$tgt/var/lib/liuqin-sensors/registry/"
-		chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/$(basename "$f")"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/registry/$(basename "$f")"
 		count=$((count + 1))
 	done
 	[ "$count" -gt 100 ] || die "suspiciously few registry files: $count"
-	( cd "$tgt/var/lib/liuqin-sensors/registry" &&
+	( cd "$tgt/var/lib/liuqin-sensors/sensors/registry" &&
 		find . -maxdepth 1 -type f ! -name SHA256SUMS -print |
-		LC_ALL=C sort | xargs sha256sum ) >"$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
-	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry/"*
-	chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
+		LC_ALL=C sort | xargs sha256sum ) >"$tgt/var/lib/liuqin-sensors/sensors/registry/SHA256SUMS"
+	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/registry/"*
+	chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/registry/SHA256SUMS"
+	# 固件会按 <prefix>/sensors/sns_reg_version 读写版本号；persist 里有就一并
+	# 导入，没有就不建（补丁只在这个文件存在时才映射）。
+	if [ -f "$mnt/sensors/sns_reg_version" ]; then
+		cp "$mnt/sensors/sns_reg_version" "$tgt/var/lib/liuqin-sensors/sensors/sns_reg_version"
+		chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/sns_reg_version"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/sns_reg_version"
+		say 'sns_reg_version imported from persist'
+	else
+		say 'no sns_reg_version in persist; leaving it unset'
+	fi
 else
 	say 'warning: no fastrpc account in the target; skipping the sensor registry'
 	say 'warning: sensors will work only after the sensor stack is ported'
