@@ -95,8 +95,8 @@ jobs:
       - name: Build and install the device files
         run: |
           sh project/tools/fedora-container.sh \
-            'sh tools/build-liuqin-device-rpm.sh build &&
-             sh tools/build-liuqin-device-rpm.sh install'
+            'OUT=/work/out/fedora-device sh tools/build-liuqin-device-rpm.sh build &&
+             OUT=/work/out/fedora-device sh tools/build-liuqin-device-rpm.sh install'
 
       - name: Take ownership of the container output
         run: |
@@ -180,7 +180,7 @@ jobs:
             project/tools/local/fedora-kde-mobile-45-arm64/native-root.hashes \
             >project/out/artifact/native-root.hashes.gz
           cp project/out/fedora-rpm/kernel-liuqin-*.aarch64.rpm \
-             project/out/fedora-rpm/liuqin-device-*.aarch64.rpm project/out/artifact/
+             project/out/fedora-device/liuqin-device-*.aarch64.rpm project/out/artifact/
           ls -lh project/out
           df -h /
 

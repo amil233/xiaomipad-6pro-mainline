@@ -49,7 +49,9 @@ build_rpm() {
 	[ -f "$ucm/conf.d/sm8450/Xiaomi-Pad-6-Pro.conf" ] || die "no UCM2 config: $ucm"
 
 	stage=$out_dir/stage
-	rm -rf "$out_dir"
+	# 只清自己这次的中间产物：OUT 目录里可能还有别的包。
+	rm -rf "$out_dir/stage" "$out_dir/rpmbuild" "$out_dir/$pkg_name.spec"
+	rm -f "$out_dir/$pkg_name-"*.aarch64.rpm
 	mkdir -p "$stage/usr/lib/firmware/updates/ath11k/WCN6855/hw2.0" \
 		"$stage/usr/lib/firmware/updates/ath11k/WCN6855/hw2.1" \
 		"$stage/usr/share/alsa/ucm2/conf.d/sm8450" \
