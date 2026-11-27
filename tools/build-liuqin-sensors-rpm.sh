@@ -54,6 +54,10 @@ fetch_source() { # COMPONENT
 			die "clone failed: $repository"
 	fi
 	git -C "$dir" checkout -q "$commit" || die "cannot check out $commit in $dir"
+	# 源码目录可能被上一次运行改过（补丁已经打上）。回到干净的提交，否则第二次
+	# 运行会在 apply --check 上失败；CI 每次是全新目录，本地跑不会。
+	git -C "$dir" reset -q --hard "$commit" || die "cannot reset $dir to $commit"
+	git -C "$dir" clean -qfd || die "cannot clean $dir"
 	git -C "$dir" rev-parse --short HEAD
 }
 
