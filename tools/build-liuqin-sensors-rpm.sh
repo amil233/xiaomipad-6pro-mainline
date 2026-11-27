@@ -127,8 +127,16 @@ build_rpm() {
 	[ -x "$out_dir/stage/usr/libexec/iio-sensor-proxy" ] ||
 		die 'iio-sensor-proxy was not installed'
 
-	# 只装二进制，不带上游的单元和配置：服务怎么起由我们自己的单元决定。
+	# 上游的单元和配置不要，用我们自己写的：不经上游的默认值。
 	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/lib/systemd"
+
+	say 'staging our own units'
+	overlay=$project_root/device/fedora-overlay/etc/systemd/system
+	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants"
+	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
+		"$out_dir/stage/etc/systemd/system/"
+	ln -sfn ../liuqin-hexagonrpcd-sdsp.service \
+		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service"
 
 	spec=$out_dir/$pkg_name.spec
 	cat >"$spec" <<EOF
@@ -150,6 +158,9 @@ Pro.  Built from the pinned sources in device/sensors/sources.manifest.
 mkdir -p %{buildroot}
 cp -a $out_dir/stage/. %{buildroot}/
 %files
+/etc/systemd/system/liuqin-hexagonrpcd-sdsp.service
+/etc/systemd/system/liuqin-sensor-stack.target
+/etc/systemd/system/multi-user.target.wants/liuqin-hexagonrpcd-sdsp.service
 /usr/bin/hexagonrpcd
 /usr/lib64/libssc.so*
 /usr/libexec/iio-sensor-proxy

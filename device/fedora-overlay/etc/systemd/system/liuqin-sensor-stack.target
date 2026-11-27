@@ -1,0 +1,6 @@
+[Unit]
+Description=liuqin Qualcomm SSC sensor stack
+Requires=liuqin-hexagonrpcd-sdsp.service
+After=liuqin-hexagonrpcd-sdsp.service
+# iio-sensor-proxy 故意不在这里开机启动：它的 D-Bus 名字出现时客户端才会
+# 认领传感器，提前启动会让第一个会话拿不到。由第一个 D-Bus 调用者按需拉起。
