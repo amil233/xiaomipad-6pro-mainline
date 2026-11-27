@@ -76,6 +76,9 @@ assemble_tree() {
 	# 在这里，固件要写的 registry 用符号链接指到 /var。
 	rom=$project_root/device/sensors/rom
 	device_data=$tree/usr/share/qcom/sm8450/Xiaomi/liuqin
+	# 这几个文件是传感器能工作的前提；缺了就让构建失败，不要静默跳过。
+	[ -d "$rom/config" ] || die "sensor ROM config is missing: $rom/config"
+	[ -f "$rom/sns_reg_config" ] || die "sensor ROM sns_reg_config is missing: $rom/sns_reg_config"
 	if [ -d "$rom" ]; then
 		sensors_dir=$device_data/sensors
 		mkdir -p "$sensors_dir" "$tree/var/lib/liuqin-sensors/registry"
