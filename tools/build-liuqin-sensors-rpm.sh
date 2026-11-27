@@ -140,6 +140,13 @@ build_rpm() {
 
 	# 上游的单元和配置不要，用我们自己写的：不经上游的默认值。
 	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/lib/systemd"
+	# libssc 的 mocking 服务器是给测试用的 python 包，设备上不需要；手册页也
+	# 不要——rpmbuild 会把它们压成 .gz，清单就跟着对不上。
+	rm -rf "$out_dir/stage/usr/share/man" "$out_dir/stage/usr/share/doc"
+	for py in "$out_dir"/stage/usr/lib/python3*/site-packages/ssc_server; do
+		[ -e "$py" ] || continue
+		rm -rf "$py" "$py"-*.dist-info 2>/dev/null || :
+	done
 
 	say 'staging our own units'
 	overlay=$project_root/device/fedora-overlay/etc/systemd/system
@@ -167,6 +174,9 @@ build_rpm() {
 %define debug_package %{nil}
 %define __strip /bin/true
 %define _build_id_links none
+# 不做安装后的 brp 处理：它会把 man 压成 .gz、给 python 包编 .pyc，
+# 两者都会变成"装进 buildroot 但没进清单"的文件让打包失败。
+%define __os_install_post %{nil}
 
 Name:           $pkg_name
 Version:        $version
