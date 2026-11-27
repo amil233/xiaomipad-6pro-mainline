@@ -71,6 +71,21 @@ assemble_tree() {
 	# 用户运行，provision 脚本也按这个名字查 uid。离线建号，不依赖 RPM 的脚本。
 	ensure_fastrpc_account
 
+	# 传感器 ROM 文件：hexagonrpcd 的 -R 前缀下要 sensors/sns_reg.conf 和
+	# sensors/config/（见 docs/FEDORA.zh-CN.md 的映射表），persist 里没有这两样，
+	# 仓库里跟踪了一份。
+	rom=$project_root/device/sensors/rom
+	if [ -d "$rom" ]; then
+		sensors_dir=$tree/var/lib/liuqin-sensors/sensors
+		mkdir -p "$sensors_dir"
+		install -m 0644 "$rom/sns_reg_config" "$sensors_dir/sns_reg.conf"
+		cp -a "$rom/config" "$sensors_dir/"
+		if [ -n "${fastrpc_uid:-}" ]; then
+			chown -R "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors"
+		fi
+		say "sensor ROM files: sns_reg.conf + $(find "$sensors_dir/config" -type f | wc -l | tr -d ' ') config files"
+	fi
+
 	# SELinux：第一次启动先 permissive，标签和策略后面再收紧。
 	if [ -f "$tree/etc/selinux/config" ]; then
 		sed -i 's/^SELINUX=.*/SELINUX=permissive/' "$tree/etc/selinux/config"
@@ -110,6 +125,8 @@ ensure_fastrpc_account() {
 	mkdir -p "$tree/var/lib/hexagonrpcd"
 	chown "$uid:$gid" "$tree/var/lib/hexagonrpcd"
 	chmod 0750 "$tree/var/lib/hexagonrpcd"
+	fastrpc_uid=$uid
+	fastrpc_gid=$gid
 	say "fastrpc account: uid=$uid gid=$gid"
 }
 
