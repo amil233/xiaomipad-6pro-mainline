@@ -25,7 +25,8 @@ pkg_name=liuqin-sensors
 version=0.1
 
 die() { printf 'build-liuqin-sensors-rpm: %s\n' "$*" >&2; exit 1; }
-say() { printf 'build-liuqin-sensors-rpm: %s\n' "$*"; }
+# say 走 stderr：fetch_source 的标准输出要留给 commit 值，混进日志行会污染它。
+say() { printf 'build-liuqin-sensors-rpm: %s\n' "$*" >&2; }
 
 usage() {
 	cat <<'EOF'
@@ -73,7 +74,9 @@ build_rpm() {
 	need meson; need ninja; need rpmbuild; need git
 
 	hexagonrpc=$(fetch_source hexagonrpc)
+	[ -n "$hexagonrpc" ] || die 'could not fetch hexagonrpc'
 	libssc=$(fetch_source libssc)
+	[ -n "$libssc" ] || die 'could not fetch libssc'
 	say "hexagonrpc $hexagonrpc, libssc $libssc"
 
 	# hexagonrpcd 的两份补丁：registry 版本兄弟文件、sns_registry 属性 shim。
