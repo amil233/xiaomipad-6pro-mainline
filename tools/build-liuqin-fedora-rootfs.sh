@@ -81,6 +81,14 @@ assemble_tree() {
 		mkdir -p "$sensors_dir" "$tree/var/lib/liuqin-sensors/registry"
 		install -m 0644 "$rom/sns_reg_config" "$sensors_dir/sns_reg.conf"
 		cp -a "$rom/config" "$sensors_dir/"
+		# sns_reg_version 必须存在：固件按 <prefix>/sensors/sns_reg_version 读它，
+		# 内容就是 sns_reg_config 里的 version=（Ubuntu 线同样是这么生成的，
+		# 值 8，后面带一个 NUL）。缺了它，daemon 会反复报
+		# "Could not open /../sns_reg_version" 且 registry 解析失败。
+		registry_version=$(sed -n 's/^version=//p' "$rom/sns_reg_config" | head -1)
+		[ -n "$registry_version" ] || die 'sns_reg_config carries no version= line'
+		printf 'version=%s\0' "$registry_version" >"$sensors_dir/sns_reg_version"
+		chmod 0644 "$sensors_dir/sns_reg_version"
 		ln -sfn /var/lib/liuqin-sensors/registry "$sensors_dir/registry"
 		# 固件还会读 /sys/devices/soc0/{hw_platform,platform_subtype}；这些是
 		# 内核 qcom_socinfo 提供的，映射到 <prefix>/socinfo/，所以放一个指向真实
