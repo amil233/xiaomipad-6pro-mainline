@@ -161,8 +161,18 @@ build_rpm() {
 	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants" \
 		"$out_dir/stage/usr/local/sbin"
 	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
-		"$overlay/liuqin-slpi.service" "$out_dir/stage/etc/systemd/system/"
+		"$overlay/liuqin-slpi.service" "$overlay/liuqin-ssc-sample-gate.service" \
+		"$out_dir/stage/etc/systemd/system/"
 	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-slpi" "$out_dir/stage/usr/local/sbin/"
+	# 加速度计的预热门禁：ssccli 真实取一次测量，才允许 iio-sensor-proxy 发布。
+	mkdir -p "$out_dir/stage/usr/libexec" "$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d"
+	cp "$project_root/device/fedora-overlay/usr/libexec/liuqin-ssc-sample-gate" \
+		"$out_dir/stage/usr/libexec/"
+	cp "$project_root/device/fedora-overlay/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf" \
+		"$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d/"
+	ln -sfn ../liuqin-ssc-sample-gate.service \
+		"$out_dir/stage/etc/systemd/system/multi-user.target.wants/liuqin-ssc-sample-gate.service"
+	chmod 0755 "$out_dir/stage/usr/libexec/liuqin-ssc-sample-gate"
 	# iio-sensor-proxy 的单元、bus policy、udev 规则和 polkit 策略都由上游
 	# meson install 自己装（data/meson.build），我们不再手写一份。唯一要补的是
 	# D-Bus 激活文件：上游不装 system-services 条目，Fedora 的 RPM 才有。

@@ -1,0 +1,55 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# 只有在真的从 SSC 拿到一次加速度计测量之后，才允许 iio-sensor-proxy 发布
+# SensorProxy。原因见 libssc / iio-sensor-proxy 的实现：
+#
+#   src/drv-ssc-accel.c 靠 ssc_sensor_accelerometer_new_sync() + close 来"发现"
+#   加速度计；SSC 侧不做一次真实的 claim/取数，传感器就不会被注册出来。
+#
+# 所以这里用 ssccli 主动取一次测量，成功才写 ready 标记；读不到就让 gate 失败，
+# iio-sensor-proxy 不会被拉起（而不是在总线上挂一个空壳）。
+set -eu
+
+state_dir=/run/liuqin-sensors
+ready=$state_dir/accelerometer-ready
+log=$state_dir/ssccli-accelerometer.log
+attempts=4
+
+mkdir -p "$state_dir"
+rm -f "$ready" "$log"
+
+[ -c /dev/fastrpc-sdsp ] || {
+	printf '%s\n' 'no /dev/fastrpc-sdsp character device' >&2
+	exit 1
+}
+[ -x /usr/bin/ssccli ] || {
+	printf '%s\n' 'ssccli is not installed' >&2
+	exit 1
+}
+[ -d /usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/config ] || {
+	printf '%s\n' 'liuqin SSC config directory is missing' >&2
+	exit 1
+}
+
+i=1
+while [ "$i" -le "$attempts" ]; do
+	# libssc 自己的 --timeout 在传感器构造之后才生效，QMI 服务不在时可能一直卡；
+	# 外层的 timeout 才是硬边界。
+	if timeout --signal=TERM --kill-after=2s 8s \
+		/usr/bin/ssccli --sensor=accelerometer --timeout=3 >"$log.tmp" 2>&1; then
+		cat "$log.tmp" >>"$log"
+		if grep -q '^Accelerometer sensor measurement: X=' "$log.tmp"; then
+			grep -c '^Accelerometer sensor measurement: X=' "$log.tmp" \
+				| sed 's/^/measurements=/' >"$ready"
+			rm -f "$log.tmp"
+			exit 0
+		fi
+	fi
+	cat "$log.tmp" >>"$log" 2>/dev/null || :
+	rm -f "$log.tmp"
+	i=$((i + 1))
+done
+
+printf '%s\n' 'ssccli never produced an accelerometer measurement' >&2
+exit 1

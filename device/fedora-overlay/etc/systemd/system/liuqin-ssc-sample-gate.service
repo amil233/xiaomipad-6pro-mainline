@@ -1,0 +1,16 @@
+[Unit]
+Description=liuqin SSC accelerometer sample gate
+# SSC 要先被 claim 一次（ssccli 取到真实测量），加速度计才注册出来；
+# 这一步依赖 reverse tunnel 把 registry 交给固件。
+Requires=liuqin-hexagonrpcd-sdsp.service
+After=liuqin-hexagonrpcd-sdsp.service
+Before=iio-sensor-proxy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/liuqin-ssc-sample-gate
+RemainAfterExit=yes
+TimeoutStartSec=60s
+
+[Install]
+WantedBy=multi-user.target
