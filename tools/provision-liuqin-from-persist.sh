@@ -173,6 +173,18 @@ if [ -n "$nf_uid" ] && [ -n "$nf_gid" ]; then
 	else
 		say 'no sns_reg_version in persist; leaving it unset'
 	fi
+
+	# 传感器校准数据：加速度计/陀螺仪缺校准通常就不注册（光感不需要，所以会
+	# 出现"光感有、加速度计没有"）。persist 里有几份就导几份。
+	cal_count=0
+	for cal in acc_caldata.txt gyro_caldata.txt Lux_F_channel_data.txt sensors_list.txt; do
+		[ -f "$mnt/sensors/$cal" ] || continue
+		cp "$mnt/sensors/$cal" "$tgt/var/lib/liuqin-sensors/sensors/$cal"
+		chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/$cal"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/$cal"
+		cal_count=$((cal_count + 1))
+	done
+	say "sensor calibration files imported: $cal_count"
 else
 	say 'warning: no fastrpc account in the target; skipping the sensor registry'
 	say 'warning: sensors will work only after the sensor stack is ported'
