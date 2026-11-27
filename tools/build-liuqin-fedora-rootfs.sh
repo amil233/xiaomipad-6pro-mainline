@@ -80,6 +80,13 @@ assemble_tree() {
 		mkdir -p "$sensors_dir"
 		install -m 0644 "$rom/sns_reg_config" "$sensors_dir/sns_reg.conf"
 		cp -a "$rom/config" "$sensors_dir/"
+		# 固件还会读 /sys/devices/soc0/{hw_platform,platform_subtype}；这些是
+		# 内核 qcom_socinfo 提供的，映射到 <prefix>/socinfo/，所以放一个指向真实
+		# sysfs 的符号链接，别去复制会变的值。
+		ln -sfn /sys/devices/soc0 "$tree/var/lib/liuqin-sensors/socinfo"
+		if [ -n "${fastrpc_uid:-}" ]; then
+			chown -h "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors/socinfo"
+		fi
 		# /vendor/etc/acdbdata 映射到 <prefix>/acdb/，是严格映射（hfs_map），
 		# 但传感器固件只在音频用例里读它；仓库里没有这份，装机时也没有。
 		# 若以后补进来，这里会自动带上。
