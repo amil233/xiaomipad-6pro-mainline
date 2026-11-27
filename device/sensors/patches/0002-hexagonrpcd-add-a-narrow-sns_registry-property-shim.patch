@@ -288,7 +288,7 @@ new file mode 100644
 index 0000000..af68193
 --- /dev/null
 +++ b/hexagonrpcd/sns_registry.c
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,102 @@
 +/*
 + * Qualcomm sensors registry property shim
 + *
