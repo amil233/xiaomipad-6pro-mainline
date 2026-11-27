@@ -164,6 +164,17 @@ build_rpm() {
 		"$overlay/liuqin-slpi.service" "$overlay/liuqin-ssc-sample-gate.service" \
 		"$out_dir/stage/etc/systemd/system/"
 	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-slpi" "$out_dir/stage/usr/local/sbin/"
+	# 目录与账户的声明（tmpfiles/sysusers）和 registry 导入工具，照 Ubuntu 的
+	# device/sensors-overlay 搬过来；少了 tmpfiles，首启时 /var/lib/liuqin-sensors
+	# 和 /run/liuqin-sensors 不一定存在。
+	mkdir -p "$out_dir/stage/etc/sysusers.d" "$out_dir/stage/etc/tmpfiles.d"
+	cp "$project_root/device/fedora-overlay/etc/sysusers.d/liuqin-fastrpc.conf" \
+		"$out_dir/stage/etc/sysusers.d/"
+	cp "$project_root/device/fedora-overlay/etc/tmpfiles.d/liuqin-sensors.conf" \
+		"$out_dir/stage/etc/tmpfiles.d/"
+	cp "$project_root/device/fedora-overlay/usr/local/sbin/liuqin-sensor-registry-import" \
+		"$out_dir/stage/usr/local/sbin/"
+	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-sensor-registry-import"
 	# 加速度计的预热门禁：ssccli 真实取一次测量，才允许 iio-sensor-proxy 发布。
 	mkdir -p "$out_dir/stage/usr/libexec" "$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d"
 	cp "$project_root/device/fedora-overlay/usr/libexec/liuqin-ssc-sample-gate" \
