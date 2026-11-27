@@ -88,8 +88,8 @@ build_rpm() {
 
 	stage=$out_dir/stage
 	# 只清自己这次的中间产物：OUT 目录里可能还有另一个包。
-	rm -rf "$out_dir/stage" "$out_dir/rpmbuild" "$out_dir/$pkg.spec"
-	rm -f "$out_dir/$pkg-"*.aarch64.rpm
+	rm -rf "$out_dir/stage" "$out_dir/rpmbuild" "$out_dir/$pkg_name.spec"
+	rm -f "$out_dir/$pkg_name-"*.aarch64.rpm
 	mkdir -p "$stage"
 	tar --extract --file "$modules_dir/modules.tar" --directory "$stage" --no-same-owner
 	[ -f "$stage/usr/lib/modules/$release/modules.dep" ] ||
