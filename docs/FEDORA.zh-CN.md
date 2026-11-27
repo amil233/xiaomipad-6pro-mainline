@@ -98,7 +98,8 @@ apt + overlay 编的，Fedora 上跑不了。做法是加一个 Fedora 版：
 meson/ninja 编，产物打成 `liuqin-sensors` RPM，内容包括：
 
 - `/usr/bin/hexagonrpcd`、它的 systemd 单元；
-- `/var/lib/liuqin-sensors/registry`（由 provision 从 persist 导入）；
+- `/var/lib/liuqin-sensors/sensors/registry`（由 provision 从 persist 导入；
+  `-R` 前缀之下的布局见本文件后面的映射表）以及同级的 `sns_reg.conf`、`config/`；
 - 打过补丁的 `iio-sensor-proxy`（装在 `/usr/libexec/`，覆盖 Fedora 的包）。
 
 两个待定的点：

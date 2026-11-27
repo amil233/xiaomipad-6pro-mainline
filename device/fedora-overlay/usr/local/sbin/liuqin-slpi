@@ -11,7 +11,7 @@ for remote in /sys/class/remoteproc/remoteproc*; do
     [ "$(cat "$remote/name")" = slpi ] || continue
     if [ "$1" = start ]; then
         # 这一批镜像里 registry 可能还没从 persist 导入；缺了只警告，不拦启动。
-        if runuser -u fastrpc -- test -r /var/lib/liuqin-sensors/registry/SHA256SUMS; then
+        if runuser -u fastrpc -- test -r /var/lib/liuqin-sensors/sensors/registry/SHA256SUMS; then
             echo 'SLPI startup: registry present'
         else
             echo 'SLPI startup: warning: registry not imported yet'
