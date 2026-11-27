@@ -22,7 +22,9 @@
 #     $TGT/usr/lib/firmware/cirrus/cs35l41-liuqin-<ch>-calr.bin
 #     (cs35l41 per-channel calibration; crus_calr.txt carries the same order)
 #   persist/sensors/registry/registry/ ->
-#     $TGT/var/lib/liuqin-sensors/sensors/registry/ + SHA256SUMS
+#     $TGT/var/lib/liuqin-sensors/registry/ + SHA256SUMS
+#   persist/sensors/{acc_caldata.txt,gyro_caldata.txt,sensors_list.txt} ->
+#     $TGT/var/lib/liuqin-sensors/ (sensor calibration)
 #     (hexagonrpcd serves it to the SLPI; fastrpc:fastrpc 0640/0750)
 #
 # The persist sibling sns_reg_version is runtime-consumed by hexagonrpcd only
@@ -147,28 +149,28 @@ if [ -n "$nf_uid" ] && [ -n "$nf_gid" ]; then
 	# hexagonrpcd 把 -R 当作前缀，往里拼 /sensors/registry/ 和
 	# /sensors/sns_reg_version（见 device/sensors/patches/0001）。所以 registry
 	# 必须落在 <prefix>/sensors/registry 下，不能直接放 <prefix>/registry。
-	mkdir -p "$tgt/var/lib/liuqin-sensors/sensors/registry"
-	chmod 0750 "$tgt/var/lib/liuqin-sensors/sensors/registry"
-	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/registry"
+	mkdir -p "$tgt/var/lib/liuqin-sensors/registry"
+	chmod 0750 "$tgt/var/lib/liuqin-sensors/registry"
+	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry"
 	count=0
 	for f in "$mnt/sensors/registry/registry/"*; do
 		[ -f "$f" ] || continue
-		cp "$f" "$tgt/var/lib/liuqin-sensors/sensors/registry/"
-		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/registry/$(basename "$f")"
+		cp "$f" "$tgt/var/lib/liuqin-sensors/registry/"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/$(basename "$f")"
 		count=$((count + 1))
 	done
 	[ "$count" -gt 100 ] || die "suspiciously few registry files: $count"
-	( cd "$tgt/var/lib/liuqin-sensors/sensors/registry" &&
+	( cd "$tgt/var/lib/liuqin-sensors/registry" &&
 		find . -maxdepth 1 -type f ! -name SHA256SUMS -print |
-		LC_ALL=C sort | xargs sha256sum ) >"$tgt/var/lib/liuqin-sensors/sensors/registry/SHA256SUMS"
-	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/registry/"*
-	chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/registry/SHA256SUMS"
+		LC_ALL=C sort | xargs sha256sum ) >"$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
+	chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/registry/"*
+	chmod 0640 "$tgt/var/lib/liuqin-sensors/registry/SHA256SUMS"
 	# 固件会按 <prefix>/sensors/sns_reg_version 读写版本号；persist 里有就一并
 	# 导入，没有就不建（补丁只在这个文件存在时才映射）。
 	if [ -f "$mnt/sensors/sns_reg_version" ]; then
-		cp "$mnt/sensors/sns_reg_version" "$tgt/var/lib/liuqin-sensors/sensors/sns_reg_version"
-		chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/sns_reg_version"
-		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/sns_reg_version"
+		cp "$mnt/sensors/sns_reg_version" "$tgt/var/lib/liuqin-sensors/sns_reg_version"
+		chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sns_reg_version"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/sns_reg_version"
 		say 'sns_reg_version imported from persist'
 	else
 		say 'no sns_reg_version in persist; leaving it unset'
@@ -179,9 +181,9 @@ if [ -n "$nf_uid" ] && [ -n "$nf_gid" ]; then
 	cal_count=0
 	for cal in acc_caldata.txt gyro_caldata.txt Lux_F_channel_data.txt sensors_list.txt; do
 		[ -f "$mnt/sensors/$cal" ] || continue
-		cp "$mnt/sensors/$cal" "$tgt/var/lib/liuqin-sensors/sensors/$cal"
-		chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/sensors/$cal"
-		chmod 0640 "$tgt/var/lib/liuqin-sensors/sensors/$cal"
+		cp "$mnt/sensors/$cal" "$tgt/var/lib/liuqin-sensors/$cal"
+		chown "$nf_uid:$nf_gid" "$tgt/var/lib/liuqin-sensors/$cal"
+		chmod 0640 "$tgt/var/lib/liuqin-sensors/$cal"
 		cal_count=$((cal_count + 1))
 	done
 	say "sensor calibration files imported: $cal_count"

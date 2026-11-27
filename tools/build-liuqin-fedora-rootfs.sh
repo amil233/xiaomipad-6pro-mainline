@@ -71,30 +71,30 @@ assemble_tree() {
 	# 用户运行，provision 脚本也按这个名字查 uid。离线建号，不依赖 RPM 的脚本。
 	ensure_fastrpc_account
 
-	# 传感器 ROM 文件：hexagonrpcd 的 -R 前缀下要 sensors/sns_reg.conf 和
-	# sensors/config/（见 docs/FEDORA.zh-CN.md 的映射表），persist 里没有这两样，
-	# 仓库里跟踪了一份。
+	# 传感器数据按 hexagonrpcd 自己的默认布局放：/usr/share/qcom/{soc}/{vendor}/
+	# {codename}/（rpcd.c 里 -R 的默认值，也是它自动探测的路径）。只读的东西留
+	# 在这里，固件要写的 registry 用符号链接指到 /var。
 	rom=$project_root/device/sensors/rom
+	device_data=$tree/usr/share/qcom/sm8450/Xiaomi/liuqin
 	if [ -d "$rom" ]; then
-		sensors_dir=$tree/var/lib/liuqin-sensors/sensors
-		mkdir -p "$sensors_dir"
+		sensors_dir=$device_data/sensors
+		mkdir -p "$sensors_dir" "$tree/var/lib/liuqin-sensors/registry"
 		install -m 0644 "$rom/sns_reg_config" "$sensors_dir/sns_reg.conf"
 		cp -a "$rom/config" "$sensors_dir/"
+		ln -sfn /var/lib/liuqin-sensors/registry "$sensors_dir/registry"
 		# 固件还会读 /sys/devices/soc0/{hw_platform,platform_subtype}；这些是
 		# 内核 qcom_socinfo 提供的，映射到 <prefix>/socinfo/，所以放一个指向真实
 		# sysfs 的符号链接，别去复制会变的值。
-		ln -sfn /sys/devices/soc0 "$tree/var/lib/liuqin-sensors/socinfo"
-		if [ -n "${fastrpc_uid:-}" ]; then
-			chown -h "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors/socinfo"
-		fi
+		ln -sfn /sys/devices/soc0 "$device_data/socinfo"
 		# /vendor/etc/acdbdata 映射到 <prefix>/acdb/，是严格映射（hfs_map），
 		# 但传感器固件只在音频用例里读它；仓库里没有这份，装机时也没有。
 		# 若以后补进来，这里会自动带上。
-		[ -d "$rom/acdb" ] && cp -a "$rom/acdb" "$tree/var/lib/liuqin-sensors/"
+		[ -d "$rom/acdb" ] && cp -a "$rom/acdb" "$device_data/"
 		if [ -n "${fastrpc_uid:-}" ]; then
-			chown -R "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors"
+			chown "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors/registry"
+			chmod 0750 "$tree/var/lib/liuqin-sensors/registry"
 		fi
-		say "sensor ROM files: sns_reg.conf + $(find "$sensors_dir/config" -type f | wc -l | tr -d ' ') config files"
+		say "sensor data: $device_data (sns_reg.conf, $(find "$sensors_dir/config" -type f | wc -l | tr -d ' ') config files, registry -> /var/lib/liuqin-sensors/registry)"
 	fi
 
 	# SELinux：第一次启动先 permissive，标签和策略后面再收紧。
