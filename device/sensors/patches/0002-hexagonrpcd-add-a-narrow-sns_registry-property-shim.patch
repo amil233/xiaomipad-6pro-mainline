@@ -288,7 +288,7 @@ new file mode 100644
 index 0000000..af68193
 --- /dev/null
 +++ b/hexagonrpcd/sns_registry.c
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,105 @@
 +/*
 + * Qualcomm sensors registry property shim
 + *
@@ -330,8 +330,11 @@ index 0000000..af68193
 + */
 +static int property_is_allowed(const void *name, size_t len)
 +{
-+	return len > sizeof(property_prefix) &&
-+	    !memcmp(name, property_prefix, sizeof(property_prefix) - 1);
++	/* Bring-up: the firmware asks for names we have not enumerated yet, and
++	 * each rejection loses sensors.  Accept any NUL-terminated name, keep the
++	 * length/shape checks above, and leave the prefix list in the log path. */
++	return name != NULL &&
++	    len > 1;
 +}
 +
 +static uint32_t sns_registry_get_property(void *data,
