@@ -190,3 +190,27 @@ boot.img。
 在 GitHub 上手动触发 `Fedora rootfs` 这个 workflow（只在这个分支上能跑）。
 它会把 ISO 下载、解开、写出清单和一份报告，作为 artifact 上传。报告里有树的
 大小、包数量、有没有 `plasma-mobile`、`selinux-policy-targeted`、`sddm`。
+
+## hexagonrpcd 的 -R 前缀到底映射什么（读 rpcd_builder.c 得到，2026-11-27）
+
+`construct_root_dir(prefix, dsp)` 把 guest 路径映射到宿主 `<prefix>/` 下：
+
+| guest 看到 | 宿主实际路径 |
+|---|---|
+| `/vendor/etc/sensors/sns_reg_config` | `<prefix>/sensors/sns_reg.conf` |
+| `/vendor/etc/sensors/config/` | `<prefix>/sensors/config/` |
+| `/vendor/etc/acdbdata` | `<prefix>/acdbdata` |
+| `/persist/sensors/registry/registry`（也挂在 `/mnt/vendor/...`） | `<prefix>/sensors/registry/` |
+| `registry/../sns_reg_version`（补丁 0001） | `<prefix>/sensors/sns_reg_version` |
+| `/sys/devices/soc0` | `<prefix>/socinfo/` |
+
+所以 `-R /var/lib/liuqin-sensors` 时，目录必须是：
+
+```
+/var/lib/liuqin-sensors/sensors/registry/      registry 文件
+/var/lib/liuqin-sensors/sensors/sns_reg.conf   缺了会报 Could not open .../sns_reg_config
+/var/lib/liuqin-sensors/sensors/sns_reg_version
+```
+
+`device/sensors/rom` 里跟踪的就是这些 ROM 文件；装机时要从这里（或 persist）补齐，
+不能只搬 registry。
