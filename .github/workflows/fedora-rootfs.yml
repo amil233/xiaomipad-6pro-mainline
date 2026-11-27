@@ -10,6 +10,8 @@ on:
       - 'tools/build-liuqin-fedora-base.sh'
       - 'tools/build-liuqin-kernel-rpm.sh'
       - 'tools/build-liuqin-device-rpm.sh'
+      - 'tools/build-liuqin-sensors-rpm.sh'
+      - 'device/sensors/**'
       - 'device/firmware/**'
       - 'device/wlan-tuple/**'
       - 'device/fedora-overlay/**'
@@ -98,6 +100,13 @@ jobs:
             'OUT=/work/out/fedora-device sh tools/build-liuqin-device-rpm.sh build &&
              OUT=/work/out/fedora-device sh tools/build-liuqin-device-rpm.sh install'
 
+      - name: Build and install the sensor userspace
+        continue-on-error: true
+        run: |
+          sh project/tools/fedora-container.sh \
+            'OUT=/work/out/fedora-sensors sh tools/build-liuqin-sensors-rpm.sh build &&
+             OUT=/work/out/fedora-sensors sh tools/build-liuqin-sensors-rpm.sh install'
+
       - name: Take ownership of the container output
         run: |
           [ -d project/out ] || exit 0
@@ -180,7 +189,8 @@ jobs:
             project/tools/local/fedora-kde-mobile-45-arm64/native-root.hashes \
             >project/out/artifact/native-root.hashes.gz
           cp project/out/fedora-rpm/kernel-liuqin-*.aarch64.rpm \
-             project/out/fedora-device/liuqin-device-*.aarch64.rpm project/out/artifact/
+             project/out/fedora-device/liuqin-device-*.aarch64.rpm \
+             project/out/fedora-sensors/liuqin-sensors-*.aarch64.rpm project/out/artifact/ 2>/dev/null || true
           ls -lh project/out
           df -h /
 
