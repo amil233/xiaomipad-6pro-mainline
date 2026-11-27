@@ -69,7 +69,8 @@ build_rpm() {
 	say 'installing build dependencies'
 	dnf -y install --setopt=install_weak_deps=False \
 		gcc gcc-c++ meson ninja-build pkgconf-pkg-config git \
-		protobuf-c-devel qrtr-devel systemd-devel >/dev/null 2>&1 ||
+		glib2-devel libgudev-devel json-glib-devel polkit-devel systemd-devel \
+		protobuf-c-devel qrtr-devel >/dev/null 2>&1 ||
 		die 'dnf could not install the build dependencies; the package names need checking for Fedora 45'
 	need meson; need ninja; need rpmbuild; need git
 
@@ -77,12 +78,19 @@ build_rpm() {
 	[ -n "$hexagonrpc" ] || die 'could not fetch hexagonrpc'
 	libssc=$(fetch_source libssc)
 	[ -n "$libssc" ] || die 'could not fetch libssc'
-	say "hexagonrpc $hexagonrpc, libssc $libssc"
+	iio=$(fetch_source iio-sensor-proxy)
+	[ -n "$iio" ] || die 'could not fetch iio-sensor-proxy'
+	say "hexagonrpc $hexagonrpc, libssc $libssc, iio-sensor-proxy $iio"
 
 	# hexagonrpcd 的两份补丁：registry 版本兄弟文件、sns_registry 属性 shim。
 	for patch in "$patches/0001-"*.patch "$patches/0002-"*.patch; do
 		[ -f "$patch" ] || die "missing patch: $patch"
 		apply_patch "$src_dir/hexagonrpc" "$patch"
+	done
+	# iio-sensor-proxy 的补丁按编号顺序 0003.. 往后，全部打在同一棵树上。
+	for patch in "$patches"/000[3-9]-*.patch; do
+		[ -f "$patch" ] || die "missing patch: $patch"
+		apply_patch "$src_dir/iio-sensor-proxy" "$patch"
 	done
 
 	work=$out_dir/work
@@ -96,6 +104,28 @@ build_rpm() {
 	DESTDIR=$out_dir/stage meson install -C "$work/hexagonrpc" >/dev/null ||
 		die 'installing hexagonrpc into the staging tree failed'
 	[ -x "$out_dir/stage/usr/bin/hexagonrpcd" ] || die 'hexagonrpcd was not installed'
+
+	say 'building libssc'
+	meson setup "$work/libssc" "$src_dir/libssc" \
+		--prefix=/usr --libdir=lib64 --buildtype=release --wrap-mode=nodownload >/dev/null ||
+		die 'meson configure failed for libssc'
+	meson compile -C "$work/libssc" >/dev/null || die 'compiling libssc failed'
+	DESTDIR=$out_dir/stage meson install -C "$work/libssc" >/dev/null ||
+		die 'installing libssc into the staging tree failed'
+
+	say 'building iio-sensor-proxy'
+	meson setup "$work/iio-sensor-proxy" "$src_dir/iio-sensor-proxy" \
+		--prefix=/usr --libdir=lib64 --buildtype=release --wrap-mode=nodownload \
+		-Dssc-support=enabled -Dtests=false -Dgtk-tests=false -Dgtk_doc=false \
+		-Dudevrulesdir=/usr/lib/udev/rules.d \
+		-Dsystemdsystemunitdir=/usr/lib/systemd/system \
+		--pkg-config-path="$out_dir/stage/usr/lib64/pkgconfig:$out_dir/stage/usr/share/pkgconfig" \
+		>/dev/null || die 'meson configure failed for iio-sensor-proxy'
+	meson compile -C "$work/iio-sensor-proxy" >/dev/null || die 'compiling iio-sensor-proxy failed'
+	DESTDIR=$out_dir/stage meson install -C "$work/iio-sensor-proxy" >/dev/null ||
+		die 'installing iio-sensor-proxy into the staging tree failed'
+	[ -x "$out_dir/stage/usr/libexec/iio-sensor-proxy" ] ||
+		die 'iio-sensor-proxy was not installed'
 
 	# 只装二进制，不带上游的单元和配置：服务怎么起由我们自己的单元决定。
 	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/lib/systemd"
@@ -121,6 +151,10 @@ mkdir -p %{buildroot}
 cp -a $out_dir/stage/. %{buildroot}/
 %files
 /usr/bin/hexagonrpcd
+/usr/lib64/libssc.so*
+/usr/libexec/iio-sensor-proxy
+/usr/lib/udev/rules.d/*
+/usr/lib/systemd/system/iio-sensor-proxy.service
 EOF
 	say "building $pkg_name-$version-1.aarch64.rpm"
 	rpmbuild -bb --quiet --define "_topdir $out_dir/rpmbuild" "$spec" \
@@ -145,8 +179,11 @@ install_into_tree() {
 
 check_tree() {
 	[ -d "$tree" ] || die "no Fedora tree at $tree"
-	[ -x "$tree/usr/bin/hexagonrpcd" ] || die 'hexagonrpcd is missing from the tree'
+	for path in /usr/bin/hexagonrpcd /usr/libexec/iio-sensor-proxy; do
+		[ -x "$tree$path" ] || die "missing in the tree: $path"
+	done
 	say "hexagonrpcd: $tree/usr/bin/hexagonrpcd"
+	say "iio-sensor-proxy: $tree/usr/libexec/iio-sensor-proxy"
 	say "package: $(rpm --root "$tree" -q $pkg_name 2>/dev/null || echo 'not installed')"
 }
 
