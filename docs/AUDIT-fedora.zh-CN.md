@@ -89,8 +89,9 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 
 ### `tools/build-liuqin-sensors-rpm.sh`
 
-**做什么**：按 `device/sensors/sources.manifest` 取三个源码，打 2 + 6 份补丁，在
-`fedora:45` 里编，打成 `liuqin-sensors`，替换 Fedora 的 `iio-sensor-proxy`。
+**做什么**：按 `device/sensors/sources.manifest` 取三个源码，打 2 + 8 份补丁，在
+`fedora:45` 里编，打成 `liuqin-sensors`。iio-sensor-proxy 只替换二进制
+（`/usr/local/libexec/liuqin-iio-sensor-proxy`），发行包 `iio-sensor-proxy` 继续装着。
 
 **为什么**：
 
@@ -102,8 +103,13 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
   过期（已经踩过 `iio-sensor-proxy.service` 名字不符的坑）；
 - 不打包 man/doc、删掉 libssc 的 python mocking 服务器：两者都会被 rpmbuild 的后处理
   改写（`.gz`、`.pyc`），变成"装进 buildroot 但不在清单里"的文件；
-- 安装前卸掉 Fedora 的 `iio-sensor-proxy`：文件冲突，且设备上只能有一份，
-  必须是打过补丁的那份。
+- 不卸 Fedora 的 `iio-sensor-proxy`：单元、udev 规则、bus/polkit 策略和
+  `monitor-sensor` 都由那个包提供，和参考项目在 Ubuntu 上的分工一致。我们只装
+  打过补丁的二进制和 D-Bus 激活条目（发行包的 `%files` 里没有后者），由 drop-in
+  把 `ExecStart` 指过去。这个包一旦被卸掉，2026-11-27 那种"我们漏装一份单元、
+  整条链断掉"的事就会重演。
+- `install` 时检查发行包和 `libqmi`/`libqrtr-glib`/`protobuf-c` 在树里：libssc
+  运行时链这三份，而它们不是 `iio-sensor-proxy` 包的依赖。
 
 ### `tools/lib/rootfs-manifest.sh`
 
@@ -163,12 +169,12 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 | `etc/systemd/system/liuqin-hexagonrpcd-sdsp.service` | `Requires=liuqin-slpi`（节点后出现）+ `ConditionPathExists=/dev/fastrpc-sdsp` + `ExecStartPre` 兜底权限 |
 | `etc/systemd/system/liuqin-sensor-stack.target` | udev `SYSTEMD_WANTS` 的目标 |
 | `etc/systemd/system/liuqin-ssc-sample-gate.service` + `usr/libexec/liuqin-ssc-sample-gate` | 加速度计必须先被 claim 一次才注册（`drv-ssc-accel.c` 用 open/close 发现），gate 用 `ssccli` 取真实测量，成功才允许发布 SensorProxy |
-| `etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `Requires` gate；放开 `AF_QIPCRTR`，libssc 走 QMI over QRTR |
+| `etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `Requires` gate；`ExecStart` 指向 `/usr/local` 下打过补丁的二进制；放开 `AF_QIPCRTR`（libssc 走 QMI over QRTR） |
 | `etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules` | 上游默认 `allow_active` 会和登录时的 session 注册竞争，导致整个 boot 拿不到方向；Ubuntu 线为此加了同样规则 |
 | `etc/sysusers.d/liuqin-fastrpc.conf`、`etc/tmpfiles.d/liuqin-sensors.conf` | 账户与目录的声明式来源（Ubuntu 线原本如此），`assemble` 的离线建号与之兼容 |
 | `usr/local/sbin/liuqin-sensor-registry-import` | 手工重导 registry 的操作工具，带校验和与旧目录备份 |
 | `usr/local/bin/busybox`、`liuqin-shell`、`usr/local/sbin/liuqin-rescue`、`liuqin-usb-rescue`、`etc/systemd/system/liuqin-usb-rescue.service` | USB telnet 维护通道；`usb0` 由 initramfs 的 gadget 留下，本单元只做地址、`udhcpd`、`telnetd`；默认不启用（`ConditionPathExists=/etc/liuqin-rescue-enabled`） |
-| `usr/share/dbus-1/system-services/net.hadess.SensorProxy.service` | 上游 meson 不装 D-Bus 激活条目，而 Fedora 的 RPM 提供它；我们替换了那个包，所以要自带 |
+| `usr/share/dbus-1/system-services/net.hadess.SensorProxy.service` | D-Bus 激活条目。上游 meson 不装它，Fedora 的 `iio-sensor-proxy` 包的 `%files` 里也没有（只有单元、udev 规则、bus/polkit 策略和 monitor-sensor），所以必须我们带；少了它第一个调用者拉不起代理 |
 
 ## 四、删除的文件及理由
 
@@ -201,14 +207,11 @@ printf 'version=%s\0' "$version" > .../sensors/sns_reg_version
 固件，闭源，无法从源码确认；能确认的只有"这个分支在设备上跑通过"这一事实。因此
 这一项保持在"照搬可运行实现"，而不是"已验证语义"。
 
-### 3. 移除 Fedora 的 `kernel*` / `iio-sensor-proxy` 后 `dnf upgrade` 的行为——已核实机制
+### 3. 移除 Fedora 的 `kernel*` 后 `dnf upgrade` 的行为——已核实机制
 
 - 我们的内核包声明 `Provides: kernel-uname-r = <release>`；Fedora 里依赖内核的是
   `kernel-uname-r`/`kmod` 这类符号，而不是 `kernel` 这个包名本身，所以符号被满足，
   升级不会因为"缺内核"而重装。
-- 我们的传感器包声明 `Provides: iio-sensor-proxy = 3.9`。按 Fedora 的依赖规则，
-  `Provides` 满足 `Requires`，因此其它包对 `iio-sensor-proxy` 的依赖由我们这份
-  满足，dnf 不会把它换回发行版版本。
 
-这一项的残余风险是"某个包同时要求 `iio-sensor-proxy` 的特定 soname/文件路径"，
-那属于文件级冲突，安装时（`--replacefiles`）已经暴露过，不存在静默替换。
+`iio-sensor-proxy` 不再被替换（见上），我们的包也不声明 `Provides: iio-sensor-proxy`，
+所以发行包照常参与升级，单元和 udev 规则跟着发行版走，不会出现两个包争同一路径。

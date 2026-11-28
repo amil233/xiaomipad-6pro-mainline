@@ -4,9 +4,12 @@
 # 传感器用户态的 Fedora 版：按 sources.manifest 取源码、打仓库里的补丁、在
 # fedora:45 容器里编，最后打成一个 RPM。
 #
-# 和 Ubuntu 线那份 build-liuqin-sensors-stack.sh 的区别只在构建环境：那份在
-# Ubuntu 根文件系统上用 apt + overlay，这份在 Fedora 容器里用 dnf，源码、补丁、
-# 版本完全一致（manifest 里 iio-sensor-proxy 本来就钉在 3.9）。
+# 和 Ubuntu 线那份 build-liuqin-sensors-stack.sh 的区别：那份在 Ubuntu 根文件
+# 系统上用 apt + overlay，这份在 Fedora 容器里用 dnf。源码和版本钉在同一份
+# sources.manifest 上（iio-sensor-proxy 3.9、libssc 0.4.4、hexagonrpc 0.5.0），
+# 但补丁集比 Ubuntu 线多三份 0008–0010：它们是参考项目
+# （yzddmr6/xiaomipad-6pro-mainline，Ubuntu 26.04 上跑通的实现）为 SSC 环境光
+# 加的，Ubuntu 线一直没跟上。补丁原文与作者信息保持不动。
 #
 #   sh tools/fedora-container.sh 'sh tools/build-liuqin-sensors-rpm.sh build'
 #
@@ -93,8 +96,12 @@ build_rpm() {
 		apply_patch "$src_dir/hexagonrpc" "$patch"
 	done
 	# iio-sensor-proxy 的补丁按编号顺序 0003.. 往后，全部打在同一棵树上。
-	for patch in "$patches"/000[3-9]-*.patch; do
+	# 0001/0002 属于 hexagonrpcd，上面已经打过，跳过。
+	for patch in "$patches"/00[0-9][0-9]-*.patch; do
 		[ -f "$patch" ] || die "missing patch: $patch"
+		case $(basename "$patch") in
+		0001-* | 0002-*) continue ;;
+		esac
 		apply_patch "$src_dir/iio-sensor-proxy" "$patch"
 	done
 
@@ -142,22 +149,22 @@ build_rpm() {
 		   tail -20 "$out_dir/iio-sensor-proxy-compile.log" >&2; die 'compiling iio-sensor-proxy failed'; }
 	DESTDIR=$out_dir/stage meson install -C "$work/iio-sensor-proxy" >/dev/null ||
 		die 'installing iio-sensor-proxy into the staging tree failed'
-	[ -x "$out_dir/stage/usr/libexec/iio-sensor-proxy" ] ||
-		die 'iio-sensor-proxy was not installed'
-
-	# 上游装进 /etc 的东西不要（本工程把配置放在 /usr/share），但
-	# **/usr/lib/systemd 必须留下**：iio-sensor-proxy.service 就在那里，而它是
-	# net.hadess.SensorProxy 这个 D-Bus 名字的唯一来源。Fedora 的 iio-sensor-proxy
-	# 包已经在 install 阶段被卸掉，删掉这份单元，设备上就没有任何东西能提供这个
-	# 名字：D-Bus 激活执行 `systemctl start iio-sensor-proxy.service`、
-	# udev 规则要求 `SYSTEMD_WANTS=iio-sensor-proxy.service`，两处都只会得到
-	# "Unit not found"，monitor-sensor 便永远停在 Waiting。
-	# 上游单元同时带 RestrictAddressFamilies=AF_QIPCRTR，libssc 的
-	# QMI over QRTR 也靠它，所以不该由我们另写一份。
-	rm -rf "$out_dir/stage/etc"
-	# 这条断言是这个包最容易复发的一处：少了单元，D-Bus 上永远没有 SensorProxy。
-	[ -f "$out_dir/stage/usr/lib/systemd/system/iio-sensor-proxy.service" ] ||
-		die 'iio-sensor-proxy.service is missing from the staging tree; net.hadess.SensorProxy would never appear'
+	# Fedora 的 iio-sensor-proxy 包继续留在设备上：单元、udev 规则、D-Bus 策略、
+	# polkit 策略和 monitor-sensor 都由它提供。参考项目在 Ubuntu 上就是这么做的
+	# （只替换二进制，unit/udev/dbus/polkit 留给发行包），这也是这套东西在 Fedora
+	# 上唯一不会因为"我们自己漏装一份"而整条链断掉的安排——2026-11-27 那次就是
+	# 我们自己接管这四份文件之后把单元删掉了。
+	#
+	# 所以：把上游 meson 装进 staging 的同名文件删掉，只把打过补丁的二进制改名
+	# 放到 /usr/local/libexec，由 drop-in 把 ExecStart 指过去。
+	mkdir -p "$out_dir/stage/usr/local/libexec"
+	mv "$out_dir/stage/usr/libexec/iio-sensor-proxy" \
+		"$out_dir/stage/usr/local/libexec/liuqin-iio-sensor-proxy"
+	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/bin" \
+		"$out_dir/stage/usr/lib/systemd" "$out_dir/stage/usr/lib/udev" \
+		"$out_dir/stage/usr/share/dbus-1" "$out_dir/stage/usr/share/polkit-1"
+	[ -x "$out_dir/stage/usr/local/libexec/liuqin-iio-sensor-proxy" ] ||
+		die 'the patched iio-sensor-proxy binary did not land in /usr/local/libexec'
 	# libssc 的 mocking 服务器是给测试用的 python 包，设备上不需要；手册页也
 	# 不要——rpmbuild 会把它们压成 .gz，清单就跟着对不上。
 	rm -rf "$out_dir/stage/usr/share/man" "$out_dir/stage/usr/share/doc"
@@ -198,13 +205,14 @@ build_rpm() {
 		"$out_dir/stage/usr/libexec/"
 	cp "$project_root/device/fedora-overlay/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf" \
 		"$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d/"
-	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 用 Wants 拉起来，
+	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 通过 Requires 拉起来，
 	# 而 iio-sensor-proxy 由 D-Bus / udev 按需激活——开机时节点还没有，早启动
-	# 只会失败，不该因此挡住代理。
+	# 只会失败（Ubuntu 线同样是这么安排的）。
 	chmod 0755 "$out_dir/stage/usr/libexec/liuqin-ssc-sample-gate"
-	# iio-sensor-proxy 的单元、bus policy、udev 规则和 polkit 策略都由上游
-	# meson install 自己装（data/meson.build），我们不再手写一份。唯一要补的是
-	# D-Bus 激活文件：上游不装 system-services 条目，Fedora 的 RPM 才有。
+	# D-Bus 激活条目必须由我们提供：Fedora 的 iio-sensor-proxy 包的 %files 里
+	# 只有 monitor-sensor、单元、udev 规则、bus policy、polkit 策略，**没有**
+	# /usr/share/dbus-1/system-services 这一条（src.fedoraproject.org 的 spec 可以
+	# 核对）。少了它，第一个调用者不会把代理拉起来，monitor-sensor 就只能等。
 	mkdir -p "$out_dir/stage/usr/share/dbus-1/system-services"
 	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system-services/"*.service \
 		"$out_dir/stage/usr/share/dbus-1/system-services/"
@@ -240,10 +248,13 @@ Summary:        Xiaomi Pad 6 Pro (liuqin) SSC sensor userspace
 License:        BSD-3-Clause
 BuildArch:      aarch64
 AutoReqProv:    no
-Provides:       iio-sensor-proxy = 3.9
+# 不再 Provides 同名包：Fedora 的 iio-sensor-proxy 继续装着，提供单元、udev 规则、
+# bus/polkit 策略和 monitor-sensor；我们只补一个 /usr/local 下的二进制。
+Requires:       iio-sensor-proxy >= 3.8
 %description
-hexagonrpcd (with the liuqin SSC registry patches) for the Xiaomi Pad 6
-Pro.  Built from the pinned sources in device/sensors/sources.manifest.
+hexagonrpcd (with the liuqin SSC registry patches), libssc, ssccli and the
+patched iio-sensor-proxy binary for the Xiaomi Pad 6 Pro.  Built from the
+pinned sources in device/sensors/sources.manifest.
 %install
 mkdir -p %{buildroot}
 cp -a $out_dir/stage/. %{buildroot}/
@@ -265,26 +276,37 @@ install_into_tree() {
 	# shellcheck disable=SC2012
 	rpm_file=$(ls -t "$out_dir"/$pkg_name-*.aarch64.rpm 2>/dev/null | head -1)
 	[ -n "$rpm_file" ] || die "no RPM in $out_dir; run the build action first"
-	# Fedora 自带 iio-sensor-proxy，和我们的包装同一批文件。先把它卸掉——设备上
-	# 只应该有一份，而且我们这份是打过补丁的。
-	if rpm --root "$tree" -q iio-sensor-proxy >/dev/null 2>&1; then
-		say "removing Fedora's iio-sensor-proxy (ours replaces it)"
-		rpm --root "$tree" -e --noscripts --nodeps iio-sensor-proxy ||
-			die 'could not remove the Fedora iio-sensor-proxy package'
-	fi
+	# 发行包必须还在：单元、udev 规则、D-Bus 策略、polkit 策略和 monitor-sensor
+	# 都由它提供，我们只替换二进制（和参考项目在 Ubuntu 上的分工一样）。
+	rpm --root "$tree" -q iio-sensor-proxy >/dev/null 2>&1 ||
+		die "the tree has no iio-sensor-proxy package; it owns the unit, the udev rule and the bus/polkit policy. Install it into the tree (dnf --installroot) instead of replacing it."
 	say "installing $rpm_file"
-	rpm --root "$tree" -U --replacepkgs --replacefiles --noscripts --nosignature --nodeps "$rpm_file" ||
+	rpm --root "$tree" -U --replacepkgs --noscripts --nosignature --nodeps "$rpm_file" ||
 		die 'rpm could not install the package'
 	check_tree
 }
 
 check_tree() {
 	[ -d "$tree" ] || die "no Fedora tree at $tree"
-	for path in /usr/bin/hexagonrpcd /usr/libexec/iio-sensor-proxy; do
+	for path in /usr/bin/hexagonrpcd /usr/local/libexec/liuqin-iio-sensor-proxy; do
 		[ -x "$tree$path" ] || die "missing in the tree: $path"
 	done
+	for path in /usr/lib/systemd/system/iio-sensor-proxy.service \
+		/usr/lib/udev/rules.d/80-iio-sensor-proxy.rules \
+		/usr/share/dbus-1/system-services/net.hadess.SensorProxy.service; do
+		[ -e "$tree$path" ] || die "the proxy cannot be started without $path"
+	done
 	say "hexagonrpcd: $tree/usr/bin/hexagonrpcd"
-	say "iio-sensor-proxy: $tree/usr/libexec/iio-sensor-proxy"
+	say "patched proxy: $tree/usr/local/libexec/liuqin-iio-sensor-proxy"
+	# libssc 在运行时要链 libqmi-glib、libqrtr-glib、libprotobuf-c。这三份都不是
+	# Fedora iio-sensor-proxy 包的依赖（那个包只要 glib/gudev/polkit），KDE Mobile
+	# 的包集里也不一定有。缺任何一个，ssccli 和代理都会在动态链接阶段直接退出，
+	# 表现就是 gate 失败、代理不出现——和内核、固件都没有关系。
+	for pkg in libqmi libqrtr-glib protobuf-c; do
+		rpm --root "$tree" -q "$pkg" >/dev/null 2>&1 ||
+			die "the tree has no $pkg package; libssc needs it at runtime. Install it into the tree (dnf --installroot) before flashing."
+	done
+	say "distro package: $(rpm --root "$tree" -q iio-sensor-proxy 2>/dev/null || echo 'not installed')"
 	say "package: $(rpm --root "$tree" -q $pkg_name 2>/dev/null || echo 'not installed')"
 }
 

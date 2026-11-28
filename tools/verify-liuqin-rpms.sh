@@ -60,21 +60,32 @@ require /usr/bin/ssccli
 require /usr/libexec/liuqin-ssc-sample-gate
 require /etc/systemd/system/liuqin-ssc-sample-gate.service
 require /etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf
-# 这两份必须来自上游 meson（不是我们手写的）：单元是 net.hadess.SensorProxy 的
-# 唯一来源（D-Bus 激活和 udev 的 SYSTEMD_WANTS 都指向它），udev 规则是环境光
-# 和指南针被识别成 SSC 传感器的唯一来源。Fedora 的 iio-sensor-proxy 包已被卸掉，
-# 少了任何一个，设备上都会退化成"代理永远不出现"或"只有加速度计"。
-require /usr/lib/systemd/system/iio-sensor-proxy.service
-require /usr/lib/udev/rules.d/80-iio-sensor-proxy.rules
+# 只替换二进制：单元、udev 规则、bus/polkit 策略和 monitor-sensor 由 Fedora 的
+# iio-sensor-proxy 包提供（和参考项目在 Ubuntu 上的分工一样）。我们自己带的只有
+# 下面这个二进制和 D-Bus 激活条目——后者 Fedora 的包没有，少了它第一个调用者
+# 拉不起代理。
+require /usr/local/libexec/liuqin-iio-sensor-proxy
+require /usr/share/dbus-1/system-services/net.hadess.SensorProxy.service
 require /etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules
 require /etc/sysusers.d/liuqin-fastrpc.conf
 require /etc/tmpfiles.d/liuqin-sensors.conf
 require /usr/local/sbin/liuqin-slpi
 require /etc/systemd/system/liuqin-slpi.service
 require /etc/systemd/system/liuqin-hexagonrpcd-sdsp.service
-require /usr/share/dbus-1/system-services/net.hadess.SensorProxy.service
-require /usr/libexec/iio-sensor-proxy
 has_glob '^/usr/lib64/libssc\.so' || { printf '  MISSING libssc shared object\n' >&2; missing=$((missing + 1)); }
+
+# 属于 Fedora 那个包的路径，我们的 RPM 一份都不能带：带一份就变成两个包抢同一个
+# 文件，装的时候要 --replacefiles，升级时会被发行版覆盖或互相打架。
+for path in /usr/libexec/iio-sensor-proxy /usr/bin/monitor-sensor \
+	/usr/lib/systemd/system/iio-sensor-proxy.service \
+	/usr/lib/udev/rules.d/80-iio-sensor-proxy.rules \
+	/usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf \
+	/usr/share/polkit-1/actions/net.hadess.SensorProxy.policy; do
+	if has "$path"; then
+		printf '  CONFLICT with Fedora iio-sensor-proxy: %s\n' "$path" >&2
+		missing=$((missing + 1))
+	fi
+done
 
 # 谁都不该把 host 侧的开发文件带进来
 for file in $rpm_files; do
