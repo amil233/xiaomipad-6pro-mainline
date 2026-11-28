@@ -60,6 +60,12 @@ require /usr/bin/ssccli
 require /usr/libexec/liuqin-ssc-sample-gate
 require /etc/systemd/system/liuqin-ssc-sample-gate.service
 require /etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf
+# 这两份必须来自上游 meson（不是我们手写的）：单元是 net.hadess.SensorProxy 的
+# 唯一来源（D-Bus 激活和 udev 的 SYSTEMD_WANTS 都指向它），udev 规则是环境光
+# 和指南针被识别成 SSC 传感器的唯一来源。Fedora 的 iio-sensor-proxy 包已被卸掉，
+# 少了任何一个，设备上都会退化成"代理永远不出现"或"只有加速度计"。
+require /usr/lib/systemd/system/iio-sensor-proxy.service
+require /usr/lib/udev/rules.d/80-iio-sensor-proxy.rules
 require /etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules
 require /etc/sysusers.d/liuqin-fastrpc.conf
 require /etc/tmpfiles.d/liuqin-sensors.conf

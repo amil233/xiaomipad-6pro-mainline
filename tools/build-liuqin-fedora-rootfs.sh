@@ -105,14 +105,14 @@ assemble_tree() {
 			chown "$fastrpc_uid:$fastrpc_gid" "$tree/var/lib/liuqin-sensors/registry"
 			chmod 0750 "$tree/var/lib/liuqin-sensors/registry"
 		fi
-	# 固件按 /mnt/vendor/persist/sensors/<name> 读这些文件，映射到
-	# <prefix>/sensors/<name>；可写数据实际放在 /var/lib/liuqin-sensors。用软链把
-	# 两边接上，provision 导入的文件才看得见。
-	for name in acc_caldata.txt gyro_caldata.txt Lux_F_channel_data.txt \
-		sensors_list.txt sns_reg_version; do
-		ln -sfn "/var/lib/liuqin-sensors/$name" "$sensors_dir/$name"
-	done
+		# 固件按 /mnt/vendor/persist/sensors/... 读数据，hexagonrpcd 只映射两项：
+		# registry/（整目录）和 sns_reg_version（patches/0001）。所以这里只把
+		# registry 指到 /var，别的名字不进虚拟文件系统。
 		say "sensor data: $device_data (sns_reg.conf, $(find "$sensors_dir/config" -type f | wc -l | tr -d ' ') config files, registry -> /var/lib/liuqin-sensors/registry)"
+		# sns_reg_version 是上面生成的实体文件（0644），不能被软链覆盖：软链到
+		# /var 只会在 provision 没导入时变成断链，固件读不到 registry 版本。
+		[ -f "$sensors_dir/sns_reg_version" ] && [ ! -L "$sensors_dir/sns_reg_version" ] ||
+			die 'sns_reg_version is not a regular file'
 	fi
 
 	# SELinux：第一次启动先 permissive，标签和策略后面再收紧。

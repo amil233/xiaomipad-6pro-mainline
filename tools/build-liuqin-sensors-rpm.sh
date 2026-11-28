@@ -145,8 +145,19 @@ build_rpm() {
 	[ -x "$out_dir/stage/usr/libexec/iio-sensor-proxy" ] ||
 		die 'iio-sensor-proxy was not installed'
 
-	# 上游的单元和配置不要，用我们自己写的：不经上游的默认值。
-	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/lib/systemd"
+	# 上游装进 /etc 的东西不要（本工程把配置放在 /usr/share），但
+	# **/usr/lib/systemd 必须留下**：iio-sensor-proxy.service 就在那里，而它是
+	# net.hadess.SensorProxy 这个 D-Bus 名字的唯一来源。Fedora 的 iio-sensor-proxy
+	# 包已经在 install 阶段被卸掉，删掉这份单元，设备上就没有任何东西能提供这个
+	# 名字：D-Bus 激活执行 `systemctl start iio-sensor-proxy.service`、
+	# udev 规则要求 `SYSTEMD_WANTS=iio-sensor-proxy.service`，两处都只会得到
+	# "Unit not found"，monitor-sensor 便永远停在 Waiting。
+	# 上游单元同时带 RestrictAddressFamilies=AF_QIPCRTR，libssc 的
+	# QMI over QRTR 也靠它，所以不该由我们另写一份。
+	rm -rf "$out_dir/stage/etc"
+	# 这条断言是这个包最容易复发的一处：少了单元，D-Bus 上永远没有 SensorProxy。
+	[ -f "$out_dir/stage/usr/lib/systemd/system/iio-sensor-proxy.service" ] ||
+		die 'iio-sensor-proxy.service is missing from the staging tree; net.hadess.SensorProxy would never appear'
 	# libssc 的 mocking 服务器是给测试用的 python 包，设备上不需要；手册页也
 	# 不要——rpmbuild 会把它们压成 .gz，清单就跟着对不上。
 	rm -rf "$out_dir/stage/usr/share/man" "$out_dir/stage/usr/share/doc"
@@ -157,7 +168,7 @@ build_rpm() {
 
 	say 'staging our own units'
 	overlay=$project_root/device/fedora-overlay/etc/systemd/system
-	# 这个目录被删掉过（不要上游的单元），所以先建回来放我们自己的。
+	# /etc 被清过，先建回来放我们自己的 unit（上游那份在 /usr/lib/systemd）。
 	mkdir -p "$out_dir/stage/etc/systemd/system/multi-user.target.wants" \
 		"$out_dir/stage/usr/local/sbin"
 	cp "$overlay/liuqin-hexagonrpcd-sdsp.service" "$overlay/liuqin-sensor-stack.target" \
@@ -187,8 +198,9 @@ build_rpm() {
 		"$out_dir/stage/usr/libexec/"
 	cp "$project_root/device/fedora-overlay/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf" \
 		"$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d/"
-	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 通过 Requires 拉起来，
-	# 而 iio-sensor-proxy 由 D-Bus 按需激活——开机时没有节点，早启动只会失败。
+	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 用 Wants 拉起来，
+	# 而 iio-sensor-proxy 由 D-Bus / udev 按需激活——开机时节点还没有，早启动
+	# 只会失败，不该因此挡住代理。
 	chmod 0755 "$out_dir/stage/usr/libexec/liuqin-ssc-sample-gate"
 	# iio-sensor-proxy 的单元、bus policy、udev 规则和 polkit 策略都由上游
 	# meson install 自己装（data/meson.build），我们不再手写一份。唯一要补的是
