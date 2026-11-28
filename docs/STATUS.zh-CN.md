@@ -27,6 +27,36 @@
 | 包管理 | `dnf upgrade` 可用（Fedora 仓库能连上、能装） |
 | Wi-Fi | **没跑 `provision-liuqin-from-persist.sh` 就已经可用** |
 
+## 传感器：已在真机上跑通（2026-11-28）
+
+`provision` 之后**必须重启一次**：DSP 的传感器列表是开机那一刻按 registry 建的，
+provision 是之后才把 206 个文件写进 `/var/lib/liuqin-sensors/registry` 的。不重启
+`ssccli` 只会得到 `Unable to initialize ... UNKNOWN`（libssc 连上了 SSC、看到了内置的
+`registry` 传感器，但列表里没有加速度计），代理也就起不来。
+
+重启后的实测输出：
+
+```
++++ iio-sensor-proxy appeared
+=== Has accelerometer (orientation: undefined, tilt: face-up)
+=== Has ambient light sensor (value: 0.000000, unit: lux)
+=== No proximity sensor
+=== No compass
+    Light changed: 35.599998 (lux)
+```
+
+| 项 | 结果 |
+|---|---|
+| D-Bus 上的 `net.hadess.SensorProxy` | 出现 |
+| 加速度计 | 有数据（平放时 `tilt: face-up`、方向 `undefined` 属正常） |
+| 环境光 | 35.6 lux |
+| 接近/指南针 | 无（本机没有这两个传感器，符合预期） |
+| 代理用的是哪份二进制 | `/usr/libexec/liuqin-iio-sensor-proxy`（drop-in 覆盖 `ExecStart`，发行包那份未打补丁的不参与） |
+
+还没验的：KDE 桌面是否随重力旋转（QtSensors 的 iio-sensor-proxy 后端在 Fedora 的
+`qt6-qtsensors` 里，`libqtsensors_iio-sensor-proxy.so` 存在；但 KWin 的旋转开关和
+claim 时序要单独看）。
+
 Wi-Fi 能用但不代表地址是稳定的。接口名是 `wlp1s0`（systemd 的可预测命名），
 persist 里的文件写的却是 `wlan0=...`。
 
