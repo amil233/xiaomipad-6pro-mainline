@@ -45,7 +45,7 @@ Ubuntu 那条线上会把已经能用的文档和流程搅乱，也没法对比�
    `device/sensors/patches/0001`、`0002`，在 `fedora:45` 容器里 meson/ninja 编，
    产物先进 `liuqin-sensors` RPM（只装二进制 + 依赖，不带单元）。
 2. `iio-sensor-proxy`：先比对 3.9 的上游是否已含六份补丁里的某几份，只保留仍然
-   需要的，逐份在新上下文里重打；编过之后放到 `/usr/local/libexec/liuqin-iio-sensor-proxy`，用 drop-in 改
+   需要的，逐份在新上下文里重打；编过之后放到 `/usr/libexec/liuqin-iio-sensor-proxy`，用 drop-in 改
    `ExecStart` 指过去；Fedora 包的单元、udev 规则和 bus/polkit 策略保持不动。
 3. 单元与数据：`liuqin-slpi.service`、registry 目录、`fastrpc` 权限（已就位），
    并让 provision 导入的 registry 被真正读到。
@@ -101,7 +101,7 @@ meson/ninja 编，产物打成 `liuqin-sensors` RPM，内容包括：
 - `/usr/bin/hexagonrpcd`、它的 systemd 单元；
 - `/var/lib/liuqin-sensors/sensors/registry`（由 provision 从 persist 导入；
   `-R` 前缀之下的布局见本文件后面的映射表）以及同级的 `sns_reg.conf`、`config/`；
-- 打过补丁的 `iio-sensor-proxy` 二进制（装在 `/usr/local/libexec/`，由 drop-in
+- 打过补丁的 `iio-sensor-proxy` 二进制（装在 `/usr/libexec/liuqin-iio-sensor-proxy`，由 drop-in
   改 `ExecStart`；单元、udev 规则、bus/polkit 策略仍由 Fedora 的包提供）。
 
 两个待定的点：

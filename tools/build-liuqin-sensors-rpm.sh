@@ -156,15 +156,16 @@ build_rpm() {
 	# 我们自己接管这四份文件之后把单元删掉了。
 	#
 	# 所以：把上游 meson 装进 staging 的同名文件删掉，只把打过补丁的二进制改名
-	# 放到 /usr/local/libexec，由 drop-in 把 ExecStart 指过去。
-	mkdir -p "$out_dir/stage/usr/local/libexec"
+	# 放到 /usr/libexec（RPM 装的包文件不该进 /usr/local），由 drop-in 把
+	# ExecStart 指过去。
+	mkdir -p "$out_dir/stage/usr/libexec"
 	mv "$out_dir/stage/usr/libexec/iio-sensor-proxy" \
-		"$out_dir/stage/usr/local/libexec/liuqin-iio-sensor-proxy"
+		"$out_dir/stage/usr/libexec/liuqin-iio-sensor-proxy"
 	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/bin" \
 		"$out_dir/stage/usr/lib/systemd" "$out_dir/stage/usr/lib/udev" \
 		"$out_dir/stage/usr/share/dbus-1" "$out_dir/stage/usr/share/polkit-1"
-	[ -x "$out_dir/stage/usr/local/libexec/liuqin-iio-sensor-proxy" ] ||
-		die 'the patched iio-sensor-proxy binary did not land in /usr/local/libexec'
+	[ -x "$out_dir/stage/usr/libexec/liuqin-iio-sensor-proxy" ] ||
+		die 'the patched iio-sensor-proxy binary did not land in /usr/libexec'
 	# libssc 的 mocking 服务器是给测试用的 python 包，设备上不需要；手册页也
 	# 不要——rpmbuild 会把它们压成 .gz，清单就跟着对不上。
 	rm -rf "$out_dir/stage/usr/share/man" "$out_dir/stage/usr/share/doc"
@@ -249,7 +250,7 @@ License:        BSD-3-Clause
 BuildArch:      aarch64
 AutoReqProv:    no
 # 不再 Provides 同名包：Fedora 的 iio-sensor-proxy 继续装着，提供单元、udev 规则、
-# bus/polkit 策略和 monitor-sensor；我们只补一个 /usr/local 下的二进制。
+# bus/polkit 策略和 monitor-sensor；我们只补 /usr/libexec 下的一个二进制。
 Requires:       iio-sensor-proxy >= 3.8
 %description
 hexagonrpcd (with the liuqin SSC registry patches), libssc, ssccli and the
@@ -288,7 +289,7 @@ install_into_tree() {
 
 check_tree() {
 	[ -d "$tree" ] || die "no Fedora tree at $tree"
-	for path in /usr/bin/hexagonrpcd /usr/local/libexec/liuqin-iio-sensor-proxy; do
+	for path in /usr/bin/hexagonrpcd /usr/libexec/liuqin-iio-sensor-proxy; do
 		[ -x "$tree$path" ] || die "missing in the tree: $path"
 	done
 	for path in /usr/lib/systemd/system/iio-sensor-proxy.service \
@@ -297,7 +298,7 @@ check_tree() {
 		[ -e "$tree$path" ] || die "the proxy cannot be started without $path"
 	done
 	say "hexagonrpcd: $tree/usr/bin/hexagonrpcd"
-	say "patched proxy: $tree/usr/local/libexec/liuqin-iio-sensor-proxy"
+	say "patched proxy: $tree/usr/libexec/liuqin-iio-sensor-proxy"
 	# libssc 在运行时要链 libqmi-glib、libqrtr-glib、libprotobuf-c。这三份都不是
 	# Fedora iio-sensor-proxy 包的依赖（那个包只要 glib/gudev/polkit），KDE Mobile
 	# 的包集里也不一定有。缺任何一个，ssccli 和代理都会在动态链接阶段直接退出，

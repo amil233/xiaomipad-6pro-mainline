@@ -59,11 +59,15 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
   让服务起不来；
 - `fastrpc` 账户离线建：`provision` 要按名字查 uid；RPM 的 `%pre` 我们用
   `--noscripts` 跳过；
-- 传感器数据布局：`hexagonrpcd --help` 写明 `-R` 默认 `/usr/share/qcom/`，`rpcd.c`
-  里按 `{soc}/{vendor}/{codename}` 自动探测；`rpcd_builder.c` 的
-  `construct_root_dir` 把 guest 的 `/vendor/etc/sensors/*`、`/persist/sensors/registry/*`、
-  `/sys/devices/soc0/*` 映射到 `<prefix>/sensors/*`、`<prefix>/socinfo`；Ubuntu 分支的
-  构建脚本正是这么装的（`device_prefix=usr/share/qcom/sm8450/Xiaomi/liuqin`）；
+- 传感器数据布局：`rpcd_builder.c` 的 `construct_root_dir` 把 guest 的
+  `/vendor/etc/sensors/*`、`/persist/sensors/registry/*`、`/sys/devices/soc0/*`
+  映射到 `<prefix>/sensors/*`、`<prefix>/socinfo`，前缀默认 `/usr/share/qcom/`；
+  构建脚本按 `device_prefix=usr/share/qcom/sm8450/Xiaomi/liuqin` 装。
+  **前缀必须由 `-R` 写死**：不写时 daemon 用 `guess_device_directory_from_compatible()`
+  按设备树的 model/compatible 拼 `{soc}/{vendor}/{codename}`，本机是
+  `Xiaomi Pad 6 Pro` + `xiaomi,liuqin`/`qcom,sm8475`，拼出来是
+  `/usr/share/qcom/sm8475/Xiaomi/liuqin`，和树里的 `sm8450` 对不上；猜不到就退回
+  默认前缀，那里没有 `sensors/`，固件读不到 registry。Ubuntu 线一直是写死的；
 - `sns_reg_version`：Ubuntu 脚本用 `printf 'version=%s\0'` 从 `sns_reg_config` 的
   `version=` 生成，位置在 `<prefix>/sensors/`；缺它时 daemon 日志里反复出现
   `Could not open /../sns_reg_version`；
@@ -91,7 +95,7 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 
 **做什么**：按 `device/sensors/sources.manifest` 取三个源码，打 2 + 8 份补丁，在
 `fedora:45` 里编，打成 `liuqin-sensors`。iio-sensor-proxy 只替换二进制
-（`/usr/local/libexec/liuqin-iio-sensor-proxy`），发行包 `iio-sensor-proxy` 继续装着。
+（`/usr/libexec/liuqin-iio-sensor-proxy`），发行包 `iio-sensor-proxy` 继续装着。
 
 **为什么**：
 
@@ -166,10 +170,10 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 | `etc/udev/rules.d/80-liuqin-fastrpc.rules` | 设备是 `misc_register("fastrpc-<domain>")`（`fastrpc.c:2468`），默认 `root:root 0600`；规则同时给出 `IIO_SENSOR_PROXY_TYPE="ssc-accel"`（`drv-ssc-accel.c` 靠它识别加速度计）、`SYSTEMD_WANTS=liuqin-sensor-stack.target`（设备事件启动整条栈）和 `ACCEL_MOUNT_MATRIX`（横屏 180°） |
 | `etc/systemd/system/liuqin-slpi.service` | SLPI 不自动启动，需要用户态 `start`；这是唯一开机启用的传感器单元 |
 | `usr/local/sbin/liuqin-slpi` | 写 `remoteproc` 的 `state`，并在 registry 未导入时只告警 |
-| `etc/systemd/system/liuqin-hexagonrpcd-sdsp.service` | `Requires=liuqin-slpi`（节点后出现）+ `ConditionPathExists=/dev/fastrpc-sdsp` + `ExecStartPre` 兜底权限 |
+| `etc/systemd/system/liuqin-hexagonrpcd-sdsp.service` | `Requires=liuqin-slpi`（节点后出现）+ `ConditionPathExists=/dev/fastrpc-sdsp` + `ExecStartPre` 兜底权限 + 写死 `-R`（自动探测会拼出 `sm8475`，树在 `sm8450` 下） |
 | `etc/systemd/system/liuqin-sensor-stack.target` | udev `SYSTEMD_WANTS` 的目标 |
 | `etc/systemd/system/liuqin-ssc-sample-gate.service` + `usr/libexec/liuqin-ssc-sample-gate` | 加速度计必须先被 claim 一次才注册（`drv-ssc-accel.c` 用 open/close 发现），gate 用 `ssccli` 取真实测量，成功才允许发布 SensorProxy |
-| `etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `Requires` gate；`ExecStart` 指向 `/usr/local` 下打过补丁的二进制；放开 `AF_QIPCRTR`（libssc 走 QMI over QRTR） |
+| `etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `Requires` gate；`ExecStart` 指向 `/usr/libexec` 下打过补丁的二进制；放开 `AF_QIPCRTR`（libssc 走 QMI over QRTR） |
 | `etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules` | 上游默认 `allow_active` 会和登录时的 session 注册竞争，导致整个 boot 拿不到方向；Ubuntu 线为此加了同样规则 |
 | `etc/sysusers.d/liuqin-fastrpc.conf`、`etc/tmpfiles.d/liuqin-sensors.conf` | 账户与目录的声明式来源（Ubuntu 线原本如此），`assemble` 的离线建号与之兼容 |
 | `usr/local/sbin/liuqin-sensor-registry-import` | 手工重导 registry 的操作工具，带校验和与旧目录备份 |

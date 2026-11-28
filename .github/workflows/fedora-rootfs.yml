@@ -143,14 +143,22 @@ jobs:
             /usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf \
             /usr/share/polkit-1/actions/net.hadess.SensorProxy.policy \
             /usr/bin/monitor-sensor \
-            /usr/local/libexec/liuqin-iio-sensor-proxy \
+            /usr/libexec/liuqin-iio-sensor-proxy \
             /usr/share/dbus-1/system-services/net.hadess.SensorProxy.service; do
             test -e "$root$path" || { echo "MISSING $path" >&2; exit 1; }
           done
           # drop-in 必须真的把 ExecStart 指到我们那份，否则跑的是发行版未打补丁的
           # 二进制（没有 SSC 支持，传感器一个都看不见）。
-          grep -qx 'ExecStart=/usr/local/libexec/liuqin-iio-sensor-proxy' \
+          grep -qx 'ExecStart=/usr/libexec/liuqin-iio-sensor-proxy' \
             "$root/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf"
+          # hexagonrpcd 的 -R 必须写死，且与树里的布局一致。不写时 daemon 按设备树
+          # 猜目录：本机 compatible 是 qcom,sm8475，树却在 sm8450 下，猜不到就退回
+          # 空前缀 /usr/share/qcom/，固件读不到 registry，传感器一个都不注册。
+          grep -q -- '-R /usr/share/qcom/sm8450/Xiaomi/liuqin' \
+            "$root/etc/systemd/system/liuqin-hexagonrpcd-sdsp.service"
+          test -d "$root/usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/config" || {
+            echo "the -R path has no sensors/config in the tree" >&2; exit 1
+          }
           echo "proxy startup chain OK"
 
       - name: Build the audio topology

@@ -26,7 +26,7 @@ from pathlib import Path
 DEFAULT_TARGETS = [
     "/usr/bin/hexagonrpcd",
     "/usr/bin/ssccli",
-    "/usr/local/libexec/liuqin-iio-sensor-proxy",
+    "/usr/libexec/liuqin-iio-sensor-proxy",
     "/usr/libexec/iio-sensor-proxy",
     "/usr/lib64/libssc.so*",
     "/usr/lib64/libhexagonrpc.so*",

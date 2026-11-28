@@ -16,7 +16,13 @@ ExecStartPre=+/usr/bin/chgrp fastrpc /dev/fastrpc-sdsp
 ExecStartPre=+/usr/bin/chmod 0660 /dev/fastrpc-sdsp
 User=fastrpc
 Group=fastrpc
-ExecStart=/usr/bin/hexagonrpcd -f /dev/fastrpc-sdsp -d sdsp -s
+# -R 必须写死。不写的时候 daemon 会按设备树的 model/compatible 猜目录：
+# 本机是 model="Xiaomi Pad 6 Pro"、compatible="xiaomi,liuqin","qcom,sm8475"，
+# 于是它去找 /usr/share/qcom/sm8475/Xiaomi/liuqin，而树在 sm8450 下（原厂
+# vendor 分区的命名）。猜不到就退回默认前缀 /usr/share/qcom/，那里没有
+# sensors/ 目录，固件读不到 registry，一个传感器都不会注册。Ubuntu 线一直是
+# 写死这条路径的。
+ExecStart=/usr/bin/hexagonrpcd -f /dev/fastrpc-sdsp -d sdsp -s -R /usr/share/qcom/sm8450/Xiaomi/liuqin
 # The patched daemon maps every listener teardown to a non-zero process exit.
 # Retry transient FastRPC loss, but fail closed after three rapid crashes.
 Restart=on-failure
