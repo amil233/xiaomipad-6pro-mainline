@@ -19,6 +19,7 @@ on:
       - 'tools/build-liuqin-fedora-rootfs.sh'
       - 'tools/build-liuqin-fedora-image.sh'
       - 'tools/build-liuqin-fedora-boot.sh'
+      - 'tools/verify-tree-runtime.py'
       - 'tools/lib/build-initramfs.sh'
       - 'initramfs/init'
       - 'tools/fedora-container.sh'
@@ -120,6 +121,37 @@ jobs:
 
       - name: Assemble the Fedora root
         run: sudo sh project/tools/build-liuqin-fedora-rootfs.sh assemble
+
+      - name: Verify the sensor chain can load inside the tree
+        run: |
+          # 离线判定"设备上会不会因为缺库起不来"：读 ELF 的 PT_INTERP 和
+          # DT_NEEDED，顺着依赖链（libssc → libqmi-glib → libqrtr-glib）一路查到
+          # 树的库目录里。这一步失败说明树里少了包，不必等刷机。
+          python3 project/tools/verify-tree-runtime.py \
+            project/tools/local/fedora-kde-mobile-45-arm64/rootfs
+
+      - name: Verify the proxy can be started
+        run: |
+          set -euo pipefail
+          root=project/tools/local/fedora-kde-mobile-45-arm64/rootfs
+          # 单元、udev 规则、bus/polkit 策略和 monitor-sensor 来自 Fedora 的
+          # iio-sensor-proxy 包；激活条目来自我们的包。缺任何一个，D-Bus 上都不会
+          # 出现 net.hadess.SensorProxy。
+          for path in \
+            /usr/lib/systemd/system/iio-sensor-proxy.service \
+            /usr/lib/udev/rules.d/80-iio-sensor-proxy.rules \
+            /usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf \
+            /usr/share/polkit-1/actions/net.hadess.SensorProxy.policy \
+            /usr/bin/monitor-sensor \
+            /usr/local/libexec/liuqin-iio-sensor-proxy \
+            /usr/share/dbus-1/system-services/net.hadess.SensorProxy.service; do
+            test -e "$root$path" || { echo "MISSING $path" >&2; exit 1; }
+          done
+          # drop-in 必须真的把 ExecStart 指到我们那份，否则跑的是发行版未打补丁的
+          # 二进制（没有 SSC 支持，传感器一个都看不见）。
+          grep -qx 'ExecStart=/usr/local/libexec/liuqin-iio-sensor-proxy' \
+            "$root/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf"
+          echo "proxy startup chain OK"
 
       - name: Build the audio topology
         run: |

@@ -45,6 +45,15 @@ artifact 解开后是平铺的一层（没有 `upload/` 之类的子目录），
    过 `e2fsck`、卷标和 `debugfs` 检查；
 7. **打包**：`img2simg` → `rootfs.tgz` → 1900 MiB 分片，连同其他产物上传。
 
+树整理完之后还有两步离线校验，都在 CI 上跑，失败就不出镜像：
+
+- `tools/verify-tree-runtime.py`：读每个二进制的 ELF 头，顺着 `DT_NEEDED` 一路
+  查到树的库目录里（`libssc → libqmi-glib → libqrtr-glib` 这种间接依赖也查），
+  缺库在这里就断，不用等刷机；
+- 代理启动链：单元、udev 规则、bus/polkit 策略、`monitor-sensor`、我们的
+  `/usr/local` 二进制和 D-Bus 激活条目都存在，且 drop-in 的 `ExecStart` 确实指向
+  打过补丁的那份。
+
 运行环境：`ubuntu-26.04-arm`（arm64），约 118 GiB 可用。RPM 相关的部分在
 `fedora:45` 容器里跑——GitHub 没有 arm64 的 rpm 系 runner，容器是原生执行，
 `tools/fedora-container.sh` 会钉 `--platform linux/arm64` 并核对容器里的

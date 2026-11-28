@@ -77,7 +77,16 @@ D-Bus 激活条目，drop-in 里 `ExecStart=` 指过去（顺带写一遍
 libssc 运行时链 `libqmi-glib`、`libqrtr-glib`、`libprotobuf-c`，分别来自 Fedora 的
 `libqmi`、`libqrtr-glib`、`protobuf-c` 包。这三份**不是** `iio-sensor-proxy` 包的依赖，
 KDE Mobile 的包集里不一定有；缺任何一个，`ssccli` 和代理都会在动态链接阶段就退出，
-表现同样是 gate 失败、代理不出现。`install` 后的检查已经把这三个包列为必须存在。
+表现同样是 gate 失败、代理不出现。
+
+这件事现在完全在 CI 上判定，不到实机：
+
+- `tools/build-liuqin-sensors-rpm.sh install` 会确认这三个包在树里（名字对不上时给
+  的提示是"装进树"，不是"改代码"）；
+- 更彻底的一层是 `tools/verify-tree-runtime.py`：它不看包名，直接读二进制的
+  `PT_INTERP` 和 `DT_NEEDED`，沿着依赖链（`libssc → libqmi-glib → libqrtr-glib`）
+  逐个到树的库目录里找，任何一个 soname 找不到就失败。工作流里在"整理树"之后跑，
+  失败就不继续出镜像。
 
 ## 改了什么
 
@@ -88,6 +97,7 @@ KDE Mobile 的包集里不一定有；缺任何一个，`ssccli` 和代理都会
 | `tools/build-liuqin-fedora-rootfs.sh` | 不再软链 `sns_reg_version`，删掉四个无效软链，断言它是实体文件 |
 | `device/sensors/patches/0008..0010` | 从参考项目导入，作者与说明原样保留 |
 | `tools/verify-liuqin-rpms.sh` | 断言我们的包不含发行包的任何路径（避免两个包抢文件） |
+| `tools/verify-tree-runtime.py` + 工作流两步 | 在 CI 上查运行库和代理启动链，缺东西不出镜像 |
 
 ## 上机确认（一次刷机就够）
 
