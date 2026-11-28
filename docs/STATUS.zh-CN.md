@@ -53,9 +53,8 @@ provision 是之后才把 206 个文件写进 `/var/lib/liuqin-sensors/registry`
 | 接近/指南针 | 无（本机没有这两个传感器，符合预期） |
 | 代理用的是哪份二进制 | `/usr/libexec/liuqin-iio-sensor-proxy`（drop-in 覆盖 `ExecStart`，发行包那份未打补丁的不参与） |
 
-还没验的：KDE 桌面是否随重力旋转（QtSensors 的 iio-sensor-proxy 后端在 Fedora 的
-`qt6-qtsensors` 里，`libqtsensors_iio-sensor-proxy.so` 存在；但 KWin 的旋转开关和
-claim 时序要单独看）。
+桌面旋转也验证过（2026-11-28）：把平板转过去，Plasma Mobile 的屏幕自动跟着转，
+说明 KWin 通过 `libqtsensors_iio-sensor-proxy.so` 读到了代理，方向矩阵也对。
 
 Wi-Fi 能用但不代表地址是稳定的。接口名是 `wlp1s0`（systemd 的可预测命名），
 persist 里的文件写的却是 `wlan0=...`。
