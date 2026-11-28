@@ -131,6 +131,29 @@ KDE Mobile 的包集里不一定有；缺任何一个，`ssccli` 和代理都会
   沿着依赖链（`libssc → libqmi-glib → libqrtr-glib`）逐个到树的库目录里找。
   工作流在整理树之后跑，失败就不出镜像。
 
+## 日志里这几句是正常的，不用查
+
+```
+iio-sensor-proxy[...]: Mount matrix provided by firmware is all 0, falling back to identity matrix!
+```
+
+DSP 没给这颗加速度计提供安装方向矩阵（属性全 0），libssc 于是用单位矩阵
+（`libssc/src/libssc-sensor.c` 里 `SSC_ATTRIBUTE_MOUNT_MATRIX` 分支）。真正修正方向的是
+`iio-sensor-proxy` 侧 `setup_mount_matrix()` 读到的 udev 属性 `ACCEL_MOUNT_MATRIX`
+（我们那条 `80-liuqin-fastrpc.rules` 里的 `-1,0,0;0,-1,0;0,0,1`）；两次相乘等于后者，
+所以转屏方向是对的。
+
+同一秒出现两条，是因为加速度计对象被构造两次：发现阶段（开一下再关）和正式 claim
+时的打开。不是两个实例。
+
+```
+hexagonrpcd[...]: Tried to open /mnt/vendor/persist/sensors/registry/registry/../temp.json for writing
+```
+
+固件想往 registry 目录旁写临时文件，hexagonrpcd 的虚拟文件系统一律拒绝写操作
+（`apps_std.c` 对 `w`/`a` 模式返回 `AEE_EUNSUPPORTED`）。固件会重试，Ubuntu 上同样如此，
+不影响传感器注册。
+
 ## 改了什么
 
 | 文件 | 改动 |
