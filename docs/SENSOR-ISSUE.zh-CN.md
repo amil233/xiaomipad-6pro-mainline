@@ -6,6 +6,23 @@
 环境光时有时无。同一台机器、同一个内核，Ubuntu 分支和参考项目
 （`yzddmr6/xiaomipad-6pro-mainline`，Ubuntu 26.04）都正常。
 
+## 这份结论的证据等级
+
+写清楚哪些是查过的、哪些是推出来的，免得把推断当成事实用。
+
+| 结论 | 来源 | 等级 |
+|---|---|---|
+| Fedora 45 的 `iio-sensor-proxy` 包含单元/udev/bus/polkit 策略和 `monitor-sensor`，不含 D-Bus 激活条目 | 包的 `%files`（`packages.fedoraproject.org`）与 [spec](https://src.fedoraproject.org/rpms/iio-sensor-proxy) | 一手 |
+| 发行版那个二进制没有 SSC 支持 | 同一个 spec：`-Dssc-support=disabled` | 一手 |
+| 我们的构建把单元删了、发行包又被 `rpm -e` | 仓库里的 `build-liuqin-sensors-rpm.sh` 与提交历史 | 一手 |
+| `-R` 不写时 daemon 会去找 `sm8475`，而树在 `sm8450` | `rpcd.c` 的 `guess_device_directory_from_compatible()` + 解析 boot.img 里合并后的 DTB 得到的 root 属性 | 一手（算法与输入都查了） |
+| 于是固件读不到 registry，一个传感器都不注册 | 严格映射（`hfs_map`）会对缺失路径返回 `ENOENT`；DSP 侧怎么处理是闭源的 | **推断** |
+| 缺 `sns_reg_version` 会让 registry 加载失败 | 同上，另外参考项目从不缺这个文件 | **推断** |
+| 三份环境光补丁能治"光感时有时无" | 来自跑通的参考项目，补丁主题对应得上 | **移植，因果未证** |
+
+还有一处观察和推断不一致，必须留着：**如果光感在没有 `-R` 的镜像上真的偶尔能用**，
+那说明当时 registry 路径是通的，`-R` 这条结论就要重判（见最后一节的判定方法）。
+
 ## 为什么不是固件
 
 固件是固定的：参考项目喂给它的文件和我们的不一样，差别在"喂什么"这一侧，不在
@@ -127,9 +144,23 @@ busctl --system tree net.hadess.SensorProxy | head
 monitor-sensor
 ```
 
+先做两项**不依赖日志**的确认（这两条能直接判定前缀对不对）：
+
+```sh
+# 设备树实际给出的名字（daemon 就是按这两个属性猜目录的）
+cat /proc/device-tree/model; echo
+tr '\0' '\n' < /proc/device-tree/compatible
+# 单元实际用的前缀，和树里有没有这个目录
+systemctl show -p ExecStart liuqin-hexagonrpcd-sdsp.service
+ls /usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/
+```
+
 判据：
 
-- `journalctl` 里仍有 `Could not open .../sns_reg*` → 前缀或数据还是不对，先看 `-R`；
+- 单元里没有 `-R /usr/share/qcom/sm8450/Xiaomi/liuqin`，或那个目录缺 `config/` →
+  前缀不对；`journalctl -u liuqin-hexagonrpcd-sdsp` 里出现的 `Could not open` /
+  `Could not stat` 行会带出固件实际请求的路径（daemon 的 `apps_std.c` 会把这些打到
+  stderr），拿它和树里的路径对一遍；
 - gate 是 failed → 看 `/run/liuqin-sensors/ssccli-accelerometer.log`，问题在 ssccli
   与固件之间；
 - 代理出现、`HasAccelerometer=true`、`monitor-sensor` 能报方向 → 这条链通了；
