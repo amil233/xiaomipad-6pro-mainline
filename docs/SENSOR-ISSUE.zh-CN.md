@@ -120,7 +120,7 @@ libssc 运行时链 `libqmi-glib`、`libqrtr-glib`、`libprotobuf-c`，分别来
 `libqmi`、`libqrtr-glib`、`protobuf-c` 包。这三份**不是** `iio-sensor-proxy` 包的依赖，
 KDE Mobile 的包集里不一定有；缺任何一个，`ssccli` 和代理都会在动态链接阶段退出。
 
-- `install` 时先按包名检查（失败提示是"装进树"）；
+- `install` 时按包名检查，缺的（KDE Mobile 包集和 Workstation 不一样）直接从容器仓库抓下来装进树，不再等真机；
 - `tools/verify-tree-runtime.py` 再按 soname 查：读 ELF 的 `PT_INTERP` 和 `DT_NEEDED`，
   沿着依赖链（`libssc → libqmi-glib → libqrtr-glib`）逐个到树的库目录里找。
   工作流在整理树之后跑，失败就不出镜像。

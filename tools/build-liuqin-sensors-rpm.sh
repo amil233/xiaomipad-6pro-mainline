@@ -161,11 +161,16 @@ build_rpm() {
 	mkdir -p "$out_dir/stage/usr/libexec"
 	mv "$out_dir/stage/usr/libexec/iio-sensor-proxy" \
 		"$out_dir/stage/usr/libexec/liuqin-iio-sensor-proxy"
-	rm -rf "$out_dir/stage/etc" "$out_dir/stage/usr/bin" \
+	# 只删上游装的那几份，别整目录删：hexagonrpcd 和 ssccli 也住在 /usr/bin，
+	# 整段 rm -rf /usr/bin 会把它们一起删掉（2026-11-28 那次 CI 就是这么挂的：
+	# 包照打不误，装完树里没有 /usr/bin/hexagonrpcd）。
+	# hexagonrpc 还会往 libdir/systemd/system 塞三份模板单元（不是 systemd 的搜索
+	# 路径，也没被任何东西引用），一并丢掉。
+	rm -rf "$out_dir/stage/etc" \
 		"$out_dir/stage/usr/lib/systemd" "$out_dir/stage/usr/lib/udev" \
+		"$out_dir/stage/usr/lib64/systemd" \
 		"$out_dir/stage/usr/share/dbus-1" "$out_dir/stage/usr/share/polkit-1"
-	[ -x "$out_dir/stage/usr/libexec/liuqin-iio-sensor-proxy" ] ||
-		die 'the patched iio-sensor-proxy binary did not land in /usr/libexec'
+	rm -f "$out_dir/stage/usr/bin/monitor-sensor"
 	# libssc 的 mocking 服务器是给测试用的 python 包，设备上不需要；手册页也
 	# 不要——rpmbuild 会把它们压成 .gz，清单就跟着对不上。
 	rm -rf "$out_dir/stage/usr/share/man" "$out_dir/stage/usr/share/doc"
@@ -227,6 +232,13 @@ build_rpm() {
 	# 库的 soname 都会随版本变，写死一个就可能在 rpmbuild 上报"找不到文件"。
 	# man/doc 不打包：rpmbuild 会在安装之后把它们压缩成 .gz，清单里写的原名
 	# 就不存在了，打包会报"File not found"。设备上不需要这些手册页。
+	# 打包前把"包里必须有什么"钉死：只删了该删的东西，二进制都还在。
+	for path in /usr/bin/hexagonrpcd /usr/bin/ssccli \
+		/usr/libexec/liuqin-iio-sensor-proxy /usr/libexec/liuqin-ssc-sample-gate \
+		/usr/local/sbin/liuqin-slpi; do
+		[ -f "$out_dir/stage$path" ] ||
+			die "the staged package would not contain $path"
+	done
 	find "$out_dir/stage" \( -type f -o -type l \) -printf '%P\n' |
 		grep -vE '^usr/share/(man|doc|info)/' |
 		sed 's|^|/|' | sort >"$out_dir/files.list"
@@ -269,16 +281,39 @@ EOF
 	say "rpm: $out_dir/$pkg_name-$version-1.aarch64.rpm"
 }
 
+ensure_tree_packages() {
+	# 树里缺的运行时包，从容器自己的仓库抓下来装进树：KDE Mobile 的包集和
+	# Workstation 不一样，libqmi / libqrtr-glib / protobuf-c 不一定在。
+	# 只抓这几个包本身（不 --resolve），它们的依赖（glibc、glib2）树里本来就有，
+	# 避免顺带把整个基础系统换成仓库版本。
+	say "the tree is missing: $*; fetching them"
+	command -v dnf >/dev/null 2>&1 ||
+		die "the tree lacks $*, and dnf is not available to fetch them"
+	mkdir -p "$out_dir/tree-rpms"
+	rm -f "$out_dir"/tree-rpms/*.rpm
+	dnf -y download --destdir="$out_dir/tree-rpms" "$@" >"$out_dir/tree-dnf.log" 2>&1 ||
+		{ tail -30 "$out_dir/tree-dnf.log" >&2; die "dnf could not download $*"; }
+	rpm --root "$tree" -U --noscripts --nosignature --nodeps --replacefiles \
+		"$out_dir"/tree-rpms/*.rpm >"$out_dir/tree-rpm.log" 2>&1 ||
+		{ tail -30 "$out_dir/tree-rpm.log" >&2; die "rpm could not install $* into the tree"; }
+	say "installed into the tree: $*"
+}
+
 install_into_tree() {
 	need rpm
 	[ -d "$tree" ] || die "no Fedora tree at $tree"
 	# shellcheck disable=SC2012
 	rpm_file=$(ls -t "$out_dir"/$pkg_name-*.aarch64.rpm 2>/dev/null | head -1)
 	[ -n "$rpm_file" ] || die "no RPM in $out_dir; run the build action first"
-	# 发行包必须还在：单元、udev 规则、D-Bus 策略、polkit 策略和 monitor-sensor
-	# 都由它提供，我们只替换二进制（和参考项目在 Ubuntu 上的分工一样）。
-	rpm --root "$tree" -q iio-sensor-proxy >/dev/null 2>&1 ||
-		die "the tree has no iio-sensor-proxy package; it owns the unit, the udev rule and the bus/polkit policy. Install it into the tree (dnf --installroot) instead of replacing it."
+	# 发行包提供单元、udev 规则、D-Bus 策略、polkit 策略和 monitor-sensor；
+	# libssc 运行时还要 libqmi / libqrtr-glib / protobuf-c。缺哪个补哪个，
+	# 不要等到真机上动态链接失败。
+	missing=
+	for pkg in iio-sensor-proxy libqmi libqrtr-glib protobuf-c; do
+		rpm --root "$tree" -q "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"
+	done
+	# shellcheck disable=SC2086
+	[ -z "$missing" ] || ensure_tree_packages $missing
 	say "installing $rpm_file"
 	rpm --root "$tree" -U --replacepkgs --noscripts --nosignature --nodeps "$rpm_file" ||
 		die 'rpm could not install the package'
@@ -302,7 +337,7 @@ check_tree() {
 	# 表现就是 gate 失败、代理不出现——和内核、固件都没有关系。
 	for pkg in libqmi libqrtr-glib protobuf-c; do
 		rpm --root "$tree" -q "$pkg" >/dev/null 2>&1 ||
-			die "the tree has no $pkg package; libssc needs it at runtime. Install it into the tree (dnf --installroot) before flashing."
+			die "the tree still has no $pkg after the fetch step"
 	done
 	say "distro package: $(rpm --root "$tree" -q iio-sensor-proxy 2>/dev/null || echo 'not installed')"
 	say "package: $(rpm --root "$tree" -q $pkg_name 2>/dev/null || echo 'not installed')"
