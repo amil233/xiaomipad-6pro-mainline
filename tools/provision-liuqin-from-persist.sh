@@ -192,5 +192,14 @@ else
 	say 'warning: sensors will work only after the sensor stack is ported'
 fi
 
+# 传感器栈在开机时就已经起来了，DSP 的传感器列表是那一刻按 registry 建的；
+# 这份 registry 如果是刚导进去的，必须重启（或重启 liuqin-slpi）才会被重新读。
+# 只提示，不自动重启：重启 SLPI 在个别机器上会让整机复位，交给操作者决定。
+if [ "$tgt" = "/" ] && [ -d /run/systemd/system ] &&
+	systemctl is-active --quiet liuqin-hexagonrpcd-sdsp.service 2>/dev/null; then
+	say 'note: the sensor stack is already running with the registry it read at boot'
+	say 'note: reboot once so the DSP picks up the files just imported'
+fi
+
 say "wlan=$wlan_mac bt=$bt_addr calr=4ch registry=$count -> $tgt"
 say 'PASS'

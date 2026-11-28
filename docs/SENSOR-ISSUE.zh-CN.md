@@ -141,7 +141,10 @@ KDE Mobile 的包集里不一定有；缺任何一个，`ssccli` 和代理都会
 
 1. 重出 `liuqin-sensors` RPM、重装进树、重装镜像，刷 `boot_a` + `userdata`；
 2. 首启后跑 `provision-liuqin-from-persist.sh /`，输出里应有 `registry=<三位数>`；
-3. 依次看：
+3. **重启**。DSP 的传感器列表是开机那一刻按 registry 建的：开机时 registry 还是空的
+   （`liuqin-slpi` 会打 "registry not imported yet"），provision 之后不重启，DSP 不会
+   重新读它，`ssccli` 只会得到"没有这个传感器"，代理也就起不来；
+4. 依次看：
 
 ```sh
 rpm -q iio-sensor-proxy
@@ -165,6 +168,9 @@ ls /usr/share/qcom/sm8450/Xiaomi/liuqin/sensors/
 
 判据：
 
+- `ssccli --sensor=accelerometer` 报 `Unable to initialize ... UNKNOWN`：libssc 已经连上
+  SSC、也看到了内置的 `registry` 传感器，但 DSP 的列表里没有加速度计——先确认是不是
+  没重启（见第 3 步）；
 - 单元里没有 `-R /usr/share/qcom/sm8450/Xiaomi/liuqin`，或那个目录缺 `config/` →
   前缀不对；`journalctl -u liuqin-hexagonrpcd-sdsp` 里出现的 `Could not open` /
   `Could not stat` 行会带出固件实际请求的路径（daemon 的 `apps_std.c` 会把这些打到
