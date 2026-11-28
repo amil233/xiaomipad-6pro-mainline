@@ -65,7 +65,6 @@ require /etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf
 # 下面这个二进制和 D-Bus 激活条目——后者 Fedora 的包没有，少了它第一个调用者
 # 拉不起代理。
 require /usr/libexec/liuqin-iio-sensor-proxy
-require /usr/share/dbus-1/system-services/net.hadess.SensorProxy.service
 require /etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules
 require /etc/sysusers.d/liuqin-fastrpc.conf
 require /etc/tmpfiles.d/liuqin-sensors.conf

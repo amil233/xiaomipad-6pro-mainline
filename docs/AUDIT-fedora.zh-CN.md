@@ -109,9 +109,10 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
   改写（`.gz`、`.pyc`），变成"装进 buildroot 但不在清单里"的文件；
 - 不卸 Fedora 的 `iio-sensor-proxy`：单元、udev 规则、bus/polkit 策略和
   `monitor-sensor` 都由那个包提供，和参考项目在 Ubuntu 上的分工一致。我们只装
-  打过补丁的二进制和 D-Bus 激活条目（发行包的 `%files` 里没有后者），由 drop-in
-  把 `ExecStart` 指过去。这个包一旦被卸掉，2026-11-27 那种"我们漏装一份单元、
-  整条链断掉"的事就会重演。
+  打过补丁的二进制，由 drop-in 把 `ExecStart` 指过去。这个包一旦被卸掉，
+  2026-11-27 那种"我们漏装一份单元、整条链断掉"的事就会重演。
+- 不装 D-Bus 激活条目：Fedora 与 Debian 的包文件清单是同一组六份，都没有它；
+  代理由 udev 规则的 `SYSTEMD_WANTS` 拉起。
 - `install` 时检查发行包和 `libqmi`/`libqrtr-glib`/`protobuf-c` 在树里：libssc
   运行时链这三份，而它们不是 `iio-sensor-proxy` 包的依赖。
 
@@ -178,7 +179,6 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 | `etc/sysusers.d/liuqin-fastrpc.conf`、`etc/tmpfiles.d/liuqin-sensors.conf` | 账户与目录的声明式来源（Ubuntu 线原本如此），`assemble` 的离线建号与之兼容 |
 | `usr/local/sbin/liuqin-sensor-registry-import` | 手工重导 registry 的操作工具，带校验和与旧目录备份 |
 | `usr/local/bin/busybox`、`liuqin-shell`、`usr/local/sbin/liuqin-rescue`、`liuqin-usb-rescue`、`etc/systemd/system/liuqin-usb-rescue.service` | USB telnet 维护通道；`usb0` 由 initramfs 的 gadget 留下，本单元只做地址、`udhcpd`、`telnetd`；默认不启用（`ConditionPathExists=/etc/liuqin-rescue-enabled`） |
-| `usr/share/dbus-1/system-services/net.hadess.SensorProxy.service` | D-Bus 激活条目。上游 meson 不装它，Fedora 的 `iio-sensor-proxy` 包的 `%files` 里也没有（只有单元、udev 规则、bus/polkit 策略和 monitor-sensor），所以必须我们带；少了它第一个调用者拉不起代理 |
 
 ## 四、删除的文件及理由
 

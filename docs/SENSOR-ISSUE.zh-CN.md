@@ -13,7 +13,9 @@
 | 结论 | 来源 | 等级 |
 |---|---|---|
 | Fedora 45 的 `iio-sensor-proxy` 包含单元/udev/bus/polkit 策略和 `monitor-sensor`，不含 D-Bus 激活条目 | 包的 `%files`（`packages.fedoraproject.org`）与 [spec](https://src.fedoraproject.org/rpms/iio-sensor-proxy) | 一手 |
-| 发行版那个二进制没有 SSC 支持 | 同一个 spec：`-Dssc-support=disabled` | 一手 |
+| Debian/Ubuntu 的包是**同一组六份文件**，同样没有激活条目 | `packages.debian.org` 的 arm64 文件清单 | 一手 |
+| Debian 在 arm64 上用 `-Dssc-support=enabled` 编，Fedora 是 `disabled` | Debian `debian/rules`；Fedora spec | 一手 |
+| Fedora 的 `qt6-qtsensors` 带 `libqtsensors_iio-sensor-proxy.so`，KDE 侧能读这个代理 | Fedora 45 包文件清单 | 一手 |
 | 我们的构建把单元删了、发行包又被 `rpm -e` | 仓库里的 `build-liuqin-sensors-rpm.sh` 与提交历史 | 一手 |
 | `-R` 不写时 daemon 会去找 `sm8475`，而树在 `sm8450` | `rpcd.c` 的 `guess_device_directory_from_compatible()` + 解析 boot.img 里合并后的 DTB 得到的 root 属性 | 一手（算法与输入都查了） |
 | 于是固件读不到 registry，一个传感器都不注册 | 严格映射（`hfs_map`）会对缺失路径返回 `ENOENT`；DSP 侧怎么处理是闭源的 | **推断** |
@@ -41,9 +43,15 @@
 | `/usr/share/polkit-1/actions/net.hadess.SensorProxy.policy` | claim-sensor 的动作定义 |
 | `/usr/libexec/iio-sensor-proxy`、`/usr/bin/monitor-sensor` | 发行版编的二进制 |
 
-**它没有** `/usr/share/dbus-1/system-services/net.hadess.SensorProxy.service`（D-Bus 激活
-条目），这一条必须由我们带。另外 Fedora 的 spec 用 `-Dssc-support=disabled` 编译，
-所以发行版那个二进制看不见任何 SSC 传感器——必须换成我们的。
+对照 Debian/Ubuntu 的同一个包（`packages.debian.org` 的 arm64 文件清单）：**两边是同一组
+六份文件，也都同样没有** `/usr/share/dbus-1/system-services/` 激活条目。代理在两边都是
+靠 udev 规则在 `/dev/fastrpc-sdsp` 出现时用 `SYSTEMD_WANTS` 拉起来的，Ubuntu 上跑通的
+就是这条路径。所以激活条目不是必需件，我们此前自带的那一份已经删掉。
+
+真正需要我们自己编二进制的是另一处差异：Debian 的 `debian/rules` 在 arm64 上
+`-Dssc-support=enabled`（`ARCHES_QCOM_SSC = arm64`），Fedora 的 spec 是
+`-Dssc-support=disabled`。所以 Ubuntu 的发行版二进制本来就能看 SSC（参考项目换它是为了
+那几个补丁），而 Fedora 的必须换。
 
 参考项目在 Ubuntu 上就是"留发行包、只换二进制"：它把上游 meson 装进层里的单元、
 udev 规则、bus 策略、polkit 策略**删掉**，注释写的是 *"Ubuntu owns the 3.8 SensorProxy
@@ -61,8 +69,8 @@ drop-in 改 `ExecStart`。
 都只会得到 "Unit not found"，`monitor-sensor` 就永远等。
 
 **改法**：回到参考项目的分工。发行包继续装着，负责单元、udev 规则、bus/polkit 策略和
-`monitor-sensor`；我们的包只提供 `/usr/libexec/liuqin-iio-sensor-proxy` 和 D-Bus 激活
-条目，drop-in 里 `ExecStart=` 指过去，并写一遍 `RestrictAddressFamilies=AF_QIPCRTR`
+`monitor-sensor`；我们的包只提供 `/usr/libexec/liuqin-iio-sensor-proxy` 这一个二进制，
+drop-in 里 `ExecStart=` 指过去，并写一遍 `RestrictAddressFamilies=AF_QIPCRTR`
 （发行包若是 3.8 的单元没有这一项）。这样我们自己漏装一份也不会再让整条链断掉，
 发行包升级还能把单元一起带上来。
 
@@ -122,7 +130,7 @@ KDE Mobile 的包集里不一定有；缺任何一个，`ssccli` 和代理都会
 | 文件 | 改动 |
 |---|---|
 | `device/fedora-overlay/.../liuqin-hexagonrpcd-sdsp.service` | `-R` 写死为树里的布局 |
-| `tools/build-liuqin-sensors-rpm.sh` | 不再卸 Fedora 的包；只装 `/usr/libexec` 下的二进制和激活条目；检查发行包与三个运行库；补丁集扩到 0008–0010 |
+| `tools/build-liuqin-sensors-rpm.sh` | 不再卸 Fedora 的包；只装 `/usr/libexec` 下的二进制（不装激活条目）；检查发行包与三个运行库；补丁集扩到 0008–0010 |
 | `device/fedora-overlay/.../iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `ExecStart=` 指向我们的二进制，补 `AF_QIPCRTR` |
 | `tools/build-liuqin-fedora-rootfs.sh` | 不再软链 `sns_reg_version`，删掉四个无效软链，断言它是实体文件 |
 | `device/sensors/patches/0008..0010` | 从参考项目导入，作者与说明原样保留 |

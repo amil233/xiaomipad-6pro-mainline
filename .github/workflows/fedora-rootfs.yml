@@ -143,10 +143,13 @@ jobs:
             /usr/share/dbus-1/system.d/net.hadess.SensorProxy.conf \
             /usr/share/polkit-1/actions/net.hadess.SensorProxy.policy \
             /usr/bin/monitor-sensor \
-            /usr/libexec/liuqin-iio-sensor-proxy \
-            /usr/share/dbus-1/system-services/net.hadess.SensorProxy.service; do
+            /usr/libexec/liuqin-iio-sensor-proxy; do
             test -e "$root$path" || { echo "MISSING $path" >&2; exit 1; }
           done
+          # 代理靠发行包的 udev 规则在设备出现时拉起（两个发行版都是这样，都没有
+          # D-Bus 激活条目）。这条规则少了 SYSTEMD_WANTS，代理就只能等手动启动。
+          grep -Eq 'SYSTEMD_WANTS.*iio-sensor-proxy\.service' \
+            "$root/usr/lib/udev/rules.d/80-iio-sensor-proxy.rules"
           # drop-in 必须真的把 ExecStart 指到我们那份，否则跑的是发行版未打补丁的
           # 二进制（没有 SSC 支持，传感器一个都看不见）。
           grep -qx 'ExecStart=/usr/libexec/liuqin-iio-sensor-proxy' \

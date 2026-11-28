@@ -210,13 +210,11 @@ build_rpm() {
 	# 而 iio-sensor-proxy 由 D-Bus / udev 按需激活——开机时节点还没有，早启动
 	# 只会失败（Ubuntu 线同样是这么安排的）。
 	chmod 0755 "$out_dir/stage/usr/libexec/liuqin-ssc-sample-gate"
-	# D-Bus 激活条目必须由我们提供：Fedora 的 iio-sensor-proxy 包的 %files 里
-	# 只有 monitor-sensor、单元、udev 规则、bus policy、polkit 策略，**没有**
-	# /usr/share/dbus-1/system-services 这一条（src.fedoraproject.org 的 spec 可以
-	# 核对）。少了它，第一个调用者不会把代理拉起来，monitor-sensor 就只能等。
-	mkdir -p "$out_dir/stage/usr/share/dbus-1/system-services"
-	cp "$project_root/device/fedora-overlay/usr/share/dbus-1/system-services/"*.service \
-		"$out_dir/stage/usr/share/dbus-1/system-services/"
+	# 不装 D-Bus 激活条目。Fedora 和 Debian 的 iio-sensor-proxy 包文件清单是同一组
+	# 六份（monitor-sensor、单元、udev 规则、二进制、bus 策略、polkit 策略），两边
+	# 都没有 /usr/share/dbus-1/system-services 这一条；代理是 udev 规则在
+	# /dev/fastrpc-sdsp 出现时用 SYSTEMD_WANTS 拉起来的，Ubuntu 上跑通的就是这个
+	# 路径。多写一条激活条目只是多一个可能出错的环节。
 	chmod 0755 "$out_dir/stage/usr/local/sbin/liuqin-slpi"
 	# 只启用 liuqin-slpi：它负责把 SLPI 拉起来、sdsp 节点才会出现。
 	# hexagonrpcd 和 gate 由 udev 的 SYSTEMD_WANTS 在设备事件里拉起
@@ -293,8 +291,7 @@ check_tree() {
 		[ -x "$tree$path" ] || die "missing in the tree: $path"
 	done
 	for path in /usr/lib/systemd/system/iio-sensor-proxy.service \
-		/usr/lib/udev/rules.d/80-iio-sensor-proxy.rules \
-		/usr/share/dbus-1/system-services/net.hadess.SensorProxy.service; do
+		/usr/lib/udev/rules.d/80-iio-sensor-proxy.rules; do
 		[ -e "$tree$path" ] || die "the proxy cannot be started without $path"
 	done
 	say "hexagonrpcd: $tree/usr/bin/hexagonrpcd"
