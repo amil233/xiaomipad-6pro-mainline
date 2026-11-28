@@ -211,7 +211,7 @@ build_rpm() {
 		"$out_dir/stage/usr/libexec/"
 	cp "$project_root/device/fedora-overlay/etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf" \
 		"$out_dir/stage/etc/systemd/system/iio-sensor-proxy.service.d/"
-	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 通过 Requires 拉起来，
+	# gate 不单独开机启用：它由 iio-sensor-proxy 的 drop-in 用 Wants 拉起来，
 	# 而 iio-sensor-proxy 由 D-Bus / udev 按需激活——开机时节点还没有，早启动
 	# 只会失败（Ubuntu 线同样是这么安排的）。
 	chmod 0755 "$out_dir/stage/usr/libexec/liuqin-ssc-sample-gate"

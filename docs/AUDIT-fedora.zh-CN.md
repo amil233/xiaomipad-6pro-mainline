@@ -174,7 +174,7 @@ permissive、离线创建 `fastrpc` 账户、铺传感器 ROM 数据与软链、
 | `etc/systemd/system/liuqin-hexagonrpcd-sdsp.service` | `Requires=liuqin-slpi`（节点后出现）+ `ConditionPathExists=/dev/fastrpc-sdsp` + `ExecStartPre` 兜底权限 + 写死 `-R`（自动探测会拼出 `sm8475`，树在 `sm8450` 下） |
 | `etc/systemd/system/liuqin-sensor-stack.target` | udev `SYSTEMD_WANTS` 的目标 |
 | `etc/systemd/system/liuqin-ssc-sample-gate.service` + `usr/libexec/liuqin-ssc-sample-gate` | 加速度计必须先被 claim 一次才注册（`drv-ssc-accel.c` 用 open/close 发现），gate 用 `ssccli` 取真实测量，成功才允许发布 SensorProxy |
-| `etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `Requires` gate；`ExecStart` 指向 `/usr/libexec` 下打过补丁的二进制；放开 `AF_QIPCRTR`（libssc 走 QMI over QRTR） |
+| `etc/systemd/system/iio-sensor-proxy.service.d/90-liuqin-ssc.conf` | `Wants` + `After` gate（软依赖：gate 失败时代理照常出现，否则总线上一片空白）；`ExecStart` 指向 `/usr/libexec` 下打过补丁的二进制；放开 `AF_QIPCRTR`（libssc 走 QMI over QRTR） |
 | `etc/polkit-1/rules.d/49-liuqin-sensorproxy.rules` | 上游默认 `allow_active` 会和登录时的 session 注册竞争，导致整个 boot 拿不到方向；Ubuntu 线为此加了同样规则 |
 | `etc/sysusers.d/liuqin-fastrpc.conf`、`etc/tmpfiles.d/liuqin-sensors.conf` | 账户与目录的声明式来源（Ubuntu 线原本如此），`assemble` 的离线建号与之兼容 |
 | `usr/local/sbin/liuqin-sensor-registry-import` | 手工重导 registry 的操作工具，带校验和与旧目录备份 |
